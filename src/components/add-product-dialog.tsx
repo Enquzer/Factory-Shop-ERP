@@ -113,7 +113,11 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
   const handleMainImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setMainImagePreview(URL.createObjectURL(file));
+      const newPreviewUrl = URL.createObjectURL(file);
+      if (mainImagePreview) {
+          URL.revokeObjectURL(mainImagePreview);
+      }
+      setMainImagePreview(newPreviewUrl);
       form.setValue("mainImage", file);
     }
   };
@@ -142,8 +146,21 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6 py-4 max-h-[80vh] overflow-y-auto pr-6">
+            
+            <div className="space-y-2">
+                <FormLabel>Main Product Image</FormLabel>
+                <FormControl>
+                    <Input type="file" accept="image/*" onChange={handleMainImageChange} className="file:text-primary-foreground" />
+                </FormControl>
+                {mainImagePreview && (
+                    <div className="mt-2 relative w-full aspect-video rounded-md overflow-hidden border">
+                        <Image src={mainImagePreview} alt="Main product preview" fill style={{objectFit: 'contain'}} />
+                    </div>
+                )}
+                <FormMessage>{form.formState.errors.mainImage?.message as ReactNode}</FormMessage>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
                 <FormField
                   control={form.control}
                   name="name"
@@ -205,19 +222,6 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                     </FormItem>
                   )}
                 />
-              </div>
-              <div className="space-y-2">
-                 <FormLabel>Main Product Image</FormLabel>
-                 <FormControl>
-                    <Input type="file" accept="image/*" onChange={handleMainImageChange} className="file:text-primary-foreground" />
-                 </FormControl>
-                 {mainImagePreview && (
-                    <div className="mt-2 relative w-full h-48 rounded-md overflow-hidden border">
-                        <Image src={mainImagePreview} alt="Main product preview" fill style={{objectFit: 'cover'}} />
-                    </div>
-                 )}
-                 <FormMessage>{form.formState.errors.mainImage?.message as ReactNode}</FormMessage>
-              </div>
             </div>
 
              <FormField
