@@ -4,7 +4,11 @@ import { type Product, type ProductVariant } from "@/lib/products";
 import { createContext, useContext, useState, ReactNode, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
-export type OrderItem = Omit<Product, 'variants'> & { 
+export type OrderItem = { 
+  productId: string;
+  name: string;
+  price: number;
+  imageUrl: string;
   variant: ProductVariant;
   quantity: number;
 };
@@ -46,8 +50,14 @@ export function OrderProvider({ children }: { children: ReactNode }) {
             : item
         );
       }
-      const { variants, ...productData } = product;
-      return [...prevItems, { ...productData, variant, quantity }];
+      return [...prevItems, { 
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          imageUrl: variant.imageUrl, 
+          variant, 
+          quantity 
+      }];
     });
   };
 

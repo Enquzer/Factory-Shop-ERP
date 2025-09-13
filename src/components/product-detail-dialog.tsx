@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Product, ProductVariant } from "@/lib/products";
+import type { Product } from "@/lib/products";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,19 +11,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import { useOrder } from "@/hooks/use-order";
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, MinusCircle, ShoppingCart } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 type OrderQuantities = {
     [variantId: string]: number;
@@ -73,58 +67,49 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>{product.name}</DialogTitle>
           <DialogDescription>
-            Select the color, size, and quantity you wish to order.
+            Select the color, size, and quantity you wish to order. Unit Price: ETB {product.price.toFixed(2)}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid md:grid-cols-2 gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-            <div className="relative w-full aspect-[4/5] rounded-lg overflow-hidden">
-                <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} data-ai-hint={product.imageHint} />
-            </div>
-            <div>
-                <h3 className="font-semibold mb-2">Available Variants</h3>
-                 <p className="text-lg font-semibold mb-4">ETB {product.price.toFixed(2)} / unit</p>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Color</TableHead>
-                            <TableHead>Size</TableHead>
-                            <TableHead>In Stock</TableHead>
-                            <TableHead className="text-center">Quantity</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {product.variants.map((variant) => (
-                            <TableRow key={variant.id}>
-                                <TableCell>{variant.color}</TableCell>
-                                <TableCell>{variant.size}</TableCell>
-                                <TableCell>{variant.stock}</TableCell>
-                                <TableCell>
-                                    <div className="flex items-center justify-center gap-2">
-                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleQuantityChange(variant.id, -1)} disabled={(quantities[variant.id] || 0) === 0}>
-                                            <MinusCircle className="h-4 w-4" />
-                                        </Button>
-                                        <Input
-                                            type="number"
-                                            className="w-14 h-8 text-center"
-                                            value={quantities[variant.id] || 0}
-                                            onChange={(e) => setQuantities(prev => ({...prev, [variant.id]: Math.max(0, parseInt(e.target.value) || 0)}))}
-                                            min="0"
-                                            max={variant.stock}
-                                        />
-                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleQuantityChange(variant.id, 1)} disabled={(quantities[variant.id] || 0) >= variant.stock}>
-                                            <PlusCircle className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
+        <div className="py-4 max-h-[70vh] overflow-y-auto pr-4">
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {product.variants.map((variant) => (
+                    <Card key={variant.id} className="overflow-hidden">
+                         <div className="relative w-full aspect-[4/5]">
+                            <Image src={variant.imageUrl} alt={`${product.name} - ${variant.color} ${variant.size}`} fill style={{objectFit: 'cover'}} data-ai-hint={variant.imageHint} />
+                        </div>
+                        <CardContent className="p-4 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-semibold">{variant.color} - {variant.size}</h3>
+                                <Badge variant={variant.stock > 0 ? "secondary" : "destructive"}>
+                                    {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
+                                </Badge>
+                            </div>
+
+                            <div className="flex items-center justify-center gap-2">
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, -1)} disabled={(quantities[variant.id] || 0) === 0}>
+                                    <MinusCircle className="h-4 w-4" />
+                                </Button>
+                                <Input
+                                    type="number"
+                                    className="w-16 h-8 text-center"
+                                    value={quantities[variant.id] || 0}
+                                    onChange={(e) => setQuantities(prev => ({...prev, [variant.id]: Math.max(0, parseInt(e.target.value) || 0)}))}
+                                    min="0"
+                                    max={variant.stock}
+                                    disabled={variant.stock === 0}
+                                />
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, 1)} disabled={(quantities[variant.id] || 0) >= variant.stock}>
+                                    <PlusCircle className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
