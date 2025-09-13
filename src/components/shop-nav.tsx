@@ -10,6 +10,8 @@ import {
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
+import { useOrder } from '@/hooks/use-order';
+import { Badge } from './ui/badge';
 
 const links = [
   { href: '/shop/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -19,6 +21,7 @@ const links = [
 
 export function ShopNav() {
   const pathname = usePathname();
+  const { items } = useOrder();
 
   return (
     <SidebarMenu>
@@ -26,7 +29,7 @@ export function ShopNav() {
         <SidebarMenuItem key={link.href}>
           <SidebarMenuButton
             asChild
-            isActive={pathname === link.href}
+            isActive={pathname.startsWith(link.href) && !(link.href === '/shop/orders' && pathname.includes('create'))}
             tooltip={link.label}
             className="justify-start"
           >
@@ -41,6 +44,22 @@ export function ShopNav() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
+      <SidebarMenuItem>
+          <SidebarMenuButton
+            asChild
+            isActive={pathname === '/shop/orders/create'}
+            tooltip="Create Order"
+            className="justify-start"
+          >
+            <Link href="/shop/orders/create">
+              <ShoppingCart className="h-4 w-4" />
+              <span className={cn("group-data-[collapsible=icon]:hidden")}>
+                Create Order
+              </span>
+              {items.length > 0 && <Badge className="ml-auto">{items.length}</Badge>}
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
     </SidebarMenu>
   );
 }

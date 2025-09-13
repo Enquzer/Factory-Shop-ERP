@@ -1,8 +1,13 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, ShoppingCart } from "lucide-react";
 import Image from "next/image";
+import { useToast } from "@/hooks/use-toast";
+import { useOrder } from "@/hooks/use-order";
+import Link from "next/link";
 
 const products = [
     { id: "MCT-001", name: "Men's Classic Tee", category: "Men", price: 500.00, imageUrl: "https://picsum.photos/seed/prod1/400/500", imageHint: "man t-shirt" },
@@ -13,8 +18,20 @@ const products = [
     { id: "WJP-005", name: "Women's Jumpsuit", category: "Women", price: 1800.00, imageUrl: "https://picsum.photos/seed/prod6/400/500", imageHint: "woman jumpsuit" },
 ];
 
+export type Product = typeof products[0];
 
 export default function ShopProductsPage() {
+    const { toast } = useToast();
+    const { addItem, items } = useOrder();
+
+    const handleAddToOrder = (product: Product) => {
+        addItem(product);
+        toast({
+            title: "Product Added",
+            description: `${product.name} has been added to your order.`,
+        });
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -22,13 +39,23 @@ export default function ShopProductsPage() {
                     <h1 className="text-2xl font-semibold">Product Catalog</h1>
                     <p className="text-muted-foreground">Browse products and create an order.</p>
                 </div>
-                <div className="relative w-full md:w-auto">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        type="search"
-                        placeholder="Search products..."
-                        className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
-                    />
+                <div className="flex items-center gap-2">
+                    <div className="relative w-full md:w-auto">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            placeholder="Search products..."
+                            className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
+                        />
+                    </div>
+                    {items.length > 0 && (
+                        <Button asChild>
+                            <Link href="/shop/orders/create">
+                                <ShoppingCart className="mr-2 h-4 w-4" />
+                                View Order
+                            </Link>
+                        </Button>
+                    )}
                 </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -43,7 +70,7 @@ export default function ShopProductsPage() {
                         </CardHeader>
                         <CardContent className="flex items-center justify-between">
                             <p className="text-lg font-semibold">ETB {product.price.toFixed(2)}</p>
-                            <Button size="sm">Add to Order</Button>
+                            <Button size="sm" onClick={() => handleAddToOrder(product)}>Add to Order</Button>
                         </CardContent>
                     </Card>
                 ))}
