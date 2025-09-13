@@ -2,6 +2,7 @@
 
 "use client";
 
+import * as React from "react";
 import { useState, type ReactNode } from "react";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -326,4 +327,3 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
     </Dialog>
   );
 }
-
