@@ -40,16 +40,90 @@ const dashboardData = {
     { id: "ORD-003", shopName: "Merkato Style", location: "Addis Ababa", status: "Rejected", amount: 35000.00, statusVariant: "destructive" },
     { id: "ORD-004", shopName: "Adama Modern", location: "Adama", status: "Fulfilled", amount: 45000.00, statusVariant: "secondary" },
   ],
-  lowStockItems: [
-    { id: "MCT-001", name: "Men's Classic Tee", category: "Men", stock: 5, isLow: true },
-    { id: "WSD-012", name: "Women's Summer Dress", category: "Women", stock: 8, isLow: true },
-    { id: "KGH-034", name: "Kid's Graphic Hoodie", category: "Kids", stock: 22, isLow: false },
-    { id: "UDJ-007", name: "Unisex Denim Jacket", category: "Unisex", stock: 3, isLow: true },
-  ]
 };
 
+const allProducts = [
+    { 
+        id: "MCT-001", 
+        name: "Men's Classic Tee", 
+        category: "Men", 
+        variants: [
+            { id: "VAR-001", color: "White", size: "M", stock: 15 },
+            { id: "VAR-002", color: "White", size: "L", stock: 10 },
+            { id: "VAR-003", color: "Black", size: "M", stock: 20 },
+            { id: "VAR-004", color: "Black", size: "XL", stock: 5 },
+        ]
+    },
+    { 
+        id: "WSD-012", 
+        name: "Women's Summer Dress", 
+        category: "Women", 
+        variants: [
+            { id: "VAR-005", color: "Floral", size: "S", stock: 8 },
+            { id: "VAR-006", color: "Floral", size: "M", stock: 12 },
+        ]
+    },
+    { 
+        id: "KGH-034", 
+        name: "Kid's Graphic Hoodie", 
+        category: "Kids", 
+        variants: [
+            { id: "VAR-007", color: "Blue", size: "6Y", stock: 18 },
+            { id: "VAR-008", color: "Pink", size: "8Y", stock: 22 },
+        ]
+    },
+    { 
+        id: "UDJ-007", 
+        name: "Unisex Denim Jacket", 
+        category: "Unisex", 
+        variants: [
+            { id: "VAR-009", color: "Indigo", size: "L", stock: 7 },
+        ]
+    },
+     { 
+        id: "MST-002", 
+        name: "Men's Striped Shirt", 
+        category: "Men", 
+        variants: [
+            { id: "VAR-010", color: "Navy/White", size: "M", stock: 14 },
+            { id: "VAR-011", color: "Navy/White", size: "L", stock: 11 },
+        ]
+    },
+    { 
+        id: "WJP-005", 
+        name: "Women's Jumpsuit", 
+        category: "Women", 
+        variants: [
+            { id: "VAR-012", color: "Black", size: "S", stock: 9 },
+            { id: "VAR-013", color: "Olive", size: "M", stock: 6 },
+        ]
+    },
+];
+
+const LOW_STOCK_THRESHOLD = 10;
+
+const getLowStockItems = () => {
+    const lowStockItems: { id: string; name: string; category: string; stock: number; isLow: boolean; }[] = [];
+    allProducts.forEach(product => {
+        product.variants.forEach(variant => {
+            if (variant.stock < LOW_STOCK_THRESHOLD) {
+                lowStockItems.push({
+                    id: `${product.id}-${variant.id}`,
+                    name: `${product.name} (${variant.color}, ${variant.size})`,
+                    category: product.category,
+                    stock: variant.stock,
+                    isLow: true,
+                });
+            }
+        });
+    });
+    return lowStockItems;
+};
+
+
 export default function DashboardPage() {
-  const { metrics, recentOrders, lowStockItems } = dashboardData;
+  const { metrics, recentOrders } = dashboardData;
+  const lowStockItems = getLowStockItems();
 
   return (
     <div className="flex flex-col gap-6">
@@ -146,7 +220,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Low Stock Items</CardTitle>
-            <CardDescription>Products that are running low on inventory.</CardDescription>
+            <CardDescription>Products that are running low on inventory (less than {LOW_STOCK_THRESHOLD} items).</CardDescription>
           </CardHeader>
           <CardContent>
           <Table>
@@ -158,20 +232,25 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lowStockItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        #{item.id}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {item.category}
-                    </TableCell>
-                    <TableCell className={`text-right font-semibold ${item.isLow ? 'text-destructive' : ''}`}>{item.stock}</TableCell>
-                  </TableRow>
-                ))}
+                {lowStockItems.length > 0 ? (
+                    lowStockItems.map((item) => (
+                    <TableRow key={item.id}>
+                        <TableCell>
+                        <div className="font-medium">{item.name}</div>
+                        </TableCell>
+                        <TableCell>
+                        {item.category}
+                        </TableCell>
+                        <TableCell className={`text-right font-semibold ${item.isLow ? 'text-destructive' : ''}`}>{item.stock}</TableCell>
+                    </TableRow>
+                    ))
+                ) : (
+                    <TableRow>
+                        <TableCell colSpan={3} className="text-center py-12 text-muted-foreground">
+                            No items are currently low on stock.
+                        </TableCell>
+                    </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>
