@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useOrder } from "@/hooks/use-order";
@@ -11,7 +12,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreateOrderPage() {
-    const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder } = useOrder();
+    const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder, shopDiscount } = useOrder();
     const { toast } = useToast();
 
     const handlePlaceOrder = () => {
@@ -21,6 +22,8 @@ export default function CreateOrderPage() {
             description: "Your order has been sent to the factory for processing."
         });
     }
+
+    const finalAmount = totalAmount * (1 - shopDiscount);
 
     if (items.length === 0) {
         return (
@@ -103,12 +106,20 @@ export default function CreateOrderPage() {
                     </Table>
                 </CardContent>
                 <CardFooter className="flex flex-col items-end gap-4 bg-muted/50 p-6">
-                    <div className="text-lg font-semibold">
-                        Total Amount: ETB {totalAmount.toFixed(2)}
+                    <div className="w-full sm:w-72 space-y-2">
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span>ETB {totalAmount.toFixed(2)}</span>
+                        </div>
+                         <div className="flex justify-between">
+                            <span className="text-muted-foreground">Discount ({(shopDiscount * 100).toFixed(0)}%)</span>
+                            <span className="text-destructive">- ETB {(totalAmount - finalAmount).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-lg font-semibold border-t pt-2 mt-2">
+                            <span>Total Amount</span>
+                            <span>ETB {finalAmount.toFixed(2)}</span>
+                        </div>
                     </div>
-                     <p className="text-sm text-muted-foreground">
-                        Your shop discount will be applied by the factory upon confirmation.
-                    </p>
                     <Button size="lg" onClick={handlePlaceOrder}>Place Order</Button>
                 </CardFooter>
             </Card>

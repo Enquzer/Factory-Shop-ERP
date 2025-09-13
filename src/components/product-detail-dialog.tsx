@@ -26,7 +26,7 @@ type OrderQuantities = {
 }
 
 export function ProductDetailDialog({ product, open, onOpenChange }: { product: Product; open: boolean; onOpenChange: (open: boolean) => void }) {
-    const { addItem } = useOrder();
+    const { addItem, shopDiscount } = useOrder();
     const { toast } = useToast();
     const [quantities, setQuantities] = useState<OrderQuantities>({});
 
@@ -80,6 +80,11 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
     };
     
     const totalSelected = Object.values(quantities).reduce((sum, qty) => sum + qty, 0);
+    const subTotal = Object.entries(quantities).reduce((total, [variantId, quantity]) => {
+        return total + (product.price * quantity);
+    }, 0);
+    const discountAmount = subTotal * shopDiscount;
+    const finalTotal = subTotal - discountAmount;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,7 +95,7 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
             Select the color, size, and quantity you wish to order. Unit Price: ETB {product.price.toFixed(2)}
           </DialogDescription>
         </DialogHeader>
-        <div className="py-4 max-h-[70vh] overflow-y-auto pr-4">
+        <div className="py-4 max-h-[65vh] overflow-y-auto pr-4">
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Object.entries(variantsByColor).map(([color, { imageUrl, imageHint, variants }]) => (
                     <Card key={color} className="overflow-hidden">
@@ -135,12 +140,28 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                 ))}
            </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleAddAllToOrder} disabled={totalSelected === 0}>
-            <ShoppingCart className="mr-2 h-4 w-4" />
-            Add ({totalSelected}) to Order
-          </Button>
+        <DialogFooter className="flex-col sm:flex-col sm:items-end gap-4 border-t pt-4">
+            <div className="w-full sm:w-64 space-y-2">
+                <div className="flex justify-between text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span>ETB {subTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                    <span>Discount ({(shopDiscount * 100).toFixed(0)}%)</span>
+                    <span>- ETB {discountAmount.toFixed(2)}</span>
+                </div>
+                 <div className="flex justify-between font-bold text-lg">
+                    <span>Total</span>
+                    <span>ETB {finalTotal.toFixed(2)}</span>
+                </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto justify-end">
+                <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">Cancel</Button>
+                <Button onClick={handleAddAllToOrder} disabled={totalSelected === 0} className="w-full sm:w-auto">
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    Add ({totalSelected}) to Order
+                </Button>
+            </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

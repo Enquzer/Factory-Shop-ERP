@@ -1,3 +1,4 @@
+
 "use client";
 
 import { type Product, type ProductVariant } from "@/lib/products";
@@ -31,6 +32,7 @@ interface OrderContextType {
   clearOrder: () => void;
   placeOrder: () => void;
   totalAmount: number;
+  shopDiscount: number;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -38,6 +40,8 @@ const OrderContext = createContext<OrderContextType | undefined>(undefined);
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  // Mocking a 5% discount for the logged-in shop
+  const [shopDiscount] = useState(0.05); 
   const router = useRouter();
 
   const addItem = (product: Product, variant: ProductVariant, quantity: number = 1) => {
@@ -84,6 +88,8 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const totalAmount = useMemo(() => {
     return items.reduce((total, item) => total + item.price * item.quantity, 0);
   }, [items]);
+  
+  const finalAmountAfterDiscount = totalAmount * (1 - shopDiscount);
 
   const placeOrder = () => {
       if (items.length === 0) return;
@@ -93,7 +99,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           date: new Date().toISOString().split('T')[0],
           status: 'Pending',
           statusVariant: 'default',
-          amount: totalAmount,
+          amount: finalAmountAfterDiscount,
           items: [...items],
       };
 
@@ -111,6 +117,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     clearOrder,
     placeOrder,
     totalAmount,
+    shopDiscount,
   };
 
   return <OrderContext.Provider value={value}>{children}</OrderContext.Provider>;
