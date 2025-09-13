@@ -30,7 +30,7 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export default function Home() {
   return (
-    <div className="relative min-h-screen w-full">
+    <div className="relative flex flex-col min-h-screen w-full">
       <div className="absolute inset-0 grid grid-cols-2 md:grid-cols-4 h-full w-full">
         {backgroundImages.map((image, index) => (
           <div key={index} className="relative h-full w-full">
@@ -46,13 +46,10 @@ export default function Home() {
         ))}
       </div>
       
-       <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20 text-center px-4">
-          <h1 className="text-3xl md:text-5xl font-bold text-white tracking-widest uppercase" style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.7)' }}>
-              Welcome to Carement
-          </h1>
-      </div>
-
-      <div className="relative z-10 flex min-h-screen items-center justify-center p-4">
+      <main className="relative z-10 flex-grow flex flex-col items-center justify-center p-4 text-center">
+        <h1 className="text-3xl md:text-5xl font-bold text-white tracking-widest uppercase mb-8" style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.7)' }}>
+            Welcome to Carement
+        </h1>
         <Card className="mx-auto max-w-sm w-full bg-card/80 backdrop-blur-sm">
           <CardHeader className="space-y-4">
             <div className="flex justify-center">
@@ -69,9 +66,9 @@ export default function Home() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </main>
 
-      <footer className="absolute bottom-0 left-0 right-0 z-20 bg-black/50 backdrop-blur-sm text-white p-6">
+      <footer className="relative z-10 bg-black/50 backdrop-blur-sm text-white p-6">
         <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-left">
             <div>
                 <h3 className="font-bold text-lg mb-2">Contact Us</h3>
