@@ -11,16 +11,15 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreateOrderPage() {
-    const { items, updateQuantity, removeItem, clearOrder, totalAmount } = useOrder();
+    const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder } = useOrder();
     const { toast } = useToast();
 
     const handlePlaceOrder = () => {
-        // In a real app, this would submit the order to the backend
+        placeOrder();
         toast({
             title: "Order Placed!",
             description: "Your order has been sent to the factory for processing."
         });
-        clearOrder();
     }
 
     if (items.length === 0) {

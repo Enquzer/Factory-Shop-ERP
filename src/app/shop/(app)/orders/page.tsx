@@ -1,18 +1,16 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useOrder } from "@/hooks/use-order";
 import { Eye } from "lucide-react";
 
-const orders = [
-    { id: "ORD-005", status: "Dispatched", amount: 1250.00, date: "2023-10-26", statusVariant: "outline" },
-    { id: "ORD-006", status: "Pending", amount: 850.50, date: "2023-10-27", statusVariant: "default" },
-    { id: "ORD-007", status: "Delivered", amount: 3200.00, date: "2023-10-22", statusVariant: "secondary" },
-    { id: "ORD-004", status: "Processing", amount: 4500.00, date: "2023-10-20", statusVariant: "outline" },
-    { id: "ORD-003", status: "Rejected", amount: 1500.00, date: "2023-10-18", statusVariant: "destructive" },
-];
 
 export default function ShopOrdersPage() {
+    const { orders } = useOrder();
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
