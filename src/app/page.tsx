@@ -23,19 +23,23 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export default function Home() {
-  const backgroundImage = products[0];
+  const backgroundImages = products.slice(0, 8); // Use first 8 products for the grid
 
   return (
     <div className="flex flex-col min-h-screen">
-      <div className="absolute inset-0 h-full w-full">
-         <Image
-            src={backgroundImage.imageUrl}
-            alt={backgroundImage.name}
-            fill
-            priority
-            className="object-cover"
-            data-ai-hint={backgroundImage.imageHint}
-        />
+       <div className="absolute inset-0 h-full w-full grid grid-cols-2 md:grid-cols-4">
+        {backgroundImages.map((product, index) => (
+          <div key={product.id} className="relative h-full w-full">
+            <Image
+              src={product.imageUrl}
+              alt={product.name}
+              fill
+              priority={index < 4}
+              className="object-cover"
+              data-ai-hint={product.imageHint}
+            />
+          </div>
+        ))}
         <div className="absolute inset-0 bg-black/50"></div>
       </div>
       
