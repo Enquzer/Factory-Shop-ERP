@@ -1,7 +1,8 @@
+
 "use client";
 
-import { useState } from "react";
-import type { Product } from "@/lib/products";
+import { useState, useMemo } from "react";
+import type { Product, ProductVariant } from "@/lib/products";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, MinusCircle, ShoppingCart } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 type OrderQuantities = {
     [variantId: string]: number;
@@ -27,6 +29,20 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
     const { addItem } = useOrder();
     const { toast } = useToast();
     const [quantities, setQuantities] = useState<OrderQuantities>({});
+
+    const variantsByColor = useMemo(() => {
+        return product.variants.reduce((acc, variant) => {
+            if (!acc[variant.color]) {
+                acc[variant.color] = {
+                    imageUrl: variant.imageUrl,
+                    imageHint: variant.imageHint,
+                    variants: [],
+                };
+            }
+            acc[variant.color].variants.push(variant);
+            return acc;
+        }, {} as Record<string, { imageUrl: string; imageHint: string; variants: ProductVariant[] }>);
+    }, [product.variants]);
 
     const handleQuantityChange = (variantId: string, amount: number) => {
         setQuantities(prev => ({
@@ -75,36 +91,44 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 max-h-[70vh] overflow-y-auto pr-4">
-           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {product.variants.map((variant) => (
-                    <Card key={variant.id} className="overflow-hidden">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {Object.entries(variantsByColor).map(([color, { imageUrl, imageHint, variants }]) => (
+                    <Card key={color} className="overflow-hidden">
                          <div className="relative w-full aspect-[4/5]">
-                            <Image src={variant.imageUrl} alt={`${product.name} - ${variant.color} ${variant.size}`} fill style={{objectFit: 'cover'}} data-ai-hint={variant.imageHint} />
+                            <Image src={imageUrl} alt={`${product.name} - ${color}`} fill style={{objectFit: 'cover'}} data-ai-hint={imageHint} />
                         </div>
                         <CardContent className="p-4 space-y-3">
-                            <div className="flex justify-between items-center">
-                                <h3 className="font-semibold">{variant.color} - {variant.size}</h3>
-                                <Badge variant={variant.stock > 0 ? "secondary" : "destructive"}>
-                                    {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
-                                </Badge>
-                            </div>
+                            <h3 className="font-bold text-lg">{color}</h3>
+                            <Separator />
+                            <div className="space-y-4">
+                                {variants.map(variant => (
+                                    <div key={variant.id} className="grid grid-cols-3 items-center gap-2">
+                                        <div className="space-y-1">
+                                            <p className="font-medium">{variant.size}</p>
+                                             <Badge variant={variant.stock > 0 ? "secondary" : "destructive"}>
+                                                {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
+                                            </Badge>
+                                        </div>
 
-                            <div className="flex items-center justify-center gap-2">
-                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, -1)} disabled={(quantities[variant.id] || 0) === 0}>
-                                    <MinusCircle className="h-4 w-4" />
-                                </Button>
-                                <Input
-                                    type="number"
-                                    className="w-16 h-8 text-center"
-                                    value={quantities[variant.id] || 0}
-                                    onChange={(e) => setQuantities(prev => ({...prev, [variant.id]: Math.max(0, parseInt(e.target.value) || 0)}))}
-                                    min="0"
-                                    max={variant.stock}
-                                    disabled={variant.stock === 0}
-                                />
-                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, 1)} disabled={(quantities[variant.id] || 0) >= variant.stock}>
-                                    <PlusCircle className="h-4 w-4" />
-                                </Button>
+                                        <div className="col-span-2 flex items-center justify-end gap-2">
+                                            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, -1)} disabled={(quantities[variant.id] || 0) === 0}>
+                                                <MinusCircle className="h-4 w-4" />
+                                            </Button>
+                                            <Input
+                                                type="number"
+                                                className="w-16 h-8 text-center"
+                                                value={quantities[variant.id] || 0}
+                                                onChange={(e) => setQuantities(prev => ({...prev, [variant.id]: Math.max(0, parseInt(e.target.value) || 0)}))}
+                                                min="0"
+                                                max={variant.stock}
+                                                disabled={variant.stock === 0}
+                                            />
+                                            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, 1)} disabled={(quantities[variant.id] || 0) >= variant.stock}>
+                                                <PlusCircle className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </CardContent>
                     </Card>
