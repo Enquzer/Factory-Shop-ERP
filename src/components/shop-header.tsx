@@ -48,7 +48,9 @@ export function ShopHeader() {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Shop User</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>My Profile</DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/shop/profile">My Profile</Link>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link href="/shop/login">Logout</Link>
