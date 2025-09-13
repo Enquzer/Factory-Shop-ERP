@@ -6,10 +6,10 @@ import { AddProductDialog } from "@/components/add-product-dialog";
 export default function ProductsPage() {
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Products</h1>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <h1 className="text-2xl font-semibold self-start sm:self-center">Products</h1>
                 <AddProductDialog>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Add Product
                     </Button>
@@ -30,3 +30,5 @@ export default function ProductsPage() {
         </div>
     );
 }
+
+    

@@ -140,17 +140,17 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                 ))}
            </div>
         </div>
-        <DialogFooter className="flex-col sm:flex-col sm:items-end gap-4 border-t pt-4">
-            <div className="w-full sm:w-64 space-y-2">
+        <DialogFooter className="flex-col sm:items-end gap-4 border-t pt-4">
+            <div className="w-full sm:w-64 space-y-2 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span>
                     <span>ETB {subTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                     <span>Discount ({(shopDiscount * 100).toFixed(0)}%)</span>
-                    <span>- ETB {discountAmount.toFixed(2)}</span>
+                    <span className="text-destructive">- ETB {discountAmount.toFixed(2)}</span>
                 </div>
-                 <div className="flex justify-between font-bold text-lg">
+                 <div className="flex justify-between font-bold text-base">
                     <span>Total</span>
                     <span>ETB {finalTotal.toFixed(2)}</span>
                 </div>
@@ -167,3 +167,5 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
     </Dialog>
   );
 }
+
+    

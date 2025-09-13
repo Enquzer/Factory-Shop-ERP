@@ -221,7 +221,7 @@ export default function DashboardPage() {
               id="date"
               variant={"outline"}
               className={cn(
-                "w-[300px] justify-start text-left font-normal",
+                "w-full sm:w-[300px] justify-start text-left font-normal",
                 !date && "text-muted-foreground"
               )}
             >
@@ -253,7 +253,7 @@ export default function DashboardPage() {
         </Popover>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -357,7 +357,7 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Shop</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
@@ -366,11 +366,14 @@ export default function DashboardPage() {
                   <TableRow key={order.id}>
                     <TableCell>
                       <div className="font-medium">{order.shopName}</div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-sm text-muted-foreground md:hidden">
+                        {order.status}
+                      </div>
+                      <div className="text-sm text-muted-foreground hidden md:inline">
                         {order.location}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <Badge variant={order.statusVariant as any}>{order.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
@@ -390,7 +393,7 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
-                  <TableHead>Category</TableHead>
+                  <TableHead className="hidden sm:table-cell">Category</TableHead>
                   <TableHead className="text-right">Stock Left</TableHead>
                 </TableRow>
               </TableHeader>
@@ -399,9 +402,12 @@ export default function DashboardPage() {
                     lowStockItems.map((item) => (
                     <TableRow key={item.id}>
                         <TableCell>
-                        <div className="font-medium">{item.name}</div>
+                          <div className="font-medium">{item.name}</div>
+                           <div className="text-sm text-muted-foreground sm:hidden">
+                            {item.category}
+                          </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                         {item.category}
                         </TableCell>
                         <TableCell className={`text-right font-semibold ${item.isLow ? 'text-destructive' : ''}`}>{item.stock}</TableCell>
@@ -419,7 +425,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
             <CardHeader className="flex-row items-center gap-4">
                 <Trophy className="h-8 w-8" />
@@ -516,3 +522,5 @@ export default function DashboardPage() {
     </div>
   )
 }
+
+    

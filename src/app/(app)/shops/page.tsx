@@ -63,10 +63,10 @@ const shops = [
 export default function ShopsPage() {
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Shops</h1>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <h1 className="text-2xl font-semibold self-start sm:self-center">Shops</h1>
                 <RegisterShopDialog>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Register Shop
                     </Button>
@@ -82,10 +82,9 @@ export default function ShopsPage() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Shop Name</TableHead>
-                                <TableHead>Contact Person</TableHead>
-                                <TableHead>Location</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Discount</TableHead>
+                                <TableHead className="hidden md:table-cell">Contact Person</TableHead>
+                                <TableHead className="hidden lg:table-cell">Location</TableHead>
+                                <TableHead className="hidden sm:table-cell">Status</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -93,9 +92,17 @@ export default function ShopsPage() {
                             {shops.length > 0 ? (
                                 shops.map((shop) => (
                                     <TableRow key={shop.id}>
-                                        <TableCell className="font-medium">{shop.name}</TableCell>
-                                        <TableCell>{shop.contactPerson}</TableCell>
-                                        <TableCell>
+                                        <TableCell className="font-medium">
+                                            {shop.name}
+                                            <div className="text-sm text-muted-foreground md:hidden">{shop.contactPerson}</div>
+                                             <div className="text-sm text-muted-foreground sm:hidden">
+                                                <Badge variant={shop.status === 'Active' ? 'default' : shop.status === 'Pending' ? 'secondary' : 'destructive'} className="mt-1">
+                                                    {shop.status}
+                                                </Badge>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell">{shop.contactPerson}</TableCell>
+                                        <TableCell className="hidden lg:table-cell">
                                             <Link
                                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.name}, ${shop.city}`)}`}
                                                 target="_blank"
@@ -107,12 +114,11 @@ export default function ShopsPage() {
                                             </Link>
                                              <div className="text-sm text-muted-foreground">{shop.exactLocation}</div>
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="hidden sm:table-cell">
                                             <Badge variant={shop.status === 'Active' ? 'default' : shop.status === 'Pending' ? 'secondary' : 'destructive'}>
                                                 {shop.status}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right">{shop.discount}%</TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -133,7 +139,7 @@ export default function ShopsPage() {
                                 ))
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                                         <p>No shops registered yet.</p>
                                         <p className="text-sm">Click "Register Shop" to add one.</p>
                                     </TableCell>
@@ -146,3 +152,5 @@ export default function ShopsPage() {
         </div>
     );
 }
+
+    

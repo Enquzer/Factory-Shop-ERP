@@ -14,7 +14,7 @@ import { Logo } from "@/components/logo"
 export default function ShopLoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="mx-auto max-w-sm w-full">
+      <Card className="mx-auto w-full max-w-sm">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
             <Logo />
@@ -56,3 +56,5 @@ export default function ShopLoginPage() {
     </div>
   )
 }
+
+    

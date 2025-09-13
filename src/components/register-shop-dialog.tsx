@@ -242,9 +242,9 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
                 </div>
             </div>
 
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button type="submit">Register Shop</Button>
+            <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">Cancel</Button>
+                <Button type="submit" className="w-full sm:w-auto">Register Shop</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -252,3 +252,5 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
     </Dialog>
   );
 }
+
+    

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, type ReactNode } from "react";
@@ -182,7 +183,7 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                  </FormControl>
                  {mainImagePreview && (
                     <div className="mt-2 relative w-full h-48 rounded-md overflow-hidden border">
-                        <Image src={mainImagePreview} alt="Main product preview" layout="fill" objectFit="cover" />
+                        <Image src={mainImagePreview} alt="Main product preview" fill objectFit="cover" />
                     </div>
                  )}
                  <FormMessage>{form.formState.errors.mainImage?.message as ReactNode}</FormMessage>
@@ -207,7 +208,7 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
               <h3 className="text-lg font-medium mb-4">Product Variants</h3>
               <div className="space-y-6">
                 {fields.map((field, index) => (
-                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 border p-4 rounded-md relative">
+                  <div key={field.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 border p-4 rounded-md relative">
                      <FormField
                         control={form.control}
                         name={`variants.${index}.color`}
@@ -294,3 +295,4 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
   );
 }
 
+    
