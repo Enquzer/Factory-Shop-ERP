@@ -3,6 +3,9 @@ import {
   Building2,
   Package,
   Wallet,
+  Trophy,
+  TrendingUp,
+  Star
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +50,7 @@ const allProducts = [
         id: "MCT-001", 
         name: "Men's Classic Tee", 
         category: "Men", 
+        price: 500.00,
         variants: [
             { id: "VAR-001", color: "White", size: "M", stock: 15 },
             { id: "VAR-002", color: "White", size: "L", stock: 10 },
@@ -58,6 +62,7 @@ const allProducts = [
         id: "WSD-012", 
         name: "Women's Summer Dress", 
         category: "Women", 
+        price: 1200.00,
         variants: [
             { id: "VAR-005", color: "Floral", size: "S", stock: 8 },
             { id: "VAR-006", color: "Floral", size: "M", stock: 12 },
@@ -67,6 +72,7 @@ const allProducts = [
         id: "KGH-034", 
         name: "Kid's Graphic Hoodie", 
         category: "Kids", 
+        price: 850.00,
         variants: [
             { id: "VAR-007", color: "Blue", size: "6Y", stock: 18 },
             { id: "VAR-008", color: "Pink", size: "8Y", stock: 22 },
@@ -76,6 +82,7 @@ const allProducts = [
         id: "UDJ-007", 
         name: "Unisex Denim Jacket", 
         category: "Unisex", 
+        price: 2500.00,
         variants: [
             { id: "VAR-009", color: "Indigo", size: "L", stock: 7 },
         ]
@@ -84,6 +91,7 @@ const allProducts = [
         id: "MST-002", 
         name: "Men's Striped Shirt", 
         category: "Men", 
+        price: 950.00,
         variants: [
             { id: "VAR-010", color: "Navy/White", size: "M", stock: 14 },
             { id: "VAR-011", color: "Navy/White", size: "L", stock: 11 },
@@ -93,12 +101,24 @@ const allProducts = [
         id: "WJP-005", 
         name: "Women's Jumpsuit", 
         category: "Women", 
+        price: 1800.00,
         variants: [
             { id: "VAR-012", color: "Black", size: "S", stock: 9 },
             { id: "VAR-013", color: "Olive", size: "M", stock: 6 },
         ]
     },
 ];
+
+const fullOrderHistory = [
+    { shopName: "Adama Modern", items: [{productId: "WSD-012", quantity: 20}, {productId: "UDJ-007", quantity: 10}] },
+    { shopName: "Bole Boutique", items: [{productId: "MCT-001", quantity: 50}, {productId: "MST-002", quantity: 30}] },
+    { shopName: "Hawassa Habesha", items: [{productId: "KGH-034", quantity: 25}] },
+    { shopName: "Merkato Style", items: [{productId: "WSD-012", quantity: 15}, {productId: "MCT-001", quantity: 20}] },
+    { shopName: "Adama Modern", items: [{productId: "WJP-005", quantity: 12}] },
+    { shopName: "Bole Boutique", items: [{productId: "UDJ-007", quantity: 15}, {productId: "KGH-034", quantity: 10}] },
+    { shopName: "Adama Modern", items: [{productId: "MCT-001", quantity: 40}] },
+];
+
 
 const LOW_STOCK_THRESHOLD = 10;
 
@@ -120,10 +140,47 @@ const getLowStockItems = () => {
     return lowStockItems;
 };
 
+const getSalesMetrics = () => {
+    const productSales: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
+    const shopPerformance: { [key: string]: number } = {};
+    const productFrequency: { [key: string]: { name: string, count: number } } = {};
+
+    allProducts.forEach(p => {
+        productSales[p.id] = { name: p.name, quantity: 0, revenue: p.price };
+        productFrequency[p.id] = { name: p.name, count: 0 };
+    });
+
+    fullOrderHistory.forEach(order => {
+        if (!shopPerformance[order.shopName]) {
+            shopPerformance[order.shopName] = 0;
+        }
+        
+        order.items.forEach(item => {
+            productSales[item.productId].quantity += item.quantity;
+            shopPerformance[order.shopName] += productSales[item.productId].revenue * item.quantity;
+            productFrequency[item.productId].count++;
+        });
+    });
+
+    const bestSelling = Object.values(productSales)
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 5);
+
+    const topShop = Object.entries(shopPerformance)
+        .sort((a, b) => b[1] - a[1])[0];
+
+    const mostFrequent = Object.values(productFrequency)
+        .sort((a, b) => b.count - a.count)
+        .slice(0,5);
+
+    return { bestSelling, topShop, mostFrequent };
+}
+
 
 export default function DashboardPage() {
   const { metrics, recentOrders } = dashboardData;
   const lowStockItems = getLowStockItems();
+  const { bestSelling, topShop, mostFrequent } = getSalesMetrics();
 
   return (
     <div className="flex flex-col gap-6">
@@ -254,6 +311,57 @@ export default function DashboardPage() {
               </TableBody>
             </Table>
           </CardContent>
+        </Card>
+      </div>
+       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card>
+            <CardHeader className="flex-row items-center gap-4">
+                <Trophy className="h-8 w-8" />
+                <div>
+                    <CardTitle>Top Performing Shop</CardTitle>
+                    <CardDescription>By total sales volume</CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <p className="text-3xl font-bold">{topShop[0]}</p>
+                <p className="text-muted-foreground">ETB {topShop[1].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} in sales</p>
+            </CardContent>
+        </Card>
+         <Card>
+            <CardHeader className="flex-row items-center gap-4">
+                <TrendingUp className="h-8 w-8" />
+                <div>
+                    <CardTitle>Best-Selling Products</CardTitle>
+                    <CardDescription>Top 5 products by quantity sold</CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <ol className="list-decimal list-inside space-y-2">
+                    {bestSelling.map(item => (
+                        <li key={item.name} className="font-medium">
+                            {item.name} <span className="text-sm text-muted-foreground">({item.quantity} units)</span>
+                        </li>
+                    ))}
+                </ol>
+            </CardContent>
+        </Card>
+         <Card>
+            <CardHeader className="flex-row items-center gap-4">
+                <Star className="h-8 w-8" />
+                <div>
+                    <CardTitle>Most Frequent</CardTitle>
+                    <CardDescription>Top 5 most ordered products</CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <ol className="list-decimal list-inside space-y-2">
+                    {mostFrequent.map(item => (
+                        <li key={item.name} className="font-medium">
+                            {item.name} <span className="text-sm text-muted-foreground">({item.count} orders)</span>
+                        </li>
+                    ))}
+                </ol>
+            </CardContent>
         </Card>
       </div>
     </div>
