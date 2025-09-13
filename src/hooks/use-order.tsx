@@ -1,6 +1,6 @@
 "use client";
 
-import { type Product, type ProductVariant } from "@/app/shop/(app)/products/page";
+import { type Product, type ProductVariant } from "@/lib/products";
 import { createContext, useContext, useState, ReactNode, useMemo } from "react";
 import { useRouter } from "next/navigation";
 

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -7,18 +8,7 @@ import { Logo } from "@/components/logo";
 import Link from "next/link";
 import Image from "next/image";
 import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react";
-import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
-
-const backgroundImages = [
-    { src: "https://picsum.photos/seed/prod1/800/1000", alt: "Man wearing a classic tee", hint: "man t-shirt" },
-    { src: "https://picsum.photos/seed/prod2/800/1000", alt: "Woman in a summer dress", hint: "woman dress" },
-    { src: "https://picsum.photos/seed/prod3/800/1000", alt: "Kid wearing a graphic hoodie", hint: "kids hoodie" },
-    { src: "https://picsum.photos/seed/prod4/800/1000", alt: "Unisex denim jacket", hint: "denim jacket" },
-    { src: "https://picsum.photos/seed/prod5/800/1000", alt: "Man in a striped shirt", hint: "man shirt" },
-    { src: "https://picsum.photos/seed/prod6/800/1000", alt: "Woman wearing a jumpsuit", hint: "woman jumpsuit" },
-    { src: "https://picsum.photos/seed/garment1/800/1000", alt: "Close up of fabric texture", hint: "fabric texture" },
-    { src: "https://picsum.photos/seed/garment2/800/1000", alt: "Stack of folded jeans", hint: "jeans stack" },
-];
+import { products } from "@/lib/products";
 
 const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -33,29 +23,19 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export default function Home() {
+  const backgroundImage = products[0];
 
   return (
-    <div className="relative flex flex-col min-h-screen w-full">
+    <div className="flex flex-col min-h-screen">
       <div className="absolute inset-0 h-full w-full">
-         <Carousel
-            opts={{ loop: true }}
-            className="h-full w-full"
-        >
-            <CarouselContent className="-ml-0 h-full">
-                {backgroundImages.map((image, index) => (
-                    <CarouselItem key={index} className="pl-0 relative h-full w-full">
-                         <Image
-                            src={image.src}
-                            alt={image.alt}
-                            fill
-                            priority={index === 0}
-                            className="object-cover"
-                            data-ai-hint={image.hint}
-                        />
-                    </CarouselItem>
-                ))}
-            </CarouselContent>
-        </Carousel>
+         <Image
+            src={backgroundImage.imageUrl}
+            alt={backgroundImage.name}
+            fill
+            priority
+            className="object-cover"
+            data-ai-hint={backgroundImage.imageHint}
+        />
         <div className="absolute inset-0 bg-black/50"></div>
       </div>
       

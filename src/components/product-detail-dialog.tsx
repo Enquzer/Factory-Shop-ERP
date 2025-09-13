@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Product, ProductVariant } from "@/app/shop/(app)/products/page";
+import type { Product, ProductVariant } from "@/lib/products";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

@@ -51,6 +51,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
+import { products as allProducts } from "@/lib/products";
 
 // Mock Data based on the XML specification
 const dashboardData = {
@@ -59,7 +60,7 @@ const dashboardData = {
     revenueChange: "+20.1%",
     registeredShops: 23,
     newShops: 5,
-    totalProducts: 1257,
+    totalProducts: allProducts.length,
     newProducts: 12,
     activeOrders: 57,
     newOrders: 19,
@@ -71,70 +72,6 @@ const dashboardData = {
     { id: "ORD-004", shopName: "Adama Modern", location: "Adama", status: "Fulfilled", amount: 45000.00, statusVariant: "secondary" },
   ],
 };
-
-const allProducts = [
-    { 
-        id: "MCT-001", 
-        name: "Men's Classic Tee", 
-        category: "Men", 
-        price: 500.00,
-        variants: [
-            { id: "VAR-001", color: "White", size: "M", stock: 15 },
-            { id: "VAR-002", color: "White", size: "L", stock: 10 },
-            { id: "VAR-003", color: "Black", size: "M", stock: 20 },
-            { id: "VAR-004", color: "Black", size: "XL", stock: 5 },
-        ]
-    },
-    { 
-        id: "WSD-012", 
-        name: "Women's Summer Dress", 
-        category: "Women", 
-        price: 1200.00,
-        variants: [
-            { id: "VAR-005", color: "Floral", size: "S", stock: 8 },
-            { id: "VAR-006", color: "Floral", size: "M", stock: 12 },
-        ]
-    },
-    { 
-        id: "KGH-034", 
-        name: "Kid's Graphic Hoodie", 
-        category: "Kids", 
-        price: 850.00,
-        variants: [
-            { id: "VAR-007", color: "Blue", size: "6Y", stock: 18 },
-            { id: "VAR-008", color: "Pink", size: "8Y", stock: 22 },
-        ]
-    },
-    { 
-        id: "UDJ-007", 
-        name: "Unisex Denim Jacket", 
-        category: "Unisex", 
-        price: 2500.00,
-        variants: [
-            { id: "VAR-009", color: "Indigo", size: "L", stock: 7 },
-        ]
-    },
-     { 
-        id: "MST-002", 
-        name: "Men's Striped Shirt", 
-        category: "Men", 
-        price: 950.00,
-        variants: [
-            { id: "VAR-010", color: "Navy/White", size: "M", stock: 14 },
-            { id: "VAR-011", color: "Navy/White", size: "L", stock: 11 },
-        ]
-    },
-    { 
-        id: "WJP-005", 
-        name: "Women's Jumpsuit", 
-        category: "Women", 
-        price: 1800.00,
-        variants: [
-            { id: "VAR-012", color: "Black", size: "S", stock: 9 },
-            { id: "VAR-013", color: "Olive", size: "M", stock: 6 },
-        ]
-    },
-];
 
 const generateDate = (daysAgo: number) => subDays(new Date(), daysAgo);
 
@@ -200,7 +137,9 @@ const getSalesMetrics = (dateRange?: DateRange) => {
 
         let orderTotal = 0;
         order.items.forEach(item => {
-            const itemRevenue = allProducts.find(p => p.id === item.productId)!.price * item.quantity;
+            const product = allProducts.find(p => p.id === item.productId);
+            if (!product) return;
+            const itemRevenue = product.price * item.quantity;
             productSales[item.productId].quantity += item.quantity;
             shopPerformance[order.shopName] += itemRevenue;
             productFrequency[item.productId].count++;
