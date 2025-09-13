@@ -73,13 +73,13 @@ export default function CreateOrderPage() {
                         </TableHeader>
                         <TableBody>
                             {items.map(item => (
-                                <TableRow key={item.id}>
+                                <TableRow key={item.variant.id}>
                                     <TableCell className="hidden md:table-cell">
                                         <Image src={item.imageUrl} alt={item.name} width={64} height={80} className="rounded-md object-cover" />
                                     </TableCell>
                                     <TableCell>
                                         <p className="font-medium">{item.name}</p>
-                                        <p className="text-sm text-muted-foreground">{item.id}</p>
+                                        <p className="text-sm text-muted-foreground">{`Color: ${item.variant.color}, Size: ${item.variant.size}`}</p>
                                     </TableCell>
                                     <TableCell>ETB {item.price.toFixed(2)}</TableCell>
                                     <TableCell>
@@ -87,13 +87,13 @@ export default function CreateOrderPage() {
                                             type="number" 
                                             min="1"
                                             value={item.quantity} 
-                                            onChange={(e) => updateQuantity(item.id, parseInt(e.target.value))}
+                                            onChange={(e) => updateQuantity(item.variant.id, parseInt(e.target.value))}
                                             className="w-24"
                                         />
                                     </TableCell>
                                     <TableCell className="text-right font-medium">ETB {(item.price * item.quantity).toFixed(2)}</TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
+                                        <Button variant="ghost" size="icon" onClick={() => removeItem(item.variant.id)}>
                                             <Trash2 className="h-4 w-4" />
                                             <span className="sr-only">Remove Item</span>
                                         </Button>

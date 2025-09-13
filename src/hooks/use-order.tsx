@@ -1,15 +1,18 @@
 "use client";
 
-import { type Product } from "@/app/shop/(app)/products/page";
+import { type Product, type ProductVariant } from "@/app/shop/(app)/products/page";
 import { createContext, useContext, useState, ReactNode, useMemo } from "react";
 
-export type OrderItem = Product & { quantity: number };
+export type OrderItem = Omit<Product, 'variants'> & { 
+  variant: ProductVariant;
+  quantity: number;
+};
 
 interface OrderContextType {
   items: OrderItem[];
-  addItem: (product: Product, quantity?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  addItem: (product: Product, variant: ProductVariant, quantity?: number) => void;
+  removeItem: (variantId: string) => void;
+  updateQuantity: (variantId: string, quantity: number) => void;
   clearOrder: () => void;
   totalAmount: number;
 }
@@ -19,32 +22,33 @@ const OrderContext = createContext<OrderContextType | undefined>(undefined);
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
 
-  const addItem = (product: Product, quantity: number = 1) => {
+  const addItem = (product: Product, variant: ProductVariant, quantity: number = 1) => {
     setItems((prevItems) => {
-      const existingItem = prevItems.find((item) => item.id === product.id);
+      const existingItem = prevItems.find((item) => item.variant.id === variant.id);
       if (existingItem) {
         return prevItems.map((item) =>
-          item.id === product.id
+          item.variant.id === variant.id
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
-      return [...prevItems, { ...product, quantity }];
+      const { variants, ...productData } = product;
+      return [...prevItems, { ...productData, variant, quantity }];
     });
   };
 
-  const removeItem = (productId: string) => {
-    setItems((prevItems) => prevItems.filter((item) => item.id !== productId));
+  const removeItem = (variantId: string) => {
+    setItems((prevItems) => prevItems.filter((item) => item.variant.id !== variantId));
   };
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const updateQuantity = (variantId: string, quantity: number) => {
     if (quantity < 1) {
-        removeItem(productId);
+        removeItem(variantId);
         return;
     }
     setItems((prevItems) =>
       prevItems.map((item) =>
-        item.id === productId ? { ...item, quantity: quantity } : item
+        item.variant.id === variantId ? { ...item, quantity: quantity } : item
       )
     );
   };
