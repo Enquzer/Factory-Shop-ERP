@@ -63,10 +63,11 @@ export function AiChatWidget() {
     if (!isOpen) {
         return (
             <Button
-                className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg"
+                className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg z-50"
                 onClick={handleToggle}
             >
                 <Bot className="h-8 w-8" />
+                <span className="sr-only">Open Chat</span>
             </Button>
         );
     }
@@ -85,6 +86,7 @@ export function AiChatWidget() {
                 </div>
                 <Button variant="ghost" size="icon" onClick={handleToggle}>
                     <X className="h-4 w-4" />
+                    <span className="sr-only">Close Chat</span>
                 </Button>
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden">
