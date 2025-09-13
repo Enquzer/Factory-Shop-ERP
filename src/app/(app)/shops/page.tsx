@@ -1,16 +1,19 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlusCircle } from "lucide-react";
+import { RegisterShopDialog } from "@/components/register-shop-dialog";
 
 export default function ShopsPage() {
     return (
         <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">Shops</h1>
-                <Button>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Register Shop
-                </Button>
+                <RegisterShopDialog>
+                    <Button>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Register Shop
+                    </Button>
+                </RegisterShopDialog>
             </div>
             <Card>
                 <CardHeader>
