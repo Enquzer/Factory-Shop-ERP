@@ -9,6 +9,7 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar';
 import { OrderProvider } from '@/hooks/use-order';
+import { AiChatWidget } from '@/components/ai-chat-widget';
 
 export default function ShopAppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,6 +31,7 @@ export default function ShopAppLayout({ children }: { children: React.ReactNode 
             </main>
           </div>
         </SidebarInset>
+        <AiChatWidget />
       </SidebarProvider>
     </OrderProvider>
   );

@@ -1,6 +1,7 @@
 import { Header } from '@/components/header';
 import { Logo } from '@/components/logo';
 import { Nav } from '@/components/nav';
+import { AiChatWidget } from '@/components/ai-chat-widget';
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </SidebarInset>
+      <AiChatWidget />
     </SidebarProvider>
   );
 }
