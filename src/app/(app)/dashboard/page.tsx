@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import {
   ArrowDownUp,
   Building2,
@@ -5,17 +8,32 @@ import {
   Wallet,
   Trophy,
   TrendingUp,
-  Star
-} from "lucide-react"
+  Star,
+  Calendar as CalendarIcon
+} from "lucide-react";
+import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Pie,
+  PieChart,
+  Cell,
+} from "recharts";
 
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -23,7 +41,15 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { ChartTooltipContent } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 
 // Mock Data based on the XML specification
 const dashboardData = {
@@ -109,14 +135,18 @@ const allProducts = [
     },
 ];
 
+const generateDate = (daysAgo: number) => subDays(new Date(), daysAgo);
+
 const fullOrderHistory = [
-    { shopName: "Adama Modern", items: [{productId: "WSD-012", quantity: 20}, {productId: "UDJ-007", quantity: 10}] },
-    { shopName: "Bole Boutique", items: [{productId: "MCT-001", quantity: 50}, {productId: "MST-002", quantity: 30}] },
-    { shopName: "Hawassa Habesha", items: [{productId: "KGH-034", quantity: 25}] },
-    { shopName: "Merkato Style", items: [{productId: "WSD-012", quantity: 15}, {productId: "MCT-001", quantity: 20}] },
-    { shopName: "Adama Modern", items: [{productId: "WJP-005", quantity: 12}] },
-    { shopName: "Bole Boutique", items: [{productId: "UDJ-007", quantity: 15}, {productId: "KGH-034", quantity: 10}] },
-    { shopName: "Adama Modern", items: [{productId: "MCT-001", quantity: 40}] },
+    { date: generateDate(2), shopName: "Adama Modern", items: [{productId: "WSD-012", quantity: 20}, {productId: "UDJ-007", quantity: 10}] },
+    { date: generateDate(5), shopName: "Bole Boutique", items: [{productId: "MCT-001", quantity: 50}, {productId: "MST-002", quantity: 30}] },
+    { date: generateDate(8), shopName: "Hawassa Habesha", items: [{productId: "KGH-034", quantity: 25}] },
+    { date: generateDate(12), shopName: "Merkato Style", items: [{productId: "WSD-012", quantity: 15}, {productId: "MCT-001", quantity: 20}] },
+    { date: generateDate(15), shopName: "Adama Modern", items: [{productId: "WJP-005", quantity: 12}] },
+    { date: generateDate(20), shopName: "Bole Boutique", items: [{productId: "UDJ-007", quantity: 15}, {productId: "KGH-034", quantity: 10}] },
+    { date: generateDate(25), shopName: "Adama Modern", items: [{productId: "MCT-001", quantity: 40}] },
+    { date: generateDate(35), shopName: "Merkato Style", items: [{productId: "MST-002", quantity: 20}, {productId: "WJP-005", quantity: 5}] },
+    { date: generateDate(40), shopName: "Hawassa Habesha", items: [{productId: "WSD-012", quantity: 10}] },
 ];
 
 
@@ -140,62 +170,139 @@ const getLowStockItems = () => {
     return lowStockItems;
 };
 
-const getSalesMetrics = () => {
+const getSalesMetrics = (dateRange?: DateRange) => {
     const productSales: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
     const shopPerformance: { [key: string]: number } = {};
     const productFrequency: { [key: string]: { name: string, count: number } } = {};
+    const salesByDate: { [key: string]: number } = {};
 
     allProducts.forEach(p => {
         productSales[p.id] = { name: p.name, quantity: 0, revenue: p.price };
         productFrequency[p.id] = { name: p.name, count: 0 };
     });
 
-    fullOrderHistory.forEach(order => {
+    const filteredOrders = fullOrderHistory.filter(order => {
+        if (!dateRange || !dateRange.from) return true;
+        const to = dateRange.to || new Date();
+        return order.date >= dateRange.from && order.date <= to;
+    });
+
+    filteredOrders.forEach(order => {
         if (!shopPerformance[order.shopName]) {
             shopPerformance[order.shopName] = 0;
         }
         
+        const orderDate = format(order.date, "yyyy-MM-dd");
+        if (!salesByDate[orderDate]) {
+            salesByDate[orderDate] = 0;
+        }
+
+        let orderTotal = 0;
         order.items.forEach(item => {
+            const itemRevenue = allProducts.find(p => p.id === item.productId)!.price * item.quantity;
             productSales[item.productId].quantity += item.quantity;
-            shopPerformance[order.shopName] += productSales[item.productId].revenue * item.quantity;
+            shopPerformance[order.shopName] += itemRevenue;
             productFrequency[item.productId].count++;
+            orderTotal += itemRevenue;
         });
+        salesByDate[orderDate] += orderTotal;
     });
 
     const bestSelling = Object.values(productSales)
         .sort((a, b) => b.quantity - a.quantity)
-        .slice(0, 5);
+        .slice(0, 5)
+        .filter(p => p.quantity > 0);
 
     const topShop = Object.entries(shopPerformance)
         .sort((a, b) => b[1] - a[1])[0];
 
     const mostFrequent = Object.values(productFrequency)
         .sort((a, b) => b.count - a.count)
-        .slice(0,5);
+        .slice(0,5)
+        .filter(p => p.count > 0);
+    
+    const salesChartData = Object.entries(salesByDate)
+        .map(([date, total]) => ({ name: format(new Date(date), "MMM d"), total }))
+        .sort((a, b) => new Date(a.name).getTime() - new Date(b.name).getTime());
 
-    return { bestSelling, topShop, mostFrequent };
+
+    return { bestSelling, topShop, mostFrequent, salesChartData };
 }
 
+const PIE_CHART_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
 
 export default function DashboardPage() {
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 29),
+    to: new Date(),
+  });
+
   const { metrics, recentOrders } = dashboardData;
   const lowStockItems = getLowStockItems();
-  const { bestSelling, topShop, mostFrequent } = getSalesMetrics();
+  const { bestSelling, topShop, mostFrequent, salesChartData } = getSalesMetrics(date);
+  
+  const totalFilteredRevenue = salesChartData.reduce((acc, item) => acc + item.total, 0);
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              id="date"
+              variant={"outline"}
+              className={cn(
+                "w-[300px] justify-start text-left font-normal",
+                !date && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {date?.from ? (
+                date.to ? (
+                  <>
+                    {format(date.from, "LLL dd, y")} -{" "}
+                    {format(date.to, "LLL dd, y")}
+                  </>
+                ) : (
+                  format(date.from, "LLL dd, y")
+                )
+              ) : (
+                <span>Pick a date</span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="end">
+            <Calendar
+              initialFocus
+              mode="range"
+              defaultMonth={date?.from}
+              selected={date}
+              onSelect={setDate}
+              numberOfMonths={2}
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Total Revenue
+              Revenue (Filtered)
             </CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">ETB {metrics.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-bold">ETB {totalFilteredRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <p className="text-xs text-muted-foreground">
-              {metrics.revenueChange} from last month
+              Total revenue for the selected period
             </p>
           </CardContent>
         </Card>
@@ -240,6 +347,41 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+       <Card>
+          <CardHeader>
+            <CardTitle>Sales Overview</CardTitle>
+            <CardDescription>
+              A summary of sales revenue for the selected period.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={salesChartData}>
+                <XAxis
+                  dataKey="name"
+                  stroke="#888888"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#888888"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `ETB ${value / 1000}k`}
+                />
+                <Tooltip
+                  cursor={{ fill: 'hsl(var(--muted))' }}
+                  content={<ChartTooltipContent />}
+                />
+                <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
@@ -323,8 +465,14 @@ export default function DashboardPage() {
                 </div>
             </CardHeader>
             <CardContent>
-                <p className="text-3xl font-bold">{topShop[0]}</p>
-                <p className="text-muted-foreground">ETB {topShop[1].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} in sales</p>
+              {topShop ? (
+                <>
+                  <p className="text-3xl font-bold">{topShop[0]}</p>
+                  <p className="text-muted-foreground">ETB {topShop[1].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} in sales</p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">No sales in this period.</p>
+              )}
             </CardContent>
         </Card>
          <Card>
@@ -332,17 +480,48 @@ export default function DashboardPage() {
                 <TrendingUp className="h-8 w-8" />
                 <div>
                     <CardTitle>Best-Selling Products</CardTitle>
-                    <CardDescription>Top 5 products by quantity sold</CardDescription>
+                    <CardDescription>Top products by quantity sold</CardDescription>
                 </div>
             </CardHeader>
-            <CardContent>
-                <ol className="list-decimal list-inside space-y-2">
-                    {bestSelling.map(item => (
-                        <li key={item.name} className="font-medium">
-                            {item.name} <span className="text-sm text-muted-foreground">({item.quantity} units)</span>
-                        </li>
-                    ))}
-                </ol>
+            <CardContent className="h-[240px]">
+              {bestSelling.length > 0 ? (
+                 <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Tooltip
+                        cursor={{ fill: 'hsl(var(--muted))' }}
+                        content={<ChartTooltipContent nameKey="name" />}
+                      />
+                      <Pie
+                        data={bestSelling}
+                        dataKey="quantity"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        labelLine={false}
+                        label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                          const RADIAN = Math.PI / 180;
+                          const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                          const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                          const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                          return (
+                            <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
+                              {`${(percent * 100).toFixed(0)}%`}
+                            </text>
+                          );
+                        }}
+                      >
+                        {bestSelling.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={PIE_CHART_COLORS[index % PIE_CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-muted-foreground">No sales in this period.</p>
+                </div>
+              )}
             </CardContent>
         </Card>
          <Card>
@@ -354,6 +533,7 @@ export default function DashboardPage() {
                 </div>
             </CardHeader>
             <CardContent>
+              {mostFrequent.length > 0 ? (
                 <ol className="list-decimal list-inside space-y-2">
                     {mostFrequent.map(item => (
                         <li key={item.name} className="font-medium">
@@ -361,6 +541,9 @@ export default function DashboardPage() {
                         </li>
                     ))}
                 </ol>
+              ) : (
+                <p className="text-muted-foreground">No orders in this period.</p>
+              )}
             </CardContent>
         </Card>
       </div>
