@@ -41,8 +41,8 @@ export default function ShopLoginPage() {
               </div>
               <Input id="password" type="password" required />
             </div>
-            <Button type="submit" className="w-full">
-                Login
+            <Button type="submit" className="w-full" asChild>
+                <Link href="/shop/dashboard">Login</Link>
             </Button>
             <div className="mt-4 text-center text-sm">
               Not a shop user?{" "}
