@@ -4,7 +4,9 @@
 import { useState } from "react";
 import { format, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Calendar as CalendarIcon, FilterX } from "lucide-react";
+import { Calendar as CalendarIcon, FilterX, FileDown, FileSpreadsheet } from "lucide-react";
+// import jsPDF from "jspdf";
+// import autoTable from 'jspdf-autotable';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -113,6 +115,54 @@ export default function ReportsPage() {
         setSelectedProduct("all");
     }
 
+    const exportToCSV = () => {
+        const headers = ["Order ID", "Date", "Shop", "Product", "Quantity", "Unit Price (ETB)", "Total (ETB)"];
+        const rows = reportData.map(item => 
+            [item.orderId, item.date, `"${item.shopName}"`, `"${item.productName}"`, item.quantity, item.unitPrice.toFixed(2), item.total.toFixed(2)].join(',')
+        );
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    const exportToPDF = () => {
+        // const doc = new jsPDF();
+        // doc.text("Filtered Report", 14, 16);
+        
+        // const tableColumn = ["Order ID", "Date", "Shop", "Product", "Qty", "Unit Price", "Total"];
+        // const tableRows: (string | number)[][] = [];
+
+        // reportData.forEach(item => {
+        //     const ticketData = [
+        //         item.orderId,
+        //         item.date,
+        //         item.shopName,
+        //         item.productName,
+        //         item.quantity,
+        //         `ETB ${item.unitPrice.toFixed(2)}`,
+        //         `ETB ${item.total.toFixed(2)}`,
+        //     ];
+        //     tableRows.push(ticketData);
+        // });
+
+        // autoTable(doc, {
+        //     head: [tableColumn],
+        //     body: tableRows,
+        //     startY: 20,
+        // });
+
+        // const finalY = (doc as any).lastAutoTable.finalY;
+        // doc.setFontSize(12);
+        // doc.text(`Total Revenue: ETB ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, finalY + 15);
+        
+        // doc.save("report.pdf");
+    }
+
     return (
         <div className="flex flex-col gap-6">
             <h1 className="text-2xl font-semibold">Reports</h1>
@@ -193,11 +243,23 @@ export default function ReportsPage() {
             </Card>
 
             <Card>
-                <CardHeader>
-                    <CardTitle>Filtered Report</CardTitle>
-                    <CardDescription>
-                        Displaying {reportData.length} transaction(s) matching your criteria.
-                    </CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle>Filtered Report</CardTitle>
+                        <CardDescription>
+                            Displaying {reportData.length} transaction(s) matching your criteria.
+                        </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="icon" onClick={exportToCSV} disabled={reportData.length === 0}>
+                            <FileSpreadsheet className="h-4 w-4" />
+                            <span className="sr-only">Export to Excel</span>
+                        </Button>
+                        <Button variant="outline" size="icon" onClick={exportToPDF} disabled={true || reportData.length === 0}>
+                            <FileDown className="h-4 w-4" />
+                            <span className="sr-only">Export to PDF</span>
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Table>

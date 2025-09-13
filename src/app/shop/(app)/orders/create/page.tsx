@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useOrder } from "@/hooks/use-order";
@@ -9,18 +10,13 @@ import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useToast } from "@/hooks/use-toast";
+
 
 export default function CreateOrderPage() {
     const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder, shopDiscount } = useOrder();
-    const { toast } = useToast();
-
+    
     const handlePlaceOrder = () => {
         placeOrder();
-        toast({
-            title: "Order Placed!",
-            description: "Your order has been sent to the factory for processing."
-        });
     }
 
     const finalAmount = totalAmount * (1 - shopDiscount);

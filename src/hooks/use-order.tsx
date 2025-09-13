@@ -1,9 +1,15 @@
 
+
 "use client";
 
 import { type Product, type ProductVariant } from "@/lib/products";
 import { createContext, useContext, useState, ReactNode, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { ordersStore, type Order } from "@/lib/orders";
+import { useSnapshot } from "valtio";
+import { useToast } from "./use-toast";
+// import jsPDF from "jspdf";
+// import autoTable from 'jspdf-autotable';
 
 export type OrderItem = { 
   productId: string;
@@ -13,15 +19,6 @@ export type OrderItem = {
   variant: ProductVariant;
   quantity: number;
 };
-
-export type Order = {
-    id: string;
-    date: string;
-    status: string;
-    statusVariant: "default" | "secondary" | "destructive" | "outline";
-    amount: number;
-    items: OrderItem[];
-}
 
 interface OrderContextType {
   items: OrderItem[];
@@ -33,16 +30,54 @@ interface OrderContextType {
   placeOrder: () => void;
   totalAmount: number;
   shopDiscount: number;
+  shopId: string; // Mock shop ID
+  shopName: string; // Mock shop Name
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
+
+const generateInvoicePDF = (order: Order) => {
+    // const doc = new jsPDF();
+
+    // doc.text(`Invoice for Order #${order.id}`, 14, 20);
+    // doc.setFontSize(12);
+    // doc.text(`Shop: ${order.shopName}`, 14, 30);
+    // doc.text(`Date: ${order.date}`, 14, 36);
+
+    // autoTable(doc, {
+    //     startY: 45,
+    //     head: [['Product', 'Variant', 'Qty', 'Unit Price', 'Total']],
+    //     body: order.items.map(item => [
+    //         item.name,
+    //         `${item.variant.color}, ${item.variant.size}`,
+    //         item.quantity,
+    //         `ETB ${item.price.toFixed(2)}`,
+    //         `ETB ${(item.price * item.quantity).toFixed(2)}`
+    //     ]),
+    // });
+
+    // const finalY = (doc as any).lastAutoTable.finalY;
+    // doc.setFontSize(14);
+    // doc.text(`Total Amount: ETB ${order.amount.toFixed(2)}`, 14, finalY + 15);
+
+    // doc.save(`invoice-${order.id}.pdf`);
+}
+
+
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  // Mocking a 5% discount for the logged-in shop
-  const [shopDiscount] = useState(0.05); 
   const router = useRouter();
+  const { toast } = useToast();
+
+  // Mocking shop-specific data. In a real app, this would come from auth context.
+  const shopId = "SHP-001";
+  const shopName = "Bole Boutique";
+  const shopDiscount = 0.05;
+
+  const orderState = useSnapshot(ordersStore);
+  const orders = orderState.allOrders.filter(o => o.shopId === shopId);
+
 
   const addItem = (product: Product, variant: ProductVariant, quantity: number = 1) => {
     setItems((prevItems) => {
@@ -94,17 +129,29 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const placeOrder = () => {
       if (items.length === 0) return;
 
-      const newOrder: Order = {
-          id: `ORD-${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
-          date: new Date().toISOString().split('T')[0],
-          status: 'Pending',
-          statusVariant: 'default',
+      const newOrder = ordersStore.addOrder({
+          shopId,
+          shopName,
           amount: finalAmountAfterDiscount,
           items: [...items],
-      };
-
-      setOrders(prevOrders => [newOrder, ...prevOrders]);
+      });
+      
       clearOrder();
+
+       toast({
+          title: "Order Placed Successfully!",
+          description: `Your order #${newOrder.id} has been sent for processing.`,
+          action: (
+              <button
+                onClick={() => generateInvoicePDF(newOrder)}
+                className="bg-primary text-primary-foreground py-1 px-3 rounded-md text-sm"
+                disabled
+              >
+                Download Invoice
+              </button>
+          )
+      });
+      
       router.push('/shop/orders');
   }
 
@@ -118,6 +165,8 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     placeOrder,
     totalAmount,
     shopDiscount,
+    shopId,
+    shopName,
   };
 
   return <OrderContext.Provider value={value}>{children}</OrderContext.Provider>;

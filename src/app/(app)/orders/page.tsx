@@ -1,3 +1,7 @@
+
+
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -7,16 +11,47 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ordersStore, type Order, type OrderStatus } from "@/lib/orders";
+import { useSnapshot } from "valtio";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button";
+import { MoreHorizontal } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
-const orders = [
-    { id: "ORD-001", shopName: "Bole Boutique", date: "2023-11-01", status: "Dispatched", amount: 25000.00 },
-    { id: "ORD-002", shopName: "Hawassa Habesha", date: "2023-10-28", status: "Awaiting Payment", amount: 15000.00 },
-    { id: "ORD-003", shopName: "Merkato Style", date: "2023-10-25", status: "Rejected", amount: 35000.00 },
-    { id: "ORD-004", shopName: "Adama Modern", date: "2023-10-22", status: "Fulfilled", amount: 45000.00 },
-];
+const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
+    Pending: 'default',
+    'Awaiting Payment': 'secondary',
+    Paid: 'outline',
+    Dispatched: 'outline',
+    Delivered: 'secondary',
+    Cancelled: 'destructive'
+};
+
+const getFactoryActions = (status: OrderStatus): OrderStatus[] => {
+    switch (status) {
+        case 'Pending':
+            return ['Awaiting Payment', 'Cancelled'];
+        case 'Paid':
+            return ['Dispatched'];
+        default:
+            return [];
+    }
+}
 
 
 export default function OrdersPage() {
+    const { allOrders } = useSnapshot(ordersStore);
+
+    const handleStatusChange = (orderId: string, status: OrderStatus) => {
+        ordersStore.updateOrderStatus(orderId, status);
+    }
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
@@ -28,7 +63,7 @@ export default function OrdersPage() {
                     <CardDescription>View and manage all shop orders.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                     {orders.length > 0 ? (
+                     {allOrders.length > 0 ? (
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -37,10 +72,13 @@ export default function OrdersPage() {
                                     <TableHead className="hidden md:table-cell">Date</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Amount</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {orders.map((order) => (
+                                {allOrders.map((order) => {
+                                    const availableActions = getFactoryActions(order.status);
+                                    return (
                                     <TableRow key={order.id}>
                                         <TableCell className="font-medium">
                                             {order.id}
@@ -48,10 +86,38 @@ export default function OrdersPage() {
                                         </TableCell>
                                         <TableCell className="hidden sm:table-cell">{order.shopName}</TableCell>
                                         <TableCell className="hidden md:table-cell">{order.date}</TableCell>
-                                        <TableCell>{order.status}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={statusVariants[order.status]}>{order.status}</Badge>
+                                        </TableCell>
                                         <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                         <TableCell className="text-right">
+                                            {availableActions.length > 0 ? (
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon">
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                            <span className="sr-only">Order Actions</span>
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                                                        {availableActions.map(status => (
+                                                            <DropdownMenuItem
+                                                                key={status}
+                                                                onClick={() => handleStatusChange(order.id, status)}
+                                                                disabled={order.status === status}
+                                                            >
+                                                                {status === 'Awaiting Payment' ? 'Confirm Order' : status}
+                                                            </DropdownMenuItem>
+                                                        ))}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">No actions</span>
+                                            )}
+                                        </TableCell>
                                     </TableRow>
-                                ))}
+                                )})}
                             </TableBody>
                         </Table>
                     ) : (
@@ -64,5 +130,3 @@ export default function OrdersPage() {
         </div>
     );
 }
-
-    
