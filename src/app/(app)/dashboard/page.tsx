@@ -22,7 +22,35 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+// Mock Data based on the XML specification
+const dashboardData = {
+  metrics: {
+    totalRevenue: 4523189.00,
+    revenueChange: "+20.1%",
+    registeredShops: 23,
+    newShops: 5,
+    totalProducts: 1257,
+    newProducts: 12,
+    activeOrders: 57,
+    newOrders: 19,
+  },
+  recentOrders: [
+    { id: "ORD-001", shopName: "Bole Boutique", location: "Addis Ababa", status: "Dispatched", amount: 25000.00, statusVariant: "outline" },
+    { id: "ORD-002", shopName: "Hawassa Habesha", location: "Hawassa", status: "Awaiting Payment", amount: 15000.00, statusVariant: "default" },
+    { id: "ORD-003", shopName: "Merkato Style", location: "Addis Ababa", status: "Rejected", amount: 35000.00, statusVariant: "destructive" },
+    { id: "ORD-004", shopName: "Adama Modern", location: "Adama", status: "Fulfilled", amount: 45000.00, statusVariant: "secondary" },
+  ],
+  lowStockItems: [
+    { id: "MCT-001", name: "Men's Classic Tee", category: "Men", stock: 5, isLow: true },
+    { id: "WSD-012", name: "Women's Summer Dress", category: "Women", stock: 8, isLow: true },
+    { id: "KGH-034", name: "Kid's Graphic Hoodie", category: "Kids", stock: 22, isLow: false },
+    { id: "UDJ-007", name: "Unisex Denim Jacket", category: "Unisex", stock: 3, isLow: true },
+  ]
+};
+
 export default function DashboardPage() {
+  const { metrics, recentOrders, lowStockItems } = dashboardData;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -34,9 +62,9 @@ export default function DashboardPage() {
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">ETB 4,523,189.00</div>
+            <div className="text-2xl font-bold">ETB {metrics.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <p className="text-xs text-muted-foreground">
-              +20.1% from last month
+              {metrics.revenueChange} from last month
             </p>
           </CardContent>
         </Card>
@@ -48,9 +76,9 @@ export default function DashboardPage() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+23</div>
+            <div className="text-2xl font-bold">+{metrics.registeredShops}</div>
             <p className="text-xs text-muted-foreground">
-              +5 since last month
+              +{metrics.newShops} since last month
             </p>
           </CardContent>
         </Card>
@@ -60,9 +88,9 @@ export default function DashboardPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1,257</div>
+            <div className="text-2xl font-bold">{metrics.totalProducts.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              +12 new products this month
+              +{metrics.newProducts} new products this month
             </p>
           </CardContent>
         </Card>
@@ -74,9 +102,9 @@ export default function DashboardPage() {
             <ArrowDownUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+57</div>
+            <div className="text-2xl font-bold">+{metrics.activeOrders}</div>
             <p className="text-xs text-muted-foreground">
-              +19 since last week
+              +{metrics.newOrders} since last week
             </p>
           </CardContent>
         </Card>
@@ -97,54 +125,20 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Bole Boutique</div>
-                    <div className="text-sm text-muted-foreground">
-                      Addis Ababa
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">Dispatched</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">ETB 25,000.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Hawassa Habesha</div>
-                    <div className="text-sm text-muted-foreground">
-                      Hawassa
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge>Awaiting Payment</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">ETB 15,000.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Merkato Style</div>
-                    <div className="text-sm text-muted-foreground">
-                      Addis Ababa
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="destructive">Rejected</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">ETB 35,000.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Adama Modern</div>
-                    <div className="text-sm text-muted-foreground">
-                      Adama
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">Fulfilled</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">ETB 45,000.00</TableCell>
-                </TableRow>
+                {recentOrders.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell>
+                      <div className="font-medium">{order.shopName}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {order.location}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={order.statusVariant as any}>{order.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -164,54 +158,20 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Men's Classic Tee</div>
-                    <div className="text-sm text-muted-foreground">
-                      #MCT-001
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    Men
-                  </TableCell>
-                  <TableCell className="text-right text-destructive font-semibold">5</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Women's Summer Dress</div>
-                    <div className="text-sm text-muted-foreground">
-                      #WSD-012
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    Women
-                  </TableCell>
-                  <TableCell className="text-right text-destructive font-semibold">8</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Kid's Graphic Hoodie</div>
-                    <div className="text-sm text-muted-foreground">
-                      #KGH-034
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    Kids
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">22</TableCell>
-                </TableRow>
-                 <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Unisex Denim Jacket</div>
-                    <div className="text-sm text-muted-foreground">
-                      #UDJ-007
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    Unisex
-                  </TableCell>
-                  <TableCell className="text-right text-destructive font-semibold">3</TableCell>
-                </TableRow>
+                {lowStockItems.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        #{item.id}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {item.category}
+                    </TableCell>
+                    <TableCell className={`text-right font-semibold ${item.isLow ? 'text-destructive' : ''}`}>{item.stock}</TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>
