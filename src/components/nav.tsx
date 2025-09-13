@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList } from 'lucide-react';
+import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -17,6 +17,7 @@ const links = [
   { href: '/inventory', label: 'Inventory', icon: ClipboardList },
   { href: '/shops', label: 'Shops', icon: Building2 },
   { href: '/orders', label: 'Orders', icon: ShoppingCart },
+  { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
