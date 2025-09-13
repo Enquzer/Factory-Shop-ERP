@@ -66,32 +66,34 @@ export default function Home() {
       </main>
 
       <footer className="relative z-10 bg-black/50 backdrop-blur-sm text-white p-6">
-        <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-left">
-            <div>
-                <h3 className="font-bold text-lg mb-2">Contact Us</h3>
-                <ul className="space-y-2 text-sm">
-                    <li className="flex items-center justify-center md:justify-start gap-2"><MapPin className="h-4 w-4"/> 123 Industrial Zone, Addis Ababa</li>
-                    <li className="flex items-center justify-center md:justify-start gap-2"><Phone className="h-4 w-4"/> +251 911 123 456</li>
-                    <li className="flex items-center justify-center md:justify-start gap-2"><Mail className="h-4 w-4"/> contact@carement.com</li>
-                </ul>
-            </div>
-             <div>
-                <h3 className="font-bold text-lg mb-2">Website</h3>
-                <ul className="space-y-2 text-sm">
-                    <li><Link href="#" className="hover:underline">www.carement.com</Link></li>
-                </ul>
-            </div>
-            <div>
-                <h3 className="font-bold text-lg mb-2">Follow Us</h3>
-                <div className="flex justify-center md:justify-start space-x-4">
-                    <Link href="#" className="hover:text-accent transition-colors"><Facebook className="h-6 w-6"/></Link>
-                    <Link href="#" className="hover:text-accent transition-colors"><Instagram className="h-6 w-6"/></Link>
-                    <Link href="#" className="hover:text-accent transition-colors"><TikTokIcon className="h-6 w-6"/></Link>
+        <div className="container mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-center md:text-left">
+                <div className="md:col-span-2">
+                    <h3 className="font-bold text-lg mb-2">Contact Us</h3>
+                    <ul className="space-y-2 text-sm">
+                        <li className="flex items-center justify-center md:justify-start gap-2"><MapPin className="h-4 w-4"/> 123 Industrial Zone, Addis Ababa</li>
+                        <li className="flex items-center justify-center md:justify-start gap-2"><Phone className="h-4 w-4"/> +251 911 123 456</li>
+                        <li className="flex items-center justify-center md:justify-start gap-2"><Mail className="h-4 w-4"/> contact@carement.com</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 className="font-bold text-lg mb-2">Website</h3>
+                    <ul className="space-y-2 text-sm">
+                        <li><Link href="#" className="hover:underline">www.carement.com</Link></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 className="font-bold text-lg mb-2">Follow Us</h3>
+                    <div className="flex justify-center md:justify-start space-x-4">
+                        <Link href="#" className="hover:text-accent transition-colors"><Facebook className="h-6 w-6"/></Link>
+                        <Link href="#" className="hover:text-accent transition-colors"><Instagram className="h-6 w-6"/></Link>
+                        <Link href="#" className="hover:text-accent transition-colors"><TikTokIcon className="h-6 w-6"/></Link>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div className="text-center text-xs text-gray-400 pt-6 mt-6 border-t border-gray-600">
-            &copy; {new Date().getFullYear()} Carement. All Rights Reserved.
+            <div className="text-center text-xs text-gray-400 pt-6 mt-6 border-t border-gray-600">
+                &copy; {new Date().getFullYear()} Carement. All Rights Reserved.
+            </div>
         </div>
       </footer>
     </div>
