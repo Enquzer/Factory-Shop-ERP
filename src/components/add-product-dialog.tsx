@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,35 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>;
 
 const categories = ["Men", "Women", "Kids", "Unisex"];
+
+const VariantImagePreview = ({ control, index }: { control: any, index: number }) => {
+    const imageFile = useWatch({
+      control,
+      name: `variants.${index}.image`,
+    });
+  
+    const [preview, setPreview] = useState<string | null>(null);
+  
+    React.useEffect(() => {
+      if (imageFile && typeof imageFile !== 'string') {
+        const url = URL.createObjectURL(imageFile);
+        setPreview(url);
+        return () => URL.revokeObjectURL(url);
+      } else if (typeof imageFile === 'string') {
+        setPreview(imageFile);
+      } else {
+        setPreview(null);
+      }
+    }, [imageFile]);
+  
+    if (!preview) return null;
+  
+    return (
+      <div className="mt-2 relative w-full h-24 rounded-md overflow-hidden border">
+        <Image src={preview} alt={`Variant ${index + 1} preview`} fill style={{objectFit: "cover"}} />
+      </div>
+    );
+};
 
 export function AddProductDialog({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -183,7 +212,7 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                  </FormControl>
                  {mainImagePreview && (
                     <div className="mt-2 relative w-full h-48 rounded-md overflow-hidden border">
-                        <Image src={mainImagePreview} alt="Main product preview" fill objectFit="cover" />
+                        <Image src={mainImagePreview} alt="Main product preview" fill style={{objectFit: 'cover'}} />
                     </div>
                  )}
                  <FormMessage>{form.formState.errors.mainImage?.message as ReactNode}</FormMessage>
@@ -242,23 +271,26 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name={`variants.${index}.image`}
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Variant Image</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        type="file" 
-                                        accept="image/*" 
-                                        onChange={(e) => field.onChange(e.target.files?.[0])}
-                                        className="text-xs file:text-primary-foreground"
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                        />
+                      <div>
+                        <FormField
+                            control={form.control}
+                            name={`variants.${index}.image`}
+                            render={({ field: { onChange, value, ...rest } }) => (
+                                <FormItem>
+                                    <FormLabel>Variant Image</FormLabel>
+                                    <FormControl>
+                                        <Input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            onChange={(e) => onChange(e.target.files?.[0])}
+                                            className="text-xs file:text-primary-foreground"
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                            />
+                        <VariantImagePreview control={form.control} index={index} />
+                      </div>
                     {fields.length > 1 && (
                       <Button
                         type="button"
@@ -295,4 +327,3 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
   );
 }
 
-    
