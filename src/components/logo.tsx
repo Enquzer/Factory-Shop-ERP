@@ -6,7 +6,7 @@ export function Logo({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
        <div className="flex-shrink-0">
-         <Image src="/logo.png" alt="Carement Logo" width={140} height={32} />
+         <Image src="/logo.png" alt="Carement Logo" width={140} height={32} priority />
        </div>
     </div>
   );
