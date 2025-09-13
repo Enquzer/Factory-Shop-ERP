@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, MoreHorizontal } from "lucide-react";
+import { PlusCircle, MoreHorizontal, MapPin } from "lucide-react";
 import { RegisterShopDialog } from "@/components/register-shop-dialog";
 import {
   Table,
@@ -18,6 +18,7 @@ import {
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 const shops = [
     {
@@ -25,6 +26,7 @@ const shops = [
         name: "Bole Boutique",
         contactPerson: "Abebe Bikila",
         city: "Addis Ababa",
+        exactLocation: "Bole, next to Edna Mall",
         discount: 5,
         status: "Active"
     },
@@ -33,6 +35,7 @@ const shops = [
         name: "Hawassa Habesha",
         contactPerson: "Tirunesh Dibaba",
         city: "Hawassa",
+        exactLocation: "Piassa, near the lake",
         discount: 0,
         status: "Active"
     },
@@ -41,6 +44,7 @@ const shops = [
         name: "Merkato Style",
         contactPerson: "Kenenisa Bekele",
         city: "Addis Ababa",
+        exactLocation: "Merkato, main market area",
         discount: 10,
         status: "Pending"
     },
@@ -49,6 +53,7 @@ const shops = [
         name: "Adama Modern",
         contactPerson: "Meseret Defar",
         city: "Adama",
+        exactLocation: "City center, across from the post office",
         discount: 5,
         status: "Inactive"
     }
@@ -78,7 +83,7 @@ export default function ShopsPage() {
                             <TableRow>
                                 <TableHead>Shop Name</TableHead>
                                 <TableHead>Contact Person</TableHead>
-                                <TableHead>City</TableHead>
+                                <TableHead>Location</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Discount</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
@@ -90,7 +95,18 @@ export default function ShopsPage() {
                                     <TableRow key={shop.id}>
                                         <TableCell className="font-medium">{shop.name}</TableCell>
                                         <TableCell>{shop.contactPerson}</TableCell>
-                                        <TableCell>{shop.city}</TableCell>
+                                        <TableCell>
+                                            <Link
+                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.name}, ${shop.city}`)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-2 hover:underline"
+                                            >
+                                                <MapPin className="h-4 w-4 text-muted-foreground" />
+                                                {shop.city}
+                                            </Link>
+                                             <div className="text-sm text-muted-foreground">{shop.exactLocation}</div>
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant={shop.status === 'Active' ? 'default' : shop.status === 'Pending' ? 'secondary' : 'destructive'}>
                                                 {shop.status}
