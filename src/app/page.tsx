@@ -1,19 +1,23 @@
+
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 import Link from "next/link";
 import Image from "next/image";
 import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react";
+import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
 
 const backgroundImages = [
-    { src: "https://picsum.photos/seed/prod1/400/500", alt: "Man wearing a classic tee", hint: "man t-shirt" },
-    { src: "https://picsum.photos/seed/prod2/400/500", alt: "Woman in a summer dress", hint: "woman dress" },
-    { src: "https://picsum.photos/seed/prod3/400/500", alt: "Kid wearing a graphic hoodie", hint: "kids hoodie" },
-    { src: "https://picsum.photos/seed/prod4/400/500", alt: "Unisex denim jacket", hint: "denim jacket" },
-    { src: "https://picsum.photos/seed/prod5/400/500", alt: "Man in a striped shirt", hint: "man shirt" },
-    { src: "https://picsum.photos/seed/prod6/400/500", alt: "Woman wearing a jumpsuit", hint: "woman jumpsuit" },
-    { src: "https://picsum.photos/seed/garment1/400/500", alt: "Close up of fabric texture", hint: "fabric texture" },
-    { src: "https://picsum.photos/seed/garment2/400/500", alt: "Stack of folded jeans", hint: "jeans stack" },
+    { src: "https://picsum.photos/seed/prod1/800/1000", alt: "Man wearing a classic tee", hint: "man t-shirt" },
+    { src: "https://picsum.photos/seed/prod2/800/1000", alt: "Woman in a summer dress", hint: "woman dress" },
+    { src: "https://picsum.photos/seed/prod3/800/1000", alt: "Kid wearing a graphic hoodie", hint: "kids hoodie" },
+    { src: "https://picsum.photos/seed/prod4/800/1000", alt: "Unisex denim jacket", hint: "denim jacket" },
+    { src: "https://picsum.photos/seed/prod5/800/1000", alt: "Man in a striped shirt", hint: "man shirt" },
+    { src: "https://picsum.photos/seed/prod6/800/1000", alt: "Woman wearing a jumpsuit", hint: "woman jumpsuit" },
+    { src: "https://picsum.photos/seed/garment1/800/1000", alt: "Close up of fabric texture", hint: "fabric texture" },
+    { src: "https://picsum.photos/seed/garment2/800/1000", alt: "Stack of folded jeans", hint: "jeans stack" },
 ];
 
 const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -29,21 +33,30 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export default function Home() {
+
   return (
     <div className="relative flex flex-col min-h-screen w-full">
-      <div className="absolute inset-0 grid grid-cols-2 md:grid-cols-4 h-full w-full">
-        {backgroundImages.map((image, index) => (
-          <div key={index} className="relative h-full w-full">
-            <Image
-              src={image.src}
-              alt={image.alt}
-              fill
-              className="object-cover"
-              data-ai-hint={image.hint}
-            />
-             <div className="absolute inset-0 bg-black/50"></div>
-          </div>
-        ))}
+      <div className="absolute inset-0 h-full w-full">
+         <Carousel
+            opts={{ loop: true }}
+            className="h-full w-full"
+        >
+            <CarouselContent className="-ml-0 h-full">
+                {backgroundImages.map((image, index) => (
+                    <CarouselItem key={index} className="pl-0 relative h-full w-full">
+                         <Image
+                            src={image.src}
+                            alt={image.alt}
+                            fill
+                            priority={index === 0}
+                            className="object-cover"
+                            data-ai-hint={image.hint}
+                        />
+                    </CarouselItem>
+                ))}
+            </CarouselContent>
+        </Carousel>
+        <div className="absolute inset-0 bg-black/50"></div>
       </div>
       
       <main className="relative z-10 flex-grow flex flex-col items-center justify-center p-4 text-center">
