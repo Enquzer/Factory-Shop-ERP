@@ -35,23 +35,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, Trash2 } from "lucide-react";
+import { PlusCircle, Trash2, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { db, storage } from "@/lib/firebase";
+import { collection, doc, setDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const variantSchema = z.object({
   color: z.string().min(1, "Color is required"),
   size: z.string().min(1, "Size is required"),
-  quantity: z.coerce.number().int().positive("Quantity must be a positive number"),
+  stock: z.coerce.number().int().positive("Stock must be a positive number"),
   image: z.any().optional(),
 });
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  productCode: z.string().min(1, "Product code is required"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
-  mainImage: z.any().optional(),
+  imageUrl: z.any().refine((file) => file, "Main product image is required."),
+  imageHint: z.string().optional(),
   variants: z.array(variantSchema).min(1, "At least one variant is required"),
 });
 
@@ -90,6 +93,7 @@ const VariantImagePreview = ({ control, index }: { control: any, index: number }
 
 export function AddProductDialog({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [mainImagePreview, setMainImagePreview] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -97,11 +101,10 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
     resolver: zodResolver(productSchema),
     defaultValues: {
       name: "",
-      productCode: "",
       category: "",
       price: 0,
       description: "",
-      variants: [{ color: "", size: "", quantity: 1 }],
+      variants: [{ color: "", size: "", stock: 1 }],
     },
   });
 
@@ -118,20 +121,75 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
           URL.revokeObjectURL(mainImagePreview);
       }
       setMainImagePreview(newPreviewUrl);
-      form.setValue("mainImage", file);
+      form.setValue("imageUrl", file);
     }
   };
 
-  const onSubmit = (data: ProductFormValues) => {
-    console.log("New Product Data:", data);
-    // Here you would typically handle file uploads and call an API to save the product
-    toast({
-      title: "Product Added",
-      description: `"${data.name}" has been added to your catalog.`,
-    });
-    setOpen(false);
-    form.reset();
-    setMainImagePreview(null);
+  const uploadImage = async (file: File, path: string): Promise<string> => {
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, file);
+    return getDownloadURL(storageRef);
+  };
+
+
+  const onSubmit = async (data: ProductFormValues) => {
+    setIsLoading(true);
+    try {
+        const productId = `PROD-${Date.now()}`;
+        
+        // Upload main image
+        const mainImageFile = data.imageUrl as File;
+        const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
+
+        // Upload variant images
+        const uploadedVariants = await Promise.all(data.variants.map(async (variant, index) => {
+            let variantImageUrl = '';
+            if (variant.image) {
+                const variantImageFile = variant.image as File;
+                variantImageUrl = await uploadImage(variantImageFile, `products/${productId}/variant-${index}.jpg`);
+            }
+            return {
+                id: `VAR-${Date.now()}-${index}`,
+                color: variant.color,
+                size: variant.size,
+                stock: variant.stock,
+                imageUrl: variantImageUrl,
+                imageHint: `${data.name} ${variant.color}`.toLowerCase(),
+            };
+        }));
+        
+        const newProduct = {
+            id: productId,
+            name: data.name,
+            category: data.category,
+            price: data.price,
+            description: data.description || '',
+            imageUrl: mainImageUrl,
+            imageHint: data.imageHint || data.name.toLowerCase(),
+            variants: uploadedVariants,
+        };
+
+        await setDoc(doc(db, "products", productId), newProduct);
+
+        toast({
+            title: "Product Added Successfully",
+            description: `"${data.name}" has been added to your catalog.`,
+        });
+        
+        setOpen(false);
+        form.reset();
+        setMainImagePreview(null);
+
+    } catch (error) {
+        console.error("Error adding product:", error);
+        toast({
+            title: "Error",
+            description: "Failed to add the product. Please try again.",
+            variant: "destructive",
+        });
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   return (
@@ -147,18 +205,24 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6 py-4 max-h-[80vh] overflow-y-auto pr-6">
             
-            <div className="space-y-2">
-                <FormLabel>Main Product Image</FormLabel>
-                <FormControl>
-                    <Input type="file" accept="image/*" onChange={handleMainImageChange} className="file:text-primary-foreground" />
-                </FormControl>
-                {mainImagePreview && (
-                    <div className="mt-2 relative w-full aspect-video rounded-md overflow-hidden border">
-                        <Image src={mainImagePreview} alt="Main product preview" fill style={{objectFit: 'contain'}} />
-                    </div>
+            <FormField
+                control={form.control}
+                name="imageUrl"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Main Product Image</FormLabel>
+                        <FormControl>
+                            <Input type="file" accept="image/*" onChange={handleMainImageChange} className="file:text-primary-foreground" />
+                        </FormControl>
+                         {mainImagePreview && (
+                            <div className="mt-2 relative w-full aspect-video rounded-md overflow-hidden border">
+                                <Image src={mainImagePreview} alt="Main product preview" fill style={{objectFit: 'contain'}} />
+                            </div>
+                        )}
+                        <FormMessage />
+                    </FormItem>
                 )}
-                <FormMessage>{form.formState.errors.mainImage?.message as ReactNode}</FormMessage>
-            </div>
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
@@ -176,12 +240,12 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                 />
                 <FormField
                   control={form.control}
-                  name="productCode"
+                  name="imageHint"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Product Code</FormLabel>
+                      <FormLabel>Image Hint</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., MCT-001" {...field} />
+                        <Input placeholder="e.g., man t-shirt" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -267,10 +331,10 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                       />
                       <FormField
                         control={form.control}
-                        name={`variants.${index}.quantity`}
+                        name={`variants.${index}.stock`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Quantity</FormLabel>
+                            <FormLabel>Stock</FormLabel>
                             <FormControl><Input type="number" {...field} /></FormControl>
                             <FormMessage />
                           </FormItem>
@@ -303,6 +367,7 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                         size="icon"
                         className="absolute -top-3 -right-3 h-7 w-7"
                         onClick={() => remove(index)}
+                        disabled={isLoading}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -312,8 +377,9 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
                  <Button
                     type="button"
                     variant="outline"
-                    onClick={() => append({ color: "", size: "", quantity: 1 })}
+                    onClick={() => append({ color: "", size: "", stock: 1, image: undefined })}
                     className="mt-4"
+                    disabled={isLoading}
                   >
                     <PlusCircle className="mr-2 h-4 w-4" />
                     Add Another Variant
@@ -323,7 +389,16 @@ export function AddProductDialog({ children }: { children: ReactNode }) {
             </div>
 
             <DialogFooter>
-              <Button type="submit">Add Product</Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? (
+                    <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding Product...
+                    </>
+                ) : (
+                    "Add Product"
+                )}
+                </Button>
             </DialogFooter>
           </form>
         </Form>
