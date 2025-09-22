@@ -1,7 +1,7 @@
+import { db } from './firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
-
-
-export const products = [
+const mockProducts = [
     { 
         id: "MCT-001", 
         name: "Men's Classic Tee", 
@@ -69,5 +69,51 @@ export const products = [
     imageHint: product.variants[0].imageHint
 }));
 
-export type Product = typeof products[0];
+
+type BaseProduct = {
+    id: string;
+    name: string;
+    category: string;
+    price: number;
+    imageUrl: string;
+    imageHint: string;
+    variants: {
+        id: string;
+        productId: string;
+        color: string;
+        size: string;
+        stock: number;
+        imageUrl: string;
+        imageHint: string;
+    }[];
+}
+
+export type Product = BaseProduct;
 export type ProductVariant = Product["variants"][0];
+
+let products: Product[] = [];
+
+export async function getProducts(): Promise<Product[]> {
+    if (products.length > 0) {
+        return products;
+    }
+
+    const querySnapshot = await getDocs(collection(db, "products"));
+    if (querySnapshot.empty) {
+        // If no products in DB, populate with mock data
+        const { writeBatch } = await import('firebase/firestore');
+        const batch = writeBatch(db);
+        mockProducts.forEach((product) => {
+            const docRef = require('firebase/firestore').doc(collection(db, "products"), product.id);
+            batch.set(docRef, product);
+        });
+        await batch.commit();
+        products = mockProducts;
+        return products;
+    }
+
+    products = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+    return products;
+}
+
+    

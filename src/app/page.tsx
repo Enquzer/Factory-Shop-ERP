@@ -2,13 +2,14 @@
 
 "use client";
 
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 import Link from "next/link";
 import Image from "next/image";
-import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react";
-import { products } from "@/lib/products";
+import { Facebook, Instagram, Mail, MapPin, Phone, Loader2 } from "lucide-react";
+import { getProducts, type Product } from "@/lib/products";
 
 const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -23,23 +24,41 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export default function Home() {
-  const backgroundImages = products.slice(0, 8); // Use first 8 products for the grid
+    const [products, setProducts] = useState<Product[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            const productsData = await getProducts();
+            setProducts(productsData);
+            setIsLoading(false);
+        };
+        fetchProducts();
+    }, []);
+
+  const backgroundImages = products.slice(0, 8);
 
   return (
     <div className="flex flex-col min-h-screen">
        <div className="absolute inset-0 h-full w-full grid grid-cols-2 md:grid-cols-4">
-        {backgroundImages.map((product, index) => (
-          <div key={product.id} className="relative h-full w-full">
-            <Image
-              src={product.imageUrl}
-              alt={product.name}
-              fill
-              priority={index < 4}
-              className="object-cover"
-              data-ai-hint={product.imageHint}
-            />
-          </div>
-        ))}
+        {isLoading ? (
+             Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="relative h-full w-full bg-muted animate-pulse"></div>
+             ))
+        ) : (
+            backgroundImages.map((product, index) => (
+              <div key={product.id} className="relative h-full w-full">
+                <Image
+                  src={product.imageUrl}
+                  alt={product.name}
+                  fill
+                  priority={index < 4}
+                  className="object-cover"
+                  data-ai-hint={product.imageHint}
+                />
+              </div>
+            ))
+        )}
         <div className="absolute inset-0 bg-black/50"></div>
       </div>
       

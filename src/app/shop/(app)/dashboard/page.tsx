@@ -1,43 +1,77 @@
+
+
+"use client";
+
+import { useState, useEffect } from 'react';
 import {
     ArrowDownUp,
     Package,
-    ShoppingCart
+    ShoppingCart,
+    Loader2
   } from "lucide-react"
   
-  import {
+import {
     Card,
     CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
-  } from "@/components/ui/card"
-  import {
+} from "@/components/ui/card"
+import {
     Table,
     TableBody,
     TableCell,
     TableHead,
     TableHeader,
     TableRow,
-  } from "@/components/ui/table"
+} from "@/components/ui/table"
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useOrder } from '@/hooks/use-order';
+import { getProducts } from '@/lib/products';
+import { Badge } from '@/components/ui/badge';
+import type { Order, OrderStatus } from "@/lib/orders";
+
+const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
+    Pending: 'default',
+    'Awaiting Payment': 'secondary',
+    Paid: 'outline',
+    Dispatched: 'outline',
+    Delivered: 'secondary',
+    Cancelled: 'destructive'
+};
+
+export default function ShopDashboardPage() {
+    const { orders } = useOrder();
+    const [totalProducts, setTotalProducts] = useState(0);
+    const [isLoading, setIsLoading] = useState(true);
+
+     useEffect(() => {
+        const fetchProductCount = async () => {
+            setIsLoading(true);
+            const products = await getProducts();
+            setTotalProducts(products.length);
+            setIsLoading(false);
+        };
+        fetchProductCount();
+    }, []);
+
+    const metrics = {
+      pendingOrders: orders.filter(o => o.status === 'Pending' || o.status === 'Awaiting Payment').length,
+      dispatchedOrders: orders.filter(o => o.status === 'Dispatched').length,
+      totalProductsAvailable: totalProducts,
+    };
+    
+    const recentOrders = orders.slice(0, 5);
   
-  const shopDashboardData = {
-    metrics: {
-      pendingOrders: 3,
-      dispatchedOrders: 2,
-      totalProductsAvailable: 150,
-    },
-    recentOrders: [
-      { id: "ORD-005", status: "Dispatched", amount: 1250.00, date: "2023-10-26" },
-      { id: "ORD-006", status: "Pending", amount: 850.50, date: "2023-10-27" },
-      { id: "ORD-007", status: "Delivered", amount: 3200.00, date: "2023-10-22" },
-    ],
-  };
-  
-  export default function ShopDashboardPage() {
-    const { metrics, recentOrders } = shopDashboardData;
-  
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
+    }
+
     return (
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
@@ -72,7 +106,7 @@ import { Button } from "@/components/ui/button";
             <CardContent>
               <div className="text-2xl font-bold">{metrics.pendingOrders}</div>
               <p className="text-xs text-muted-foreground">
-                Orders awaiting factory confirmation
+                Orders awaiting confirmation or payment
               </p>
             </CardContent>
           </Card>
@@ -107,14 +141,24 @@ import { Button } from "@/components/ui/button";
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {recentOrders.map((order) => (
-                    <TableRow key={order.id}>
-                        <TableCell className="font-medium">{order.id}</TableCell>
-                        <TableCell>{order.status}</TableCell>
-                        <TableCell>{order.date}</TableCell>
-                        <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                    </TableRow>
-                    ))}
+                    {recentOrders.length > 0 ? (
+                        recentOrders.map((order) => (
+                            <TableRow key={order.id}>
+                                <TableCell className="font-medium">{order.id}</TableCell>
+                                <TableCell>
+                                    <Badge variant={statusVariants[order.status]}>{order.status}</Badge>
+                                </TableCell>
+                                <TableCell>{order.date}</TableCell>
+                                <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                                You haven't placed any orders yet.
+                            </TableCell>
+                        </TableRow>
+                    )}
                 </TableBody>
                 </Table>
             </CardContent>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ArrowDownUp,
   Building2,
@@ -10,9 +10,10 @@ import {
   Trophy,
   TrendingUp,
   Star,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Loader2
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import { format, subDays, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import {
   Bar,
@@ -51,48 +52,84 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
-import { products as allProducts } from "@/lib/products";
-
-// Mock Data based on the XML specification
-const dashboardData = {
-  metrics: {
-    totalRevenue: 4523189.00,
-    revenueChange: "+20.1%",
-    registeredShops: 23,
-    newShops: 5,
-    totalProducts: allProducts.length,
-    newProducts: 12,
-    activeOrders: 57,
-    newOrders: 19,
-  },
-  recentOrders: [
-    { id: "ORD-001", shopName: "Bole Boutique", location: "Addis Ababa", status: "Dispatched", amount: 25000.00, statusVariant: "outline" },
-    { id: "ORD-002", shopName: "Hawassa Habesha", location: "Hawassa", status: "Awaiting Payment", amount: 15000.00, statusVariant: "default" },
-    { id: "ORD-003", shopName: "Merkato Style", location: "Addis Ababa", status: "Rejected", amount: 35000.00, statusVariant: "destructive" },
-    { id: "ORD-004", shopName: "Adama Modern", location: "Adama", status: "Fulfilled", amount: 45000.00, statusVariant: "secondary" },
-  ],
-};
-
-const generateDate = (daysAgo: number) => subDays(new Date(), daysAgo);
-
-const fullOrderHistory = [
-    { date: generateDate(2), shopName: "Adama Modern", items: [{productId: "WSD-012", quantity: 20}, {productId: "UDJ-007", quantity: 10}] },
-    { date: generateDate(5), shopName: "Bole Boutique", items: [{productId: "MCT-001", quantity: 50}, {productId: "MST-002", quantity: 30}] },
-    { date: generateDate(8), shopName: "Hawassa Habesha", items: [{productId: "KGH-034", quantity: 25}] },
-    { date: generateDate(12), shopName: "Merkato Style", items: [{productId: "WSD-012", quantity: 15}, {productId: "MCT-001", quantity: 20}] },
-    { date: generateDate(15), shopName: "Adama Modern", items: [{productId: "WJP-005", quantity: 12}] },
-    { date: generateDate(20), shopName: "Bole Boutique", items: [{productId: "UDJ-007", quantity: 15}, {productId: "KGH-034", quantity: 10}] },
-    { date: generateDate(25), shopName: "Adama Modern", items: [{productId: "MCT-001", quantity: 40}] },
-    { date: generateDate(35), shopName: "Merkato Style", items: [{productId: "MST-002", quantity: 20}, {productId: "WJP-005", quantity: 5}] },
-    { date: generateDate(40), shopName: "Hawassa Habesha", items: [{productId: "WSD-012", quantity: 10}] },
-];
-
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { Order } from "@/lib/orders";
+import { Product } from "@/lib/products";
+import { Shop } from "@/lib/shops";
 
 const LOW_STOCK_THRESHOLD = 10;
 
-const getLowStockItems = () => {
+const PIE_CHART_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
+
+const chartConfig = {
+  total: {
+    label: "Total",
+    color: "hsl(var(--primary))",
+  },
+  quantity: {
+    label: "Quantity",
+  }
+};
+
+
+export default function DashboardPage() {
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 29),
+    to: new Date(),
+  });
+  
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const productsQuery = query(collection(db, 'products'), orderBy('name'));
+        const productsSnapshot = await getDocs(productsQuery);
+        const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        setProducts(productsData);
+
+        const ordersQuery = query(collection(db, 'orders'), orderBy('date', 'desc'));
+        const ordersSnapshot = await getDocs(ordersQuery);
+        const ordersData = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+        setOrders(ordersData);
+
+        const shopsQuery = query(collection(db, 'shops'));
+        const shopsSnapshot = await getDocs(shopsQuery);
+        const shopsData = shopsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shop));
+        setShops(shopsData);
+
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const metrics = {
+    totalProducts: products.length,
+    registeredShops: shops.length,
+    activeOrders: orders.filter(o => o.status === 'Pending' || o.status === 'Dispatched').length,
+    recentOrders: orders.slice(0, 4)
+  };
+
+  const getLowStockItems = () => {
+    if (isLoading) return [];
     const lowStockItems: { id: string; name: string; category: string; stock: number; isLow: boolean; }[] = [];
-    allProducts.forEach(product => {
+    products.forEach(product => {
         product.variants.forEach(variant => {
             if (variant.stock < LOW_STOCK_THRESHOLD) {
                 lowStockItems.push({
@@ -106,23 +143,26 @@ const getLowStockItems = () => {
         });
     });
     return lowStockItems;
-};
+  };
 
-const getSalesMetrics = (dateRange?: DateRange) => {
+  const getSalesMetrics = (dateRange?: DateRange) => {
+    if (isLoading) return { bestSelling: [], topShop: undefined, mostFrequent: [], salesChartData: [] };
+
     const productSales: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
     const shopPerformance: { [key: string]: number } = {};
     const productFrequency: { [key: string]: { name: string, count: number } } = {};
     const salesByDate: { [key: string]: number } = {};
 
-    allProducts.forEach(p => {
+    products.forEach(p => {
         productSales[p.id] = { name: p.name, quantity: 0, revenue: p.price };
         productFrequency[p.id] = { name: p.name, count: 0 };
     });
 
-    const filteredOrders = fullOrderHistory.filter(order => {
+    const filteredOrders = orders.filter(order => {
         if (!dateRange || !dateRange.from) return true;
         const to = dateRange.to || new Date();
-        return order.date >= dateRange.from && order.date <= to;
+        const orderDate = parseISO(order.date);
+        return orderDate >= dateRange.from && orderDate <= to;
     });
 
     filteredOrders.forEach(order => {
@@ -130,22 +170,25 @@ const getSalesMetrics = (dateRange?: DateRange) => {
             shopPerformance[order.shopName] = 0;
         }
         
-        const orderDate = format(order.date, "yyyy-MM-dd");
+        const orderDate = format(parseISO(order.date), "yyyy-MM-dd");
         if (!salesByDate[orderDate]) {
             salesByDate[orderDate] = 0;
         }
 
-        let orderTotal = 0;
         order.items.forEach(item => {
-            const product = allProducts.find(p => p.id === item.productId);
+            const product = products.find(p => p.id === item.productId);
             if (!product) return;
+
             const itemRevenue = product.price * item.quantity;
-            productSales[item.productId].quantity += item.quantity;
+            if(productSales[item.productId]) {
+              productSales[item.productId].quantity += item.quantity;
+            }
             shopPerformance[order.shopName] += itemRevenue;
-            productFrequency[item.productId].count++;
-            orderTotal += itemRevenue;
+            if(productFrequency[item.productId]) {
+              productFrequency[item.productId].count++;
+            }
+            salesByDate[orderDate] += itemRevenue;
         });
-        salesByDate[orderDate] += orderTotal;
     });
 
     const bestSelling = Object.values(productSales)
@@ -167,40 +210,10 @@ const getSalesMetrics = (dateRange?: DateRange) => {
 
 
     return { bestSelling, topShop, mostFrequent, salesChartData };
-}
-
-const PIE_CHART_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-];
-
-const chartConfig = {
-  total: {
-    label: "Total",
-    color: "hsl(var(--primary))",
-  },
-  quantity: {
-    label: "Quantity",
   }
-};
-allProducts.forEach(product => {
-    chartConfig[product.name] = { label: product.name };
-});
 
-
-export default function DashboardPage() {
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 29),
-    to: new Date(),
-  });
-
-  const { metrics, recentOrders } = dashboardData;
   const lowStockItems = getLowStockItems();
   const { bestSelling, topShop, mostFrequent, salesChartData } = getSalesMetrics(date);
-  
   const totalFilteredRevenue = salesChartData.reduce((acc, item) => acc + item.total, 0);
 
   const bestSellingConfig = {
@@ -210,6 +223,14 @@ export default function DashboardPage() {
       return acc;
     }, {})
   };
+
+  if (isLoading) {
+    return (
+        <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -276,9 +297,9 @@ export default function DashboardPage() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+{metrics.registeredShops}</div>
+            <div className="text-2xl font-bold">{metrics.registeredShops}</div>
             <p className="text-xs text-muted-foreground">
-              +{metrics.newShops} since last month
+              Total registered shops
             </p>
           </CardContent>
         </Card>
@@ -290,7 +311,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{metrics.totalProducts.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              +{metrics.newProducts} new products this month
+              Different product types
             </p>
           </CardContent>
         </Card>
@@ -304,7 +325,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">+{metrics.activeOrders}</div>
             <p className="text-xs text-muted-foreground">
-              +{metrics.newOrders} since last week
+              Pending or Dispatched
             </p>
           </CardContent>
         </Card>
@@ -362,19 +383,16 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentOrders.map((order) => (
+                {metrics.recentOrders.map((order) => (
                   <TableRow key={order.id}>
                     <TableCell>
                       <div className="font-medium">{order.shopName}</div>
-                      <div className="text-sm text-muted-foreground md:hidden">
-                        {order.status}
-                      </div>
                       <div className="text-sm text-muted-foreground hidden md:inline">
-                        {order.location}
+                         Order ID: {order.id}
                       </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <Badge variant={order.statusVariant as any}>{order.status}</Badge>
+                      <Badge variant={'outline'}>{order.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                   </TableRow>

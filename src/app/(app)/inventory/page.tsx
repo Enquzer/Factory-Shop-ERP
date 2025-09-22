@@ -1,3 +1,7 @@
+
+"use client";
+
+import { useState, useEffect } from 'react';
 import {
     Accordion,
     AccordionContent,
@@ -7,14 +11,35 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { products as allProducts } from "@/lib/products";
+import { getProducts, type Product } from "@/lib/products";
+import { Loader2 } from 'lucide-react';
 
 const LOW_STOCK_THRESHOLD = 10;
 
 export default function InventoryPage() {
+    const [products, setProducts] = useState<Product[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            setIsLoading(true);
+            const productsData = await getProducts();
+            setProducts(productsData);
+            setIsLoading(false);
+        };
+        fetchProducts();
+    }, []);
     
     const getTotalStock = (variants: { stock: number }[]) => {
         return variants.reduce((total, variant) => total + variant.stock, 0);
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
     }
 
     return (
@@ -28,11 +53,11 @@ export default function InventoryPage() {
                     <CardDescription>An overview of the stock levels for each product and its variants.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {allProducts.length > 0 ? (
+                    {products.length > 0 ? (
                         <Accordion type="single" collapsible className="w-full">
-                            {allProducts.map(product => {
+                            {products.map(product => {
                                 const totalStock = getTotalStock(product.variants);
-                                const isLowStock = totalStock < LOW_STOCK_THRESHOLD * product.variants.length; // Example logic
+                                const isLowStock = totalStock > 0 && totalStock < LOW_STOCK_THRESHOLD * product.variants.length;
 
                                 return (
                                     <AccordionItem value={product.id} key={product.id}>

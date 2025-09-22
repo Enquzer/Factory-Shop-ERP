@@ -1,5 +1,8 @@
 
-export const shops = [
+import { db } from './firebase';
+import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
+
+const mockShops = [
     {
         id: "SHP-001",
         name: "Bole Boutique",
@@ -38,4 +41,37 @@ export const shops = [
     }
 ];
 
-export type Shop = typeof shops[0];
+export type Shop = typeof mockShops[0];
+
+let shops: Shop[] = [];
+
+export async function getShops(): Promise<Shop[]> {
+    if (shops.length > 0) {
+        return shops;
+    }
+
+    try {
+        const querySnapshot = await getDocs(collection(db, "shops"));
+        if (querySnapshot.empty) {
+            console.log("No shops found in Firestore, populating with mock data.");
+            // If no shops in DB, populate with mock data
+            const batch = await import('firebase/firestore').then(m => m.writeBatch(db));
+            mockShops.forEach((shop) => {
+                const docRef = doc(collection(db, "shops"), shop.id);
+                batch.set(docRef, shop);
+            });
+            await batch.commit();
+            shops = mockShops;
+            return shops;
+        }
+
+        shops = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));
+        return shops;
+    } catch (error) {
+        console.error("Error fetching shops:", error);
+        console.log("Falling back to mock shops due to error.");
+        // Fallback to mock data in case of an error
+        shops = mockShops;
+        return shops;
+    }
+}

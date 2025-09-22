@@ -1,10 +1,10 @@
 
 "use client";
 
-import { useState } from "react";
-import { format, subDays } from "date-fns";
+import { useState, useEffect } from "react";
+import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Calendar as CalendarIcon, FilterX, FileDown, FileSpreadsheet } from "lucide-react";
+import { Calendar as CalendarIcon, FilterX, FileDown, FileSpreadsheet, Loader2 } from "lucide-react";
 // import jsPDF from "jspdf";
 // import autoTable from 'jspdf-autotable';
 
@@ -32,22 +32,9 @@ import {
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { products as allProducts } from "@/lib/products";
-import { shops as allShops } from "@/lib/shops";
-
-const generateDate = (daysAgo: number) => subDays(new Date(), daysAgo);
-
-const fullOrderHistory = [
-    { orderId: 'ORD-101', date: generateDate(2), shopName: "Adama Modern", items: [{productId: "WSD-012", quantity: 20}, {productId: "UDJ-007", quantity: 10}] },
-    { orderId: 'ORD-102', date: generateDate(5), shopName: "Bole Boutique", items: [{productId: "MCT-001", quantity: 50}, {productId: "MST-002", quantity: 30}] },
-    { orderId: 'ORD-103', date: generateDate(8), shopName: "Hawassa Habesha", items: [{productId: "KGH-034", quantity: 25}] },
-    { orderId: 'ORD-104', date: generateDate(12), shopName: "Merkato Style", items: [{productId: "WSD-012", quantity: 15}, {productId: "MCT-001", quantity: 20}] },
-    { orderId: 'ORD-105', date: generateDate(15), shopName: "Adama Modern", items: [{productId: "WJP-005", quantity: 12}] },
-    { orderId: 'ORD-106', date: generateDate(20), shopName: "Bole Boutique", items: [{productId: "UDJ-007", quantity: 15}, {productId: "KGH-034", quantity: 10}] },
-    { orderId: 'ORD-107', date: generateDate(25), shopName: "Adama Modern", items: [{productId: "MCT-001", quantity: 40}] },
-    { orderId: 'ORD-108', date: generateDate(35), shopName: "Merkato Style", items: [{productId: "MST-002", quantity: 20}, {productId: "WJP-005", quantity: 5}] },
-    { orderId: 'ORD-109', date: generateDate(40), shopName: "Hawassa Habesha", items: [{productId: "WSD-012", quantity: 10}] },
-];
+import { getProducts, type Product } from "@/lib/products";
+import { getShops, type Shop } from "@/lib/shops";
+import { ordersStore, type Order } from "@/lib/orders";
 
 type ReportItem = {
     orderId: string;
@@ -62,43 +49,72 @@ type ReportItem = {
 
 export default function ReportsPage() {
     const [date, setDate] = useState<DateRange | undefined>({
-        from: subDays(new Date(), 29),
+        from: new Date(new Date().setDate(new Date().getDate() - 29)),
         to: new Date(),
     });
     const [selectedShop, setSelectedShop] = useState<string>("all");
     const [selectedProduct, setSelectedProduct] = useState<string>("all");
 
+    const [products, setProducts] = useState<Product[]>([]);
+    const [shops, setShops] = useState<Shop[]>([]);
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+     useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            try {
+                const [productsData, shopsData] = await Promise.all([
+                    getProducts(),
+                    getShops()
+                ]);
+                setProducts(productsData);
+                setShops(shopsData);
+                // Orders are from valtio store, which is synchronous after initial load
+                setOrders(ordersStore.allOrders);
+            } catch (error) {
+                console.error("Error fetching report data:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+
     const getFilteredReport = () => {
+        if (isLoading) return [];
+
         let reportData: ReportItem[] = [];
 
-        const filteredOrders = fullOrderHistory.filter(order => {
+        const filteredOrders = orders.filter(order => {
+            const orderDate = parseISO(order.date);
             if (date && date.from) {
                  const to = date.to || new Date();
-                 if(order.date < date.from || order.date > to) return false;
+                 if(orderDate < date.from || orderDate > to) return false;
             }
-            if (selectedShop !== "all" && order.shopName !== selectedShop) {
-                return false;
+            if (selectedShop !== "all") {
+                const shop = shops.find(s => s.id === selectedShop);
+                if (order.shopName !== shop?.name) return false;
             }
             return true;
         });
 
         filteredOrders.forEach(order => {
             order.items.forEach(item => {
-                const product = allProducts.find(p => p.id === item.productId);
-                if (!product) return;
-
                 if (selectedProduct !== "all" && item.productId !== selectedProduct) {
                     return;
                 }
 
                 reportData.push({
-                    orderId: order.orderId,
-                    date: format(order.date, "LLL dd, y"),
+                    orderId: order.id,
+                    date: format(parseISO(order.date), "LLL dd, y"),
                     shopName: order.shopName,
-                    productName: product.name,
+                    productName: item.name,
                     quantity: item.quantity,
-                    unitPrice: product.price,
-                    total: item.quantity * product.price,
+                    unitPrice: item.price,
+                    total: item.quantity * item.price,
                 });
             });
         });
@@ -110,7 +126,7 @@ export default function ReportsPage() {
     const totalRevenue = reportData.reduce((sum, item) => sum + item.total, 0);
 
     const clearFilters = () => {
-        setDate({ from: subDays(new Date(), 29), to: new Date() });
+        setDate({ from: new Date(new Date().setDate(new Date().getDate() - 29)), to: new Date() });
         setSelectedShop("all");
         setSelectedProduct("all");
     }
@@ -131,36 +147,15 @@ export default function ReportsPage() {
     }
 
     const exportToPDF = () => {
-        // const doc = new jsPDF();
-        // doc.text("Filtered Report", 14, 16);
-        
-        // const tableColumn = ["Order ID", "Date", "Shop", "Product", "Qty", "Unit Price", "Total"];
-        // const tableRows: (string | number)[][] = [];
-
-        // reportData.forEach(item => {
-        //     const ticketData = [
-        //         item.orderId,
-        //         item.date,
-        //         item.shopName,
-        //         item.productName,
-        //         item.quantity,
-        //         `ETB ${item.unitPrice.toFixed(2)}`,
-        //         `ETB ${item.total.toFixed(2)}`,
-        //     ];
-        //     tableRows.push(ticketData);
-        // });
-
-        // autoTable(doc, {
-        //     head: [tableColumn],
-        //     body: tableRows,
-        //     startY: 20,
-        // });
-
-        // const finalY = (doc as any).lastAutoTable.finalY;
-        // doc.setFontSize(12);
-        // doc.text(`Total Revenue: ETB ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, finalY + 15);
-        
-        // doc.save("report.pdf");
+        // PDF generation logic remains commented out
+    }
+    
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
     }
 
     return (
@@ -216,8 +211,8 @@ export default function ReportsPage() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Shops</SelectItem>
-                            {allShops.map(shop => (
-                                <SelectItem key={shop.id} value={shop.name}>{shop.name}</SelectItem>
+                            {shops.map(shop => (
+                                <SelectItem key={shop.id} value={shop.id}>{shop.name}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
@@ -228,7 +223,7 @@ export default function ReportsPage() {
                         </SelectTrigger>
                         <SelectContent>
                              <SelectItem value="all">All Products</SelectItem>
-                            {allProducts.map(product => (
+                            {products.map(product => (
                                 <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>
                             ))}
                         </SelectContent>
