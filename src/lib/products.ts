@@ -1,4 +1,5 @@
 
+
 import { db, storage } from './firebase';
 import { collection, getDocs, doc, writeBatch, deleteDoc, getDoc, Transaction, updateDoc } from 'firebase/firestore';
 import { deleteObject, ref } from 'firebase/storage';
@@ -11,6 +12,7 @@ const mockProducts = [
         name: "Men's Classic Tee", 
         category: "Men", 
         price: 500.00, 
+        minimumStockLevel: 20,
         variants: [
             { id: "VAR-001", productId: "MCT-001", color: "White", size: "M", stock: 15, imageUrl: "https://picsum.photos/seed/prod1-white/800/1000" },
             { id: "VAR-002", productId: "MCT-001", color: "White", size: "L", stock: 10, imageUrl: "https://picsum.photos/seed/prod1-white/800/1000" },
@@ -24,6 +26,7 @@ const mockProducts = [
         name: "Women's Summer Dress", 
         category: "Women", 
         price: 1200.00, 
+        minimumStockLevel: 10,
         variants: [
             { id: "VAR-005", productId: "WSD-012", color: "Floral", size: "S", stock: 8, imageUrl: "https://picsum.photos/seed/prod2/800/1000" },
             { id: "VAR-006", productId: "WSD-012", color: "Floral", size: "M", stock: 12, imageUrl: "https://picsum.photos/seed/prod2/800/1000" },
@@ -97,6 +100,7 @@ export type Product = {
     description?: string;
     imageUrl: string;
     imageHint?: string;
+    minimumStockLevel?: number;
     variants: {
         id: string;
         color: string;

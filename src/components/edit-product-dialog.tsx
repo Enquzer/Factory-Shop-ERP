@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import * as React from "react";
@@ -57,6 +58,7 @@ const productSchema = z.object({
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
+  minimumStockLevel: z.coerce.number().int().nonnegative("Minimum stock must be a non-negative number").optional(),
   imageUrl: z.any(),
   variants: z.array(variantSchema).min(1, "At least one variant is required"),
 });
@@ -226,6 +228,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
             category: data.category,
             price: data.price,
             description: data.description || '',
+            minimumStockLevel: data.minimumStockLevel,
             imageUrl: mainImageUrl,
             variants: uploadedVariants,
         };
@@ -360,6 +363,20 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                   <FormMessage />
                 </FormItem>
               )}
+            />
+            
+            <FormField
+                control={form.control}
+                name="minimumStockLevel"
+                render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Minimum Stock Level (Optional)</FormLabel>
+                    <FormControl>
+                    <Input type="number" placeholder="e.g., 10" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+                )}
             />
 
             <div>

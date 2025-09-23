@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -13,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { type Product } from "@/lib/products";
 import Image from "next/image";
 
-const LOW_STOCK_THRESHOLD = 10;
+const DEFAULT_LOW_STOCK_THRESHOLD = 10;
 
 export function InventoryClientPage({ products }: { products: Product[] }) {
     
@@ -32,7 +33,8 @@ export function InventoryClientPage({ products }: { products: Product[] }) {
                     <Accordion type="single" collapsible className="w-full">
                         {products.map(product => {
                             const totalStock = getTotalStock(product.variants);
-                            const isLowStock = totalStock > 0 && totalStock < LOW_STOCK_THRESHOLD * product.variants.length;
+                            const minStockLevel = product.minimumStockLevel ?? (DEFAULT_LOW_STOCK_THRESHOLD * product.variants.length);
+                            const isLowStock = totalStock > 0 && totalStock < minStockLevel;
 
                             return (
                                 <AccordionItem value={product.id} key={product.id}>
@@ -68,7 +70,7 @@ export function InventoryClientPage({ products }: { products: Product[] }) {
                                                     <TableRow key={variant.id}>
                                                         <TableCell>{variant.color}</TableCell>
                                                         <TableCell>{variant.size}</TableCell>
-                                                        <TableCell className={`text-right font-medium ${variant.stock < LOW_STOCK_THRESHOLD ? 'text-destructive' : ''}`}>
+                                                        <TableCell className={`text-right font-medium ${variant.stock < (product.minimumStockLevel ?? DEFAULT_LOW_STOCK_THRESHOLD) ? 'text-destructive' : ''}`}>
                                                             {variant.stock}
                                                         </TableCell>
                                                     </TableRow>

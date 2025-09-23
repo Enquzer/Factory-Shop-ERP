@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -54,8 +55,6 @@ import { cn } from "@/lib/utils";
 import { Order } from "@/lib/orders";
 import { Product } from "@/lib/products";
 import { Shop } from "@/lib/shops";
-
-const LOW_STOCK_THRESHOLD = 10;
 
 const PIE_CHART_COLORS = [
   "hsl(var(--chart-1))",
@@ -342,7 +341,7 @@ export function DashboardClientPage({ products, orders, shops, metrics, lowStock
         <Card>
           <CardHeader>
             <CardTitle>Low Stock Items</CardTitle>
-            <CardDescription>Products that are running low on inventory (less than {LOW_STOCK_THRESHOLD} items).</CardDescription>
+            <CardDescription>Products that are running low on inventory.</CardDescription>
           </CardHeader>
           <CardContent>
           <Table>
