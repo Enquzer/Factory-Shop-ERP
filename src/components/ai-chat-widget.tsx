@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Bot, X, Send, Loader2 } from "lucide-react";
+import { Bot, X, Send, Loader2, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,8 +73,8 @@ export function AiChatWidget() {
     }
 
     return (
-        <Card className="fixed bottom-6 right-6 w-1/3 max-w-md h-[50vh] flex flex-col shadow-xl z-50">
-            <CardHeader className="flex flex-row items-center justify-between">
+        <Card className="fixed bottom-6 right-6 flex flex-col shadow-xl z-50 resize overflow-auto min-w-[350px] min-h-[400px] max-w-[90vw] max-h-[80vh]" style={{ width: '33vw', height: '50vh' }}>
+            <CardHeader className="flex flex-row items-center justify-between cursor-grab" onMouseDown={(e) => e.preventDefault()}>
                 <div className="flex items-center gap-3">
                     <Avatar>
                         <AvatarFallback>AI</AvatarFallback>
