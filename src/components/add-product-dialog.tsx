@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -36,9 +37,10 @@ import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, Trash2, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { db, storage } from "@/lib/firebase";
-import { collection, doc, setDoc } from "firebase/firestore";
+import { collection, doc, setDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "@/lib/image-compression";
+import { createStockEvent } from "@/lib/stock-events";
 
 const variantSchema = z.object({
   color: z.string().min(1, "Color is required"),
@@ -159,21 +161,37 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
+        const batch = writeBatch(db);
         const productId = data.productCode.toUpperCase();
         
         // Upload main image
         const mainImageFile = data.imageUrl as File;
         const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
 
+        const variantsWithIds = data.variants.map((v, index) => ({
+            ...v,
+            id: `VAR-${Date.now()}-${index}`
+        }));
+
         // Upload variant images
-        const uploadedVariants = await Promise.all(data.variants.map(async (variant, index) => {
+        const uploadedVariants = await Promise.all(variantsWithIds.map(async (variant) => {
             let variantImageUrl = '';
             if (variant.image) {
                 const variantImageFile = variant.image as File;
-                variantImageUrl = await uploadImage(variantImageFile, `products/${productId}/variant-${index}.jpg`);
+                variantImageUrl = await uploadImage(variantImageFile, `products/${productId}/variant-${variant.id}.jpg`);
             }
+
+            // Create initial stock event for each variant
+            createStockEvent({
+                productId: productId,
+                variantId: variant.id,
+                type: 'Stock In',
+                quantity: variant.stock,
+                reason: 'Initial stock',
+            }, batch);
+
             return {
-                id: `VAR-${Date.now()}-${index}`,
+                id: variant.id,
                 color: variant.color,
                 size: variant.size,
                 stock: variant.stock,
@@ -191,8 +209,11 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
             imageUrl: mainImageUrl,
             variants: uploadedVariants,
         };
+        
+        const productRef = doc(db, "products", productId);
+        batch.set(productRef, newProduct);
 
-        await setDoc(doc(db, "products", productId), newProduct);
+        await batch.commit();
 
         toast({
             title: "Product Added Successfully",
@@ -431,5 +452,3 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
     </Dialog>
   );
 }
-
-    

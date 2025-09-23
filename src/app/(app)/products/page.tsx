@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
+import { PlusCircle, Loader2, Eye, Pencil, Trash2, History } from "lucide-react";
 import { AddProductDialog } from "@/components/add-product-dialog";
 import { Product, deleteProduct, getProducts } from '@/lib/products';
 import Image from 'next/image';
@@ -23,6 +23,7 @@ import {
 import { ProductDetailDialog } from '@/components/product-detail-dialog-view';
 import { EditProductDialog } from '@/components/edit-product-dialog';
 import { Badge } from '@/components/ui/badge';
+import { ProductHistoryDialog } from '@/components/product-history-dialog';
 
 
 export default function ProductsPage() {
@@ -31,6 +32,7 @@ export default function ProductsPage() {
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const [productToView, setProductToView] = useState<Product | null>(null);
     const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+    const [productToViewHistory, setProductToViewHistory] = useState<Product | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const { toast } = useToast();
 
@@ -119,6 +121,10 @@ export default function ProductsPage() {
                                                 <Pencil className="h-5 w-5" />
                                                  <span className="sr-only">Edit Product</span>
                                             </Button>
+                                            <Button size="icon" variant="secondary" onClick={() => setProductToViewHistory(product)}>
+                                                <History className="h-5 w-5" />
+                                                 <span className="sr-only">View History</span>
+                                            </Button>
                                             <Button size="icon" variant="destructive" onClick={() => setProductToDelete(product)}>
                                                 <Trash2 className="h-5 w-5" />
                                                  <span className="sr-only">Delete Product</span>
@@ -146,6 +152,15 @@ export default function ProductsPage() {
                     product={productToView}
                     open={!!productToView}
                     onOpenChange={(isOpen) => !isOpen && setProductToView(null)}
+                />
+            )}
+
+            {/* View History Dialog */}
+            {productToViewHistory && (
+                <ProductHistoryDialog
+                    product={productToViewHistory}
+                    open={!!productToViewHistory}
+                    onOpenChange={(isOpen) => !isOpen && setProductToViewHistory(null)}
                 />
             )}
             

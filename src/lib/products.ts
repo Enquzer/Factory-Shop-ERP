@@ -1,6 +1,8 @@
+
 import { db, storage } from './firebase';
 import { collection, getDocs, doc, writeBatch, deleteDoc, getDoc, Transaction, updateDoc } from 'firebase/firestore';
 import { deleteObject, ref } from 'firebase/storage';
+import { createStockEvent, type StockEvent } from './stock-events';
 
 const mockProducts = [
     { 
@@ -125,6 +127,17 @@ export async function getProducts(forceRefresh: boolean = false): Promise<Produc
             const docRef = doc(productsCollection, product.productCode);
             const { id, ...rest } = product;
             batch.set(docRef, { ...rest, id: product.productCode });
+
+            // Create initial stock events
+            product.variants.forEach(variant => {
+                createStockEvent({
+                    productId: product.productCode,
+                    variantId: variant.id,
+                    type: 'Stock In',
+                    quantity: variant.stock,
+                    reason: 'Initial stock',
+                }, batch);
+            })
         });
         await batch.commit();
         productsCache = mockProducts.map(p => ({
@@ -141,7 +154,7 @@ export async function getProducts(forceRefresh: boolean = false): Promise<Produc
     return productsCache;
 }
 
-export async function updateProductStock(transaction: Transaction, productId: string, variantId: string, quantityChange: number) {
+export async function updateProductStock(transaction: Transaction, productId: string, variantId: string, quantityChange: number, reason: StockEvent['reason'] = 'Order fulfillment') {
     const productRef = doc(db, 'products', productId);
     const productDoc = await transaction.get(productRef);
 
@@ -168,6 +181,19 @@ export async function updateProductStock(transaction: Transaction, productId: st
     };
 
     transaction.update(productRef, { variants: newVariants });
+    
+    // Log the stock event
+    // Note: We can't use the createStockEvent helper directly as it works with batches, not transactions.
+    // We'll create the event log manually within the transaction.
+     const stockEventRef = doc(collection(db, 'stockEvents'));
+     transaction.set(stockEventRef, {
+        productId: productId,
+        variantId: variantId,
+        type: quantityChange > 0 ? 'Stock In' : 'Stock Out',
+        quantity: Math.abs(quantityChange),
+        reason: reason,
+        createdAt: new Date(),
+     });
 }
 
 export async function deleteProduct(productId: string) {
@@ -221,5 +247,3 @@ export async function deleteProduct(productId: string) {
     // Invalidate cache
     productsCache = null; 
 }
-
-    

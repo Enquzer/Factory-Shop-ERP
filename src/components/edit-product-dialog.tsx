@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -35,16 +36,17 @@ import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, Trash2, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { db, storage } from "@/lib/firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { Product, ProductVariant } from "@/lib/products";
 import { compressImage } from "@/lib/image-compression";
+import { createStockEvent } from "@/lib/stock-events";
 
 const variantSchema = z.object({
   id: z.string(),
   color: z.string().min(1, "Color is required"),
   size: z.string().min(1, "Size is required"),
-  stock: z.coerce.number().int().positive("Stock must be a positive number"),
+  stock: z.coerce.number().int().nonnegative("Stock must be a non-negative number"),
   image: z.any().optional(),
   imageUrl: z.string().optional(),
 });
@@ -119,6 +121,16 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     name: "variants",
   });
 
+  useEffect(() => {
+    // Reset form when product changes
+    form.reset({
+        ...product,
+        imageUrl: product.imageUrl,
+        variants: product.variants.map(v => ({...v, image: v.imageUrl})),
+    });
+    setMainImagePreview(product.imageUrl);
+  }, [product, form]);
+
   const handleMainImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -162,12 +174,15 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
+        const batch = writeBatch(db);
         const productRef = doc(db, "products", product.id);
 
         let mainImageUrl = product.imageUrl;
         if (data.imageUrl instanceof File) {
             mainImageUrl = await uploadImage(data.imageUrl, `products/${product.id}/main.jpg`);
         }
+
+        const originalVariants = product.variants;
 
         const uploadedVariants = await Promise.all(data.variants.map(async (variant, index) => {
             let variantImageUrl = variant.imageUrl || '';
@@ -182,6 +197,20 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                  }
                 variantImageUrl = await uploadImage(variant.image, `products/${product.id}/variant-${variant.id}.jpg`);
             }
+
+            const originalVariant = originalVariants.find(v => v.id === variant.id);
+            const stockChange = variant.stock - (originalVariant?.stock || 0);
+
+            if (stockChange > 0) {
+                 createStockEvent({
+                    productId: product.id,
+                    variantId: variant.id,
+                    type: 'Stock In',
+                    quantity: stockChange,
+                    reason: 'Manual adjustment',
+                }, batch);
+            }
+
             return {
                 id: variant.id,
                 color: variant.color,
@@ -201,7 +230,8 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
             variants: uploadedVariants,
         };
 
-        await updateDoc(productRef, updatedProductData);
+        batch.update(productRef, updatedProductData);
+        await batch.commit();
 
         toast({
             title: "Product Updated Successfully",
@@ -438,5 +468,3 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     </Dialog>
   );
 }
-
-    
