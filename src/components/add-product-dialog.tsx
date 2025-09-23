@@ -50,11 +50,11 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  productCode: z.string().regex(/^[A-Z]{2}-[A-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
   imageUrl: z.any().refine((file) => file, "Main product image is required."),
-  imageHint: z.string().optional(),
   variants: z.array(variantSchema).min(1, "At least one variant is required"),
 });
 
@@ -101,6 +101,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
     resolver: zodResolver(productSchema),
     defaultValues: {
       name: "",
+      productCode: "",
       category: "",
       price: 0,
       description: "",
@@ -135,7 +136,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-        const productId = `PROD-${Date.now()}`;
+        const productId = data.productCode;
         
         // Upload main image
         const mainImageFile = data.imageUrl as File;
@@ -154,18 +155,17 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
                 size: variant.size,
                 stock: variant.stock,
                 imageUrl: variantImageUrl,
-                imageHint: `${data.name} ${variant.color}`.toLowerCase(),
             };
         }));
         
         const newProduct = {
             id: productId,
             name: data.name,
+            productCode: data.productCode,
             category: data.category,
             price: data.price,
             description: data.description || '',
             imageUrl: mainImageUrl,
-            imageHint: data.imageHint || data.name.toLowerCase(),
             variants: uploadedVariants,
         };
 
@@ -241,12 +241,12 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
                 />
                 <FormField
                   control={form.control}
-                  name="imageHint"
+                  name="productCode"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Image Hint</FormLabel>
+                      <FormLabel>Product Code</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., man t-shirt" {...field} />
+                        <Input placeholder="e.g., MC-TS-001" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

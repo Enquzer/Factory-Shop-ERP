@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -111,7 +112,7 @@ export default function ProductsPage() {
                             {products.map(product => (
                                 <Card key={product.id} className="overflow-hidden group">
                                     <div className="relative w-full aspect-[4/5]">
-                                        <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} data-ai-hint={product.imageHint} />
+                                        <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} />
                                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                             <Button size="icon" variant="secondary" onClick={() => setProductToView(product)}>
                                                 <Eye className="h-5 w-5" />
@@ -129,7 +130,7 @@ export default function ProductsPage() {
                                     </div>
                                     <CardHeader className='pb-2'>
                                         <CardTitle className="text-lg truncate">{product.name}</CardTitle>
-                                        <CardDescription>{product.category}</CardDescription>
+                                        <CardDescription>{product.productCode}</CardDescription>
                                     </CardHeader>
                                     <CardContent className="flex items-center justify-between">
                                         <p className="text-lg font-semibold">ETB {product.price.toFixed(2)}</p>

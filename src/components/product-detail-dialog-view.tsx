@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import type { Product } from "@/lib/products";
@@ -25,13 +26,13 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
         <DialogHeader>
           <DialogTitle>{product.name}</DialogTitle>
           <DialogDescription>
-            {product.category}
+            {product.productCode} - {product.category}
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[70vh]">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pr-6">
                 <div className="relative aspect-[4/5] rounded-lg overflow-hidden">
-                     <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} data-ai-hint={product.imageHint} />
+                     <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} />
                 </div>
                 <div className="space-y-4">
                     <div>

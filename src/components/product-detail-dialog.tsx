@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -35,13 +36,12 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
             if (!acc[variant.color]) {
                 acc[variant.color] = {
                     imageUrl: variant.imageUrl,
-                    imageHint: variant.imageHint,
                     variants: [],
                 };
             }
             acc[variant.color].variants.push(variant);
             return acc;
-        }, {} as Record<string, { imageUrl: string; imageHint: string; variants: ProductVariant[] }>);
+        }, {} as Record<string, { imageUrl: string; variants: ProductVariant[] }>);
     }, [product.variants]);
 
     const handleQuantityChange = (variantId: string, amount: number) => {
@@ -97,10 +97,10 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
         </DialogHeader>
         <div className="py-4 max-h-[65vh] overflow-y-auto pr-4">
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {Object.entries(variantsByColor).map(([color, { imageUrl, imageHint, variants }]) => (
+                {Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
                     <Card key={color} className="overflow-hidden">
                          <div className="relative w-full aspect-[4/5]">
-                            <Image src={imageUrl} alt={`${product.name} - ${color}`} fill style={{objectFit: 'cover'}} data-ai-hint={imageHint} />
+                            <Image src={imageUrl} alt={`${product.name} - ${color}`} fill style={{objectFit: 'cover'}} />
                         </div>
                         <CardContent className="p-4 space-y-3">
                             <h3 className="font-bold text-lg">{color}</h3>

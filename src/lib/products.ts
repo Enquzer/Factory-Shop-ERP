@@ -1,12 +1,13 @@
 
 
 import { db, storage } from './firebase';
-import { collection, getDocs, doc, setDoc, writeBatch, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, writeBatch, deleteDoc, getDoc } from 'firebase/firestore';
 import { deleteObject, ref } from 'firebase/storage';
 
 const mockProducts = [
     { 
         id: "MCT-001", 
+        productCode: "MC-TS-001",
         name: "Men's Classic Tee", 
         category: "Men", 
         price: 500.00, 
@@ -19,6 +20,7 @@ const mockProducts = [
     },
     { 
         id: "WSD-012", 
+        productCode: "WM-DR-012",
         name: "Women's Summer Dress", 
         category: "Women", 
         price: 1200.00, 
@@ -29,6 +31,7 @@ const mockProducts = [
     },
     { 
         id: "KGH-034", 
+        productCode: "KD-HD-034",
         name: "Kid's Graphic Hoodie", 
         category: "Kids", 
         price: 850.00, 
@@ -39,6 +42,7 @@ const mockProducts = [
     },
     { 
         id: "UDJ-007", 
+        productCode: "UN-JK-007",
         name: "Unisex Denim Jacket", 
         category: "Unisex", 
         price: 2500.00, 
@@ -48,6 +52,7 @@ const mockProducts = [
     },
     { 
         id: "MST-002", 
+        productCode: "MN-SH-002",
         name: "Men's Striped Shirt", 
         category: "Men", 
         price: 950.00, 
@@ -58,6 +63,7 @@ const mockProducts = [
     },
     { 
         id: "WJP-005", 
+        productCode: "WM-JS-005",
         name: "Women's Jumpsuit", 
         category: "Women", 
         price: 1800.00, 
@@ -69,12 +75,12 @@ const mockProducts = [
 ].map(product => ({
     ...product,
     imageUrl: product.variants[0].imageUrl,
-    imageHint: product.variants[0].imageHint
 }));
 
 
 type BaseProduct = {
     id: string;
+    productCode: string;
     name: string;
     category: string;
     price: number;
@@ -90,14 +96,14 @@ type BaseProduct = {
     }[];
 }
 
-export type Product = Omit<BaseProduct, 'variants'> & {
+export type Product = Omit<BaseProduct, 'variants' | 'imageHint'> & {
+    productCode: string;
     variants: {
         id: string;
         color: string;
         size: string;
         stock: number;
         imageUrl: string;
-        imageHint: string;
     }[];
 };
 export type ProductVariant = Product["variants"][0];
@@ -134,7 +140,7 @@ export async function deleteProduct(productId: string) {
 
     // First, get the product document to find image paths
     const productRef = doc(db, 'products', productId);
-    const productDoc = await import('firebase/firestore').then(m => m.getDoc(productRef));
+    const productDoc = await getDoc(productRef);
 
     if (productDoc.exists()) {
         const productData = productDoc.data() as Product;

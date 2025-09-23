@@ -38,7 +38,8 @@ export default function ShopProductsPage() {
         const lowercasedTerm = searchTerm.toLowerCase();
         const filtered = products.filter(product => 
             product.name.toLowerCase().includes(lowercasedTerm) ||
-            product.category.toLowerCase().includes(lowercasedTerm)
+            product.category.toLowerCase().includes(lowercasedTerm) ||
+            product.productCode.toLowerCase().includes(lowercasedTerm)
         );
         setFilteredProducts(filtered);
     }, [searchTerm, products]);
@@ -81,11 +82,11 @@ export default function ShopProductsPage() {
                     {filteredProducts.map((product) => (
                         <Card key={product.id} className="overflow-hidden">
                             <div className="relative w-full aspect-[4/5]">
-                                <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} data-ai-hint={product.imageHint} />
+                                <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} />
                             </div>
                             <CardHeader>
                                 <CardTitle className="text-lg">{product.name}</CardTitle>
-                                <CardDescription>{product.category}</CardDescription>
+                                <CardDescription>{product.productCode}</CardDescription>
                             </CardHeader>
                             <CardContent className="flex items-center justify-between">
                                 <p className="text-lg font-semibold">ETB {product.price.toFixed(2)}</p>

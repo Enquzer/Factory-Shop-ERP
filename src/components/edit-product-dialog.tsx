@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import * as React from "react";
@@ -47,16 +48,15 @@ const variantSchema = z.object({
   stock: z.coerce.number().int().positive("Stock must be a positive number"),
   image: z.any().optional(),
   imageUrl: z.string().optional(),
-  imageHint: z.string().optional(),
 });
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  productCode: z.string().regex(/^[A-Z]{2}-[A-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
   imageUrl: z.any(),
-  imageHint: z.string().optional(),
   variants: z.array(variantSchema).min(1, "At least one variant is required"),
 });
 
@@ -165,17 +165,16 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                 size: variant.size,
                 stock: variant.stock,
                 imageUrl: variantImageUrl,
-                imageHint: `${data.name} ${variant.color}`.toLowerCase(),
             };
         }));
         
         const updatedProductData = {
             name: data.name,
+            productCode: data.productCode,
             category: data.category,
             price: data.price,
             description: data.description || '',
             imageUrl: mainImageUrl,
-            imageHint: data.imageHint || data.name.toLowerCase(),
             variants: uploadedVariants,
         };
 
@@ -245,14 +244,14 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                     </FormItem>
                   )}
                 />
-                <FormField
+                 <FormField
                   control={form.control}
-                  name="imageHint"
+                  name="productCode"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Image Hint</FormLabel>
+                      <FormLabel>Product Code</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., man t-shirt" {...field} />
+                        <Input placeholder="e.g., MC-TS-001" {...field} disabled />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
