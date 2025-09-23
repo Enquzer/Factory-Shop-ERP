@@ -1,5 +1,3 @@
-
-
 import { db, storage } from './firebase';
 import { collection, getDocs, doc, writeBatch, deleteDoc, getDoc, Transaction, updateDoc } from 'firebase/firestore';
 import { deleteObject, ref } from 'firebase/storage';
@@ -223,3 +221,5 @@ export async function deleteProduct(productId: string) {
     // Invalidate cache
     productsCache = null; 
 }
+
+    

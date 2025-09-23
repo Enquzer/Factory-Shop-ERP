@@ -438,3 +438,5 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     </Dialog>
   );
 }
+
+    

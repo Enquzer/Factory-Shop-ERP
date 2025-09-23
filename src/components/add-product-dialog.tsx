@@ -431,3 +431,5 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
     </Dialog>
   );
 }
+
+    

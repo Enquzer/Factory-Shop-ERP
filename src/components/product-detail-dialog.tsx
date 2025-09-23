@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -35,14 +33,14 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
         return product.variants.reduce((acc, variant) => {
             if (!acc[variant.color]) {
                 acc[variant.color] = {
-                    imageUrl: variant.imageUrl,
+                    imageUrl: variant.imageUrl || product.imageUrl,
                     variants: [],
                 };
             }
             acc[variant.color].variants.push(variant);
             return acc;
         }, {} as Record<string, { imageUrl: string; variants: ProductVariant[] }>);
-    }, [product.variants]);
+    }, [product.variants, product.imageUrl]);
 
     const handleQuantityChange = (variantId: string, amount: number) => {
         setQuantities(prev => ({

@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { type Product, type ProductVariant } from "@/lib/products";
@@ -202,3 +200,5 @@ export function useOrder() {
   }
   return context;
 }
+
+    
