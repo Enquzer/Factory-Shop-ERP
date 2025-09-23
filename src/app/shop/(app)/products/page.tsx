@@ -11,7 +11,7 @@ import { OrderButton } from "./_components/order-button";
 
 export type { Product };
 
-export default function ShopProductsPage({
+export default async function ShopProductsPage({
     searchParams
 }: {
     searchParams?: {
@@ -19,6 +19,7 @@ export default function ShopProductsPage({
     }
 }) {
     const searchTerm = searchParams?.query || "";
+    const products = await getProducts();
     
     return (
         <div className="flex flex-col gap-6">
@@ -49,29 +50,8 @@ export default function ShopProductsPage({
                     <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 </div>
             }>
-                <ProductGrid query={searchTerm} />
+                <ProductList products={products} query={searchTerm} />
             </Suspense>
         </div>
     );
-}
-
-async function ProductGrid({ query }: { query: string }) {
-    const products = await getProducts();
-    const lowercasedTerm = query.toLowerCase();
-    const filteredProducts = products.filter(product =>
-        product.name.toLowerCase().includes(lowercasedTerm) ||
-        product.category.toLowerCase().includes(lowercasedTerm) ||
-        product.productCode.toLowerCase().includes(lowercasedTerm)
-    );
-
-    if (filteredProducts.length === 0) {
-        return (
-            <div className="text-center py-12 text-muted-foreground">
-                <p className="text-lg">No products found for "{query}"</p>
-                <p className="text-sm">Try searching for something else.</p>
-            </div>
-        );
-    }
-    
-    return <ProductList products={filteredProducts} />;
 }
