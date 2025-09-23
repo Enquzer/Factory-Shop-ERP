@@ -84,10 +84,6 @@ export function AiChatWidget() {
                         <CardDescription>Ask me about inventory</CardDescription>
                     </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={handleToggle}>
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Close Chat</span>
-                </Button>
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden">
                 <ScrollArea className="h-full pr-4" ref={scrollAreaRef}>
@@ -111,7 +107,7 @@ export function AiChatWidget() {
                     </div>
                 </ScrollArea>
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex items-center gap-2">
                 <form onSubmit={handleSubmit} className="flex w-full items-center space-x-2">
                     <Input
                         value={input}
@@ -125,6 +121,10 @@ export function AiChatWidget() {
                         <span className="sr-only">Send</span>
                     </Button>
                 </form>
+                 <Button variant="ghost" size="icon" onClick={handleToggle}>
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Close Chat</span>
+                </Button>
             </CardFooter>
         </Card>
     );
