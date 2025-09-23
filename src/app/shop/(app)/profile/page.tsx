@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Separator } from "@/components/ui/separator";
 
 // Mock data based on the XML for a shop profile
 const shopProfileData = {
@@ -74,6 +75,31 @@ export default function ShopProfilePage() {
                     </div>
                 </div>
             </div>
+
+            <Separator className="my-4" />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                     <h3 className="text-lg font-medium">Update Password</h3>
+                     <div className="grid gap-2">
+                        <Label htmlFor="new-password">New Password</Label>
+                        <Input id="new-password" type="password" />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="confirm-password">Confirm New Password</Label>
+                        <Input id="confirm-password" type="password" />
+                    </div>
+                </div>
+                 <div className="space-y-4">
+                     <h3 className="text-lg font-medium">Shop Pictures</h3>
+                     <div className="grid gap-2">
+                        <Label htmlFor="shop-pictures">Upload Images</Label>
+                        <Input id="shop-pictures" type="file" multiple />
+                         <p className="text-xs text-muted-foreground">You can upload multiple images for your shop.</p>
+                    </div>
+                </div>
+            </div>
+
           </form>
         </CardContent>
       </Card>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, type ReactNode } from "react";
@@ -29,7 +30,7 @@ import { addShop } from "@/lib/shops";
 import { Loader2 } from "lucide-react";
 
 const shopSchema = z.object({
-    username: z.string().min(1, "Username is required"),
+    username: z.string().min(3, "Username must be at least 3 characters"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     name: z.string().min(1, "Shop name is required"),
     contactPerson: z.string().min(1, "Contact person is required"),

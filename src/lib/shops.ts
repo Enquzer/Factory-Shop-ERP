@@ -6,6 +6,7 @@ import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore
 const mockShops = [
     {
         id: "SHP-001",
+        username: "bole_boutique",
         name: "Bole Boutique",
         contactPerson: "Abebe Bikila",
         city: "Addis Ababa",
@@ -15,6 +16,7 @@ const mockShops = [
     },
     {
         id: "SHP-002",
+        username: "hawassa_habesha",
         name: "Hawassa Habesha",
         contactPerson: "Tirunesh Dibaba",
         city: "Hawassa",
@@ -24,6 +26,7 @@ const mockShops = [
     },
     {
         id: "SHP-003",
+        username: "merkato_style",
         name: "Merkato Style",
         contactPerson: "Kenenisa Bekele",
         city: "Addis Ababa",
@@ -33,6 +36,7 @@ const mockShops = [
     },
     {
         id: "SHP-004",
+        username: "adama_modern",
         name: "Adama Modern",
         contactPerson: "Meseret Defar",
         city: "Adama",
@@ -45,7 +49,7 @@ const mockShops = [
 export type Shop = typeof mockShops[0] & {
     tinNumber?: string;
     tradeLicenseNumber?: string;
-    username?: string;
+    password?: string; // This is NOT secure, for demo only
 };
 
 let shops: Shop[] = [];
@@ -77,7 +81,9 @@ export async function getShops(): Promise<Shop[]> {
 
 export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Shop> {
     // In a real app, you'd likely have a more robust ID generation system
+    // and would hash the password.
     const newShopId = `SHP-${Date.now().toString().slice(-6)}`;
+    
     const newShop: Shop = {
         ...shopData,
         id: newShopId,
@@ -92,4 +98,3 @@ export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Sh
     
     return newShop;
 }
-
