@@ -42,8 +42,6 @@ import { collection, doc, setDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "@/lib/image-compression";
 import { createStockEvent } from "@/lib/stock-events";
-import { createNotification } from "@/lib/notifications";
-import { getShops } from "@/lib/shops";
 
 const variantSchema = z.object({
   color: z.string().min(1, "Color is required"),
@@ -222,22 +220,6 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
             title: "Product Added Successfully",
             description: `"${data.name}" has been added to your catalog.`,
         });
-        
-        // Notify all shops
-        try {
-            const shops = await getShops();
-            shops.forEach(shop => {
-                createNotification({
-                    userType: 'shop',
-                    shopId: shop.id,
-                    title: 'New Product Available!',
-                    description: `Check out the new "${data.name}" in the product catalog.`,
-                    href: '/shop/products',
-                });
-            });
-        } catch (notificationError) {
-            console.error("Failed to create product notifications for shops:", notificationError);
-        }
 
         setOpen(false);
         form.reset();
