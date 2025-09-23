@@ -9,11 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useOrder } from "@/hooks/use-order";
 import { Eye, Download, CreditCard, Truck, CheckCircle, Loader2 } from "lucide-react";
 import type { Order, OrderStatus } from "@/lib/orders";
-// import jsPDF from "jspdf";
-// import autoTable from "jspdf-autotable";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { ordersStore } from "@/lib/orders";
 import { createNotification } from "@/lib/notifications";
 import { addItemsToShopInventory } from "@/lib/shop-inventory";
+import { getShopById, type Shop } from "@/lib/shops";
+import { useEffect, useState } from "react";
 
 
 const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -25,34 +27,101 @@ const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive
     Cancelled: 'destructive'
 };
 
-const generateInvoicePDF = (order: Order) => {
-    // const doc = new jsPDF();
+const generateOrderConfirmationPDF = (order: Order, shop: Shop) => {
+    const doc = new jsPDF();
+    const discountedPrice = order.amount;
+    const originalPrice = order.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const totalQuantity = order.items.reduce((acc, item) => acc + item.quantity, 0);
 
-    // doc.text(`Invoice for Order #${order.id}`, 14, 20);
-    // doc.setFontSize(12);
-    // doc.text(`Shop: ${order.shopName}`, 14, 30);
-    // doc.text(`Date: ${order.date}`, 14, 36);
+    // Header
+    doc.setFontSize(20);
+    doc.text("Order Confirmation", 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text(`Order ID: ${order.id}`, 14, 30);
+    doc.text(`Date: ${order.date}`, 14, 36);
 
-    // autoTable(doc, {
-    //     startY: 45,
-    //     head: [['Product', 'Variant', 'Qty', 'Unit Price', 'Total']],
-    //     body: order.items.map(item => [
-    //         item.name,
-    //         `${item.variant.color}, ${item.variant.size}`,
-    //         item.quantity,
-    //         `ETB ${item.price.toFixed(2)}`,
-    //         `ETB ${(item.price * item.quantity).toFixed(2)}`
-    //     ]),
-    // });
+    // Shop Info
+    doc.text(`Shop Name: ${shop.name}`, 120, 30);
+    doc.text(`Contact Person: ${shop.contactPerson}`, 120, 36);
+    
+    const body = order.items.map(item => {
+        const itemDiscountedPrice = item.price * (1 - shop.discount);
+        return [
+            { content: item.productCode, styles: { valign: 'middle' } },
+            { content: `${item.variant.color}, ${item.variant.size}`, styles: { valign: 'middle' } },
+            { content: item.quantity.toString(), styles: { valign: 'middle', halign: 'center' } },
+            { content: `ETB ${item.price.toFixed(2)}`, styles: { valign: 'middle' } },
+            { content: `ETB ${itemDiscountedPrice.toFixed(2)}`, styles: { valign: 'middle' } },
+        ]
+    });
+    
+    // Create a new array for autotable that includes the image
+    const tableBody = order.items.map(item => ([
+        '', // Placeholder for image
+        item.productId,
+        `${item.name}\n${item.variant.color}, ${item.variant.size}`,
+        item.quantity,
+        `ETB ${item.price.toFixed(2)}`,
+        `ETB ${(item.price * (1-shop.discount)).toFixed(2)}`,
+        `ETB ${(item.price * (1-shop.discount) * item.quantity).toFixed(2)}`,
+    ]));
 
-    // const finalY = (doc as any).lastAutoTable.finalY;
-    // doc.setFontSize(14);
-    // doc.text(`Total Amount: ETB ${order.amount.toFixed(2)}`, 14, finalY + 15);
+    autoTable(doc, {
+        startY: 45,
+        head: [['Image', 'Code', 'Product', 'Qty', 'Unit Price', 'Discounted Price', 'Subtotal']],
+        body: tableBody,
+        theme: 'grid',
+        didDrawCell: (data) => {
+            if (data.column.index === 0 && data.cell.section === 'body') {
+                const item = order.items[data.row.index];
+                if (item.imageUrl) {
+                    try {
+                        doc.addImage(item.imageUrl, 'JPEG', data.cell.x + 2, data.cell.y + 2, 15, 18);
+                    } catch (e) {
+                        console.error("Error adding image to PDF:", e);
+                        doc.text("No img", data.cell.x + 2, data.cell.y + 10)
+                    }
+                }
+            }
+        },
+        rowPageBreak: 'auto',
+        styles: {
+            valign: 'middle'
+        },
+        headStyles: {
+            fillColor: [41, 128, 185], // A nice blue
+            textColor: 255,
+            fontStyle: 'bold',
+        },
+         columnStyles: {
+            0: { cellWidth: 20 },
+        }
+    });
 
-    // doc.save(`invoice-${order.id}.pdf`);
+    const finalY = (doc as any).lastAutoTable.finalY || 100;
+    
+    // Summary section
+    doc.setFontSize(12);
+    doc.text("Order Summary", 14, finalY + 15);
+    autoTable(doc, {
+        startY: finalY + 20,
+        body: [
+            ['Total Quantity:', totalQuantity.toString()],
+            ['Original Total:', `ETB ${originalPrice.toFixed(2)}`],
+            ['Discount:', `${(shop.discount * 100).toFixed(0)}%`],
+            ['Discounted Total:', `ETB ${discountedPrice.toFixed(2)}`],
+        ],
+        theme: 'plain',
+        styles: {
+            fontSize: 12,
+        }
+    });
+
+    doc.save(`order-${order.id}.pdf`);
 }
 
-const ShopActionButton = ({ order }: { order: Order }) => {
+
+const ShopActionButton = ({ order, shop }: { order: Order, shop: Shop | null }) => {
     const handleStatusChange = async (order: Order, status: OrderStatus) => {
         await ordersStore.updateOrderStatus(order.id, status);
 
@@ -68,21 +137,40 @@ const ShopActionButton = ({ order }: { order: Order }) => {
             href: '/orders',
         });
     }
+    
+    const handleDownload = () => {
+        if (shop) {
+            generateOrderConfirmationPDF(order, shop);
+        }
+    }
+
 
     switch (order.status) {
         case 'Awaiting Payment':
             return (
-                <Button size="sm" onClick={() => handleStatusChange(order, 'Paid')}>
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Mark as Paid
-                </Button>
+                <>
+                    <Button size="sm" onClick={() => handleStatusChange(order, 'Paid')}>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Mark as Paid
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleDownload}>
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download Invoice</span>
+                    </Button>
+                </>
             );
         case 'Dispatched':
              return (
-                <Button size="sm" onClick={() => handleStatusChange(order, 'Delivered')}>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Confirm Receipt
-                </Button>
+                <>
+                    <Button size="sm" onClick={() => handleStatusChange(order, 'Delivered')}>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Confirm Receipt
+                    </Button>
+                     <Button variant="ghost" size="icon" onClick={handleDownload}>
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download Invoice</span>
+                    </Button>
+                </>
             );
         case 'Pending':
              return (
@@ -91,13 +179,29 @@ const ShopActionButton = ({ order }: { order: Order }) => {
                 </div>
             );
         default:
-            return null;
+             return (
+                 <Button variant="ghost" size="icon" onClick={handleDownload}>
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Download Invoice</span>
+                </Button>
+            );
     }
 }
 
 
 export default function ShopOrdersPage() {
-    const { orders, isLoading } = useOrder();
+    const { orders, isLoading, shopId } = useOrder();
+    const [shop, setShop] = useState<Shop|null>(null);
+
+    useEffect(() => {
+        const fetchShop = async () => {
+            const shopData = await getShopById(shopId);
+            setShop(shopData);
+        }
+        if (shopId) {
+            fetchShop();
+        }
+    }, [shopId]);
 
     return (
         <div className="flex flex-col gap-6">
@@ -110,7 +214,7 @@ export default function ShopOrdersPage() {
                     <CardDescription>View and track all your past and current orders.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {isLoading ? (
+                    {isLoading || !shop ? (
                         <div className="flex items-center justify-center h-48">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
@@ -136,11 +240,7 @@ export default function ShopOrdersPage() {
                                             </TableCell>
                                             <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                             <TableCell className="text-center space-x-2">
-                                                <ShopActionButton order={order} />
-                                                <Button variant="ghost" size="icon" onClick={() => generateInvoicePDF(order)} disabled>
-                                                    <Download className="h-4 w-4" />
-                                                    <span className="sr-only">Download Invoice</span>
-                                                </Button>
+                                                <ShopActionButton order={order} shop={shop} />
                                             </TableCell>
                                         </TableRow>
                                     ))

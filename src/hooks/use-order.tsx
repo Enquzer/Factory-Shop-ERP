@@ -9,8 +9,8 @@ import { ordersStore, type Order } from "@/lib/orders";
 import { useToast } from "./use-toast";
 import { createNotification } from "@/lib/notifications";
 import { getShopById, type Shop } from "@/lib/shops";
-// import jsPDF from "jspdf";
-// import autoTable from 'jspdf-autotable';
+import jsPDF from "jspdf";
+import autoTable from 'jspdf-autotable';
 
 export type OrderItem = { 
   productId: string;
@@ -39,31 +39,97 @@ interface OrderContextType {
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 
-const generateInvoicePDF = (order: Order) => {
-    // const doc = new jsPDF();
+const generateOrderConfirmationPDF = (order: Order, shop: Shop) => {
+    const doc = new jsPDF();
+    const discountedPrice = order.amount;
+    const originalPrice = order.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const totalQuantity = order.items.reduce((acc, item) => acc + item.quantity, 0);
 
-    // doc.text(`Invoice for Order #${order.id}`, 14, 20);
-    // doc.setFontSize(12);
-    // doc.text(`Shop: ${order.shopName}`, 14, 30);
-    // doc.text(`Date: ${order.date}`, 14, 36);
+    // Header
+    doc.setFontSize(20);
+    doc.text("Order Confirmation", 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text(`Order ID: ${order.id}`, 14, 30);
+    doc.text(`Date: ${order.date}`, 14, 36);
 
-    // autoTable(doc, {
-    //     startY: 45,
-    //     head: [['Product', 'Variant', 'Qty', 'Unit Price', 'Total']],
-    //     body: order.items.map(item => [
-    //         item.name,
-    //         `${item.variant.color}, ${item.variant.size}`,
-    //         item.quantity,
-    //         `ETB ${item.price.toFixed(2)}`,
-    //         `ETB ${(item.price * item.quantity).toFixed(2)}`
-    //     ]),
-    // });
+    // Shop Info
+    doc.text(`Shop Name: ${shop.name}`, 120, 30);
+    doc.text(`Contact Person: ${shop.contactPerson}`, 120, 36);
+    
+    const body = order.items.map(item => {
+        const itemDiscountedPrice = item.price * (1 - shop.discount);
+        return [
+            { content: item.productCode, styles: { valign: 'middle' } },
+            { content: `${item.variant.color}, ${item.variant.size}`, styles: { valign: 'middle' } },
+            { content: item.quantity.toString(), styles: { valign: 'middle', halign: 'center' } },
+            { content: `ETB ${item.price.toFixed(2)}`, styles: { valign: 'middle' } },
+            { content: `ETB ${itemDiscountedPrice.toFixed(2)}`, styles: { valign: 'middle' } },
+        ]
+    });
+    
+    // Create a new array for autotable that includes the image
+    const tableBody = order.items.map(item => ([
+        '', // Placeholder for image
+        item.productCode,
+        `${item.name}\n${item.variant.color}, ${item.variant.size}`,
+        item.quantity,
+        `ETB ${item.price.toFixed(2)}`,
+        `ETB ${(item.price * (1-shop.discount)).toFixed(2)}`,
+        `ETB ${(item.price * (1-shop.discount) * item.quantity).toFixed(2)}`,
+    ]));
 
-    // const finalY = (doc as any).lastAutoTable.finalY;
-    // doc.setFontSize(14);
-    // doc.text(`Total Amount: ETB ${order.amount.toFixed(2)}`, 14, finalY + 15);
+    autoTable(doc, {
+        startY: 45,
+        head: [['Image', 'Code', 'Product', 'Qty', 'Unit Price', 'Discounted Price', 'Subtotal']],
+        body: tableBody,
+        theme: 'grid',
+        didDrawCell: (data) => {
+            if (data.column.index === 0 && data.cell.section === 'body') {
+                const item = order.items[data.row.index];
+                if (item.imageUrl) {
+                    try {
+                        doc.addImage(item.imageUrl, 'JPEG', data.cell.x + 2, data.cell.y + 2, 15, 18);
+                    } catch (e) {
+                        console.error("Error adding image to PDF:", e);
+                        doc.text("No img", data.cell.x + 2, data.cell.y + 10)
+                    }
+                }
+            }
+        },
+        rowPageBreak: 'auto',
+        styles: {
+            valign: 'middle'
+        },
+        headStyles: {
+            fillColor: [41, 128, 185], // A nice blue
+            textColor: 255,
+            fontStyle: 'bold',
+        },
+         columnStyles: {
+            0: { cellWidth: 20 },
+        }
+    });
 
-    // doc.save(`invoice-${order.id}.pdf`);
+    const finalY = (doc as any).lastAutoTable.finalY || 100;
+    
+    // Summary section
+    doc.setFontSize(12);
+    doc.text("Order Summary", 14, finalY + 15);
+    autoTable(doc, {
+        startY: finalY + 20,
+        body: [
+            ['Total Quantity:', totalQuantity.toString()],
+            ['Original Total:', `ETB ${originalPrice.toFixed(2)}`],
+            ['Discount:', `${(shop.discount * 100).toFixed(0)}%`],
+            ['Discounted Total:', `ETB ${discountedPrice.toFixed(2)}`],
+        ],
+        theme: 'plain',
+        styles: {
+            fontSize: 12,
+        }
+    });
+
+    doc.save(`order-${order.id}.pdf`);
 }
 
 
@@ -173,15 +239,17 @@ export function OrderProvider({ children }: { children: ReactNode }) {
             description: `Your order #${newOrder.id} has been sent for processing.`,
             action: (
                 <button
-                  onClick={() => generateInvoicePDF(newOrder)}
+                  onClick={() => generateOrderConfirmationPDF(newOrder, shop)}
                   className="bg-primary text-primary-foreground py-1 px-3 rounded-md text-sm"
-                  disabled
                 >
                   Download Invoice
                 </button>
             )
         });
         
+        // Auto-download the PDF
+        generateOrderConfirmationPDF(newOrder, shop);
+
         // Create notification for factory
         createNotification({
             userType: 'factory',
