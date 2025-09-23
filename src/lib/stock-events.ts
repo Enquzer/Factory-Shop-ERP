@@ -33,9 +33,12 @@ export async function getStockEventsForProduct(productId: string): Promise<Stock
 
     const querySnapshot = await getDocs(q);
     
-    return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt.toDate(),
-    } as StockEvent));
+    return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate() || new Date(),
+        } as StockEvent;
+    });
 }
