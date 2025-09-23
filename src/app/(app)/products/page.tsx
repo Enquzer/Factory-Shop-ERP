@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ProductDetailDialog } from '@/components/product-detail-dialog-view';
 import { EditProductDialog } from '@/components/edit-product-dialog';
+import { Badge } from '@/components/ui/badge';
 
 
 export default function ProductsPage() {
