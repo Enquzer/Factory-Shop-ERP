@@ -28,10 +28,7 @@ export async function productQA(input: ProductQAInput): Promise<ProductQAOutput>
 
 const prompt = ai.definePrompt({
   name: 'productQAPrompt',
-  input: { schema: z.object({
-    query: ProductQAInputSchema.shape.query,
-    products: z.any(),
-  }) },
+  input: { schema: ProductQAInputSchema },
   output: { schema: ProductQAOutputSchema },
   prompt: `You are an AI assistant for a factory manager. You have access to the current product inventory. Answer the user's question based on the data provided below.
 
@@ -51,12 +48,14 @@ const productQAFlow = ai.defineFlow(
     outputSchema: ProductQAOutputSchema,
   },
   async (input) => {
-    // Fetch products dynamically instead of using a static list
+    // Fetch products dynamically
     const products = await getProducts();
-    const { output } = await prompt({
-        ...input,
-        products,
+    
+    // Pass products as a variable to the prompt
+    const { output } = await prompt(input, {
+      variables: { products }
     });
+    
     return output!;
   }
 );
