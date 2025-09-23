@@ -42,6 +42,8 @@ import { collection, doc, setDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "@/lib/image-compression";
 import { createStockEvent } from "@/lib/stock-events";
+import { getShops } from "@/lib/shops";
+import { createNotificationForBatch } from "@/lib/notifications";
 
 const variantSchema = z.object({
   color: z.string().min(1, "Color is required"),
@@ -63,6 +65,31 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>;
 
 const categories = ["Men", "Women", "Kids", "Unisex"];
+
+// This function will run in the background without blocking the UI
+const sendNewProductNotifications = async (productName: string, productId: string) => {
+    try {
+        const shops = await getShops();
+        if (shops.length === 0) return;
+
+        const batch = writeBatch(db);
+
+        shops.forEach(shop => {
+             createNotificationForBatch({
+                userType: 'shop',
+                shopId: shop.id,
+                title: `New Product Available!`,
+                description: `Check out the new "${productName}" in the catalog.`,
+                href: `/shop/products?query=${productId}`,
+            }, batch);
+        });
+
+        await batch.commit();
+        console.log(`Sent notifications to ${shops.length} shops for new product: ${productName}`);
+    } catch (error) {
+        console.error('Failed to send new product notifications:', error);
+    }
+}
 
 const VariantImagePreview = ({ control, index }: { control: any, index: number }) => {
     const imageFile = useWatch({
@@ -220,6 +247,9 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
             title: "Product Added Successfully",
             description: `"${data.name}" has been added to your catalog.`,
         });
+
+        // Fire-and-forget notifications
+        sendNewProductNotifications(newProduct.name, newProduct.id);
 
         setOpen(false);
         form.reset();

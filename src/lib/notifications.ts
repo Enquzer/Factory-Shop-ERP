@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import { db } from './firebase';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, getDocs, writeBatch, doc } from 'firebase/firestore';
 
 export type Notification = {
     id: string;
@@ -27,6 +28,16 @@ export const createNotification = async (notification: Omit<Notification, 'id' |
         console.error("Error creating notification: ", error);
     }
 }
+
+// Create a notification as part of a batch
+export const createNotificationForBatch = (notification: Omit<Notification, 'id' | 'isRead' | 'createdAt'>, batch: ReturnType<typeof writeBatch>) => {
+    const notificationRef = doc(collection(db, 'notifications'));
+    batch.set(notificationRef, {
+        ...notification,
+        isRead: false,
+        createdAt: serverTimestamp(),
+    });
+};
 
 // Get notifications for a user type (and optional shopId)
 export const getNotifications = (userType: 'factory' | 'shop', shopId: string | null, callback: (notifications: Notification[]) => void) => {
