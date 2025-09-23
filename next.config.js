@@ -33,6 +33,12 @@ const nextConfig = {
       }
     ],
   },
+   webpack: (config, { isServer }) => {
+    // This is a workaround for a known issue with Genkit and Next.js.
+    // It prevents webpack from trying to bundle server-side dependencies.
+    config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    return config;
+  },
 };
 
 module.exports = nextConfig;
