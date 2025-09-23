@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import * as React from "react";
@@ -40,6 +38,7 @@ import { db, storage } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { Product, ProductVariant } from "@/lib/products";
+import { compressImage } from "@/lib/image-compression";
 
 const variantSchema = z.object({
   id: z.string(),
@@ -52,7 +51,7 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  productCode: z.string().regex(/^[a-zA-Z]{2}-[a-zA-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
+  productCode: z.string().regex(/^[a-zA-Z]{2}-[a-zA-Z]{2}-\d{3}$/i, "Code must be in XX-XX-XXX format"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
@@ -120,14 +119,38 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     name: "variants",
   });
 
-  const handleMainImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMainImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const newPreviewUrl = URL.createObjectURL(file);
-      setMainImagePreview(newPreviewUrl);
-      form.setValue("imageUrl", file);
+      setIsLoading(true);
+      try {
+        const compressedFile = await compressImage(file);
+        const newPreviewUrl = URL.createObjectURL(compressedFile);
+        setMainImagePreview(newPreviewUrl);
+        form.setValue("imageUrl", compressedFile);
+      } catch (error) {
+        toast({ title: "Image Error", description: "Could not process image file.", variant: "destructive"});
+        console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
+
+  const handleVariantImageChange = async (file: File | undefined, onChange: (...event: any[]) => void) => {
+    if (file) {
+      setIsLoading(true);
+      try {
+        const compressedFile = await compressImage(file);
+        onChange(compressedFile);
+      } catch (error) {
+         toast({ title: "Image Error", description: "Could not process variant image.", variant: "destructive"});
+         console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  }
 
   const uploadImage = async (file: File, path: string): Promise<string> => {
     const storageRef = ref(storage, path);
@@ -218,7 +241,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                     <FormItem>
                         <FormLabel>Main Product Image</FormLabel>
                         <FormControl>
-                            <Input type="file" accept="image/*" onChange={handleMainImageChange} className="file:text-primary-foreground" />
+                            <Input type="file" accept="image/*" onChange={handleMainImageChange} className="file:text-primary-foreground" disabled={isLoading} />
                         </FormControl>
                          {mainImagePreview && (
                             <div className="mt-2 relative w-full aspect-video rounded-md overflow-hidden border">
@@ -357,8 +380,9 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                                         <Input 
                                             type="file" 
                                             accept="image/*" 
-                                            onChange={(e) => onChange(e.target.files?.[0])}
+                                            onChange={(e) => handleVariantImageChange(e.target.files?.[0], onChange)}
                                             className="text-xs file:text-primary-foreground"
+                                            disabled={isLoading}
                                         />
                                     </FormControl>
                                 </FormItem>
@@ -383,7 +407,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                  <Button
                     type="button"
                     variant="outline"
-                    onClick={() => append({ id: `NEWVAR-${Date.now()}`, color: "", size: "", stock: 1, image: undefined })}
+                    onClick={() => append({ id: `NEWVAR-${Date.now()}`, color: "", size: "", stock: 1, image: undefined, imageUrl: '' })}
                     className="mt-4"
                     disabled={isLoading}
                   >
@@ -413,5 +437,3 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     </Dialog>
   );
 }
-
-    
