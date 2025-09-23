@@ -19,6 +19,7 @@ import {
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuTrigger,
+    DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Loader2 } from "lucide-react";
@@ -116,30 +117,31 @@ export default function OrdersPage() {
                                         </TableCell>
                                         <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                          <TableCell className="text-right">
-                                            {availableActions.length > 0 ? (
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="icon">
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                            <span className="sr-only">Order Actions</span>
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuLabel>Change Status</DropdownMenuLabel>
-                                                        {availableActions.map(status => (
-                                                            <DropdownMenuItem
-                                                                key={status}
-                                                                onClick={() => handleStatusChange(order, status)}
-                                                                disabled={order.status === status}
-                                                            >
-                                                                {status === 'Awaiting Payment' ? 'Confirm Order' : status}
-                                                            </DropdownMenuItem>
-                                                        ))}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            ) : (
-                                                <span className="text-xs text-muted-foreground">No actions</span>
-                                            )}
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon">
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                        <span className="sr-only">Order Actions</span>
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                    <DropdownMenuItem disabled>View Details</DropdownMenuItem>
+                                                    <DropdownMenuItem disabled>Edit Order</DropdownMenuItem>
+                                                    
+                                                    {availableActions.length > 0 && <DropdownMenuSeparator />}
+
+                                                    {availableActions.map(status => (
+                                                        <DropdownMenuItem
+                                                            key={status}
+                                                            onClick={() => handleStatusChange(order, status)}
+                                                            disabled={order.status === status}
+                                                        >
+                                                            {status === 'Awaiting Payment' ? 'Confirm Order' : `Mark as ${status}`}
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </TableCell>
                                     </TableRow>
                                 )})}
