@@ -54,8 +54,11 @@ export default function OrdersPage() {
     const [orderToView, setOrderToView] = useState<Order | null>(null);
 
     useEffect(() => {
-        const unsubscribe = ordersStore.subscribe(setAllOrders);
-        setIsLoading(false);
+        setIsLoading(true);
+        const unsubscribe = ordersStore.subscribe(orders => {
+            setAllOrders(orders);
+            setIsLoading(false);
+        });
         return () => unsubscribe();
     }, []);
 

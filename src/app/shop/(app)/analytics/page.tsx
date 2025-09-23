@@ -9,7 +9,7 @@ import { ShoppingCart, Target, DollarSign, Loader2 } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { getShopById, type Shop } from '@/lib/shops';
-import { parseISO, startOfWeek, format } from 'date-fns';
+import { parseISO, startOfWeek, format, isThisMonth } from 'date-fns';
 
 const chartConfig = {
   sales: {
@@ -19,24 +19,24 @@ const chartConfig = {
 };
 
 export default function ShopAnalyticsPage() {
-    const { orders, shopId } = useOrder();
+    const { orders, shopId, isLoading: isOrdersLoading } = useOrder();
     const [shop, setShop] = useState<Shop | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isShopLoading, setIsShopLoading] = useState(true);
 
     useEffect(() => {
         const fetchShop = async () => {
             if (shopId) {
-                setIsLoading(true);
+                setIsShopLoading(true);
                 const shopData = await getShopById(shopId);
                 setShop(shopData);
-                setIsLoading(false);
+                setIsShopLoading(false);
             }
         };
         fetchShop();
     }, [shopId]);
 
     const analytics = useMemo(() => {
-        if (!shop) return {
+        if (!shop || isOrdersLoading) return {
             totalOrders: 0,
             totalSpent: 0,
             targetProgress: 0,
@@ -48,8 +48,7 @@ export default function ShopAnalyticsPage() {
         const totalSpent = orders.reduce((sum, order) => sum + order.amount, 0);
         
         const monthlySales = orders.reduce((sum, order) => {
-            // Simplified check for current month for this example
-            if (parseISO(order.date).getMonth() === new Date().getMonth()) {
+            if (isThisMonth(parseISO(order.date))) {
                 return sum + order.amount;
             }
             return sum;
@@ -59,7 +58,7 @@ export default function ShopAnalyticsPage() {
         const targetProgress = targetAmount > 0 ? (monthlySales / targetAmount) * 100 : 0;
 
         const weeklySales: { [key: string]: number } = {};
-        const currentMonthOrders = orders.filter(o => parseISO(o.date).getMonth() === new Date().getMonth());
+        const currentMonthOrders = orders.filter(o => isThisMonth(parseISO(o.date)));
 
         currentMonthOrders.forEach(order => {
             const weekStart = format(startOfWeek(parseISO(order.date), { weekStartsOn: 1 }), "MMM d");
@@ -82,7 +81,9 @@ export default function ShopAnalyticsPage() {
             weeklySalesData,
         };
 
-    }, [orders, shop]);
+    }, [orders, shop, isOrdersLoading]);
+    
+    const isLoading = isOrdersLoading || isShopLoading;
 
     if (isLoading) {
         return (
@@ -144,31 +145,37 @@ export default function ShopAnalyticsPage() {
                 <CardDescription>Your shop's sales performance for each week of the current month.</CardDescription>
             </CardHeader>
             <CardContent className="h-[350px]">
-                <ChartContainer config={chartConfig}>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.weeklySalesData}>
-                        <XAxis
-                            dataKey="name"
-                            stroke="#888888"
-                            fontSize={12}
-                            tickLine={false}
-                            axisLine={false}
-                        />
-                        <YAxis
-                            stroke="#888888"
-                            fontSize={12}
-                            tickLine={false}
-                            axisLine={false}
-                            tickFormatter={(value) => `ETB ${value / 1000}k`}
-                        />
-                        <Tooltip
-                            cursor={{ fill: 'hsl(var(--muted))' }}
-                            content={<ChartTooltipContent />}
-                        />
-                        <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </ChartContainer>
+                 {analytics.weeklySalesData.length > 0 ? (
+                    <ChartContainer config={chartConfig}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={analytics.weeklySalesData}>
+                            <XAxis
+                                dataKey="name"
+                                stroke="#888888"
+                                fontSize={12}
+                                tickLine={false}
+                                axisLine={false}
+                            />
+                            <YAxis
+                                stroke="#888888"
+                                fontSize={12}
+                                tickLine={false}
+                                axisLine={false}
+                                tickFormatter={(value) => `ETB ${value / 1000}k`}
+                            />
+                            <Tooltip
+                                cursor={{ fill: 'hsl(var(--muted))' }}
+                                content={<ChartTooltipContent />}
+                            />
+                            <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </ChartContainer>
+                 ) : (
+                    <div className="flex items-center justify-center h-full">
+                        <p className="text-muted-foreground">No sales data for this month yet.</p>
+                    </div>
+                 )}
             </CardContent>
         </Card>
       </div>

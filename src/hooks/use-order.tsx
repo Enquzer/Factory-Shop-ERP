@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { type Product, type ProductVariant } from "@/lib/products";
@@ -23,6 +24,7 @@ export type OrderItem = {
 interface OrderContextType {
   items: OrderItem[];
   orders: Order[];
+  isLoading: boolean;
   addItem: (product: Product, variant: ProductVariant, quantity?: number) => void;
   removeItem: (variantId: string) => void;
   updateQuantity: (variantId: string, quantity: number) => void;
@@ -69,6 +71,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [shop, setShop] = useState<Shop | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -84,9 +87,11 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   }, [shopId])
 
   useEffect(() => {
+    setIsLoading(true);
     const unsubscribe = ordersStore.subscribe(allOrders => {
       const shopOrders = allOrders.filter(o => o.shopId === shopId);
       setOrders(shopOrders);
+      setIsLoading(false);
     });
     return () => unsubscribe();
   }, [shopId]);
@@ -190,6 +195,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const value = {
     items,
     orders,
+    isLoading,
     addItem,
     removeItem,
     updateQuantity,
