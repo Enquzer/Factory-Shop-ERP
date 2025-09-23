@@ -62,6 +62,7 @@ export function OrderDetailDialog({ order, open, onOpenChange }: { order: Order;
                 <Table>
                     <TableHeader>
                         <TableRow>
+                            <TableHead className="w-[80px]">Image</TableHead>
                             <TableHead>Product</TableHead>
                             <TableHead className="text-center">Quantity</TableHead>
                             <TableHead className="text-right">Subtotal</TableHead>
@@ -70,6 +71,15 @@ export function OrderDetailDialog({ order, open, onOpenChange }: { order: Order;
                     <TableBody>
                         {order.items.map(item => (
                             <TableRow key={item.variant.id}>
+                                <TableCell>
+                                    <Image 
+                                        src={item.imageUrl} 
+                                        alt={item.name} 
+                                        width={64} 
+                                        height={80} 
+                                        className="rounded-md object-cover bg-muted"
+                                    />
+                                </TableCell>
                                 <TableCell>
                                     <div className="font-medium">{item.name}</div>
                                     <div className="text-sm text-muted-foreground">{item.variant.color}, {item.variant.size}</div>
