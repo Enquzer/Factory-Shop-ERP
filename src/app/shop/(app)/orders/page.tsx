@@ -13,6 +13,7 @@ import type { Order, OrderStatus } from "@/lib/orders";
 // import autoTable from "jspdf-autotable";
 import { ordersStore } from "@/lib/orders";
 import { createNotification } from "@/lib/notifications";
+import { addItemsToShopInventory } from "@/lib/shop-inventory";
 
 
 const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -52,8 +53,12 @@ const generateInvoicePDF = (order: Order) => {
 }
 
 const ShopActionButton = ({ order }: { order: Order }) => {
-    const handleStatusChange = (order: Order, status: OrderStatus) => {
-        ordersStore.updateOrderStatus(order.id, status);
+    const handleStatusChange = async (order: Order, status: OrderStatus) => {
+        await ordersStore.updateOrderStatus(order.id, status);
+
+        if (status === 'Delivered') {
+            await addItemsToShopInventory(order.shopId, order.items);
+        }
 
         // Create notification for the factory
         createNotification({
