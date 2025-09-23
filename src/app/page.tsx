@@ -63,14 +63,12 @@ export default function Home() {
       </div>
       
       <main className="relative z-10 flex-grow flex flex-col items-center justify-center p-4 text-center">
-        <h1 className="text-3xl md:text-5xl font-bold text-white tracking-widest uppercase mb-8" style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.7)' }}>
+        <Logo />
+        <h1 className="text-3xl md:text-5xl font-bold text-white tracking-widest uppercase my-8" style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.7)' }}>
             Welcome to Carement
         </h1>
         <Card className="mx-auto max-w-sm w-full bg-card/90 backdrop-blur-sm">
           <CardHeader className="space-y-4">
-            <div className="flex justify-center">
-              <Logo />
-            </div>
             <CardTitle className="text-2xl text-center text-card-foreground">Login Portal</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
