@@ -11,6 +11,7 @@ import type { Order, OrderStatus } from "@/lib/orders";
 // import jsPDF from "jspdf";
 // import autoTable from "jspdf-autotable";
 import { ordersStore } from "@/lib/orders";
+import { createNotification } from "@/lib/notifications";
 
 
 const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -50,21 +51,29 @@ const generateInvoicePDF = (order: Order) => {
 }
 
 const ShopActionButton = ({ order }: { order: Order }) => {
-    const handleStatusChange = (orderId: string, status: OrderStatus) => {
-        ordersStore.updateOrderStatus(orderId, status);
+    const handleStatusChange = (order: Order, status: OrderStatus) => {
+        ordersStore.updateOrderStatus(order.id, status);
+
+        // Create notification for the factory
+        createNotification({
+            userType: 'factory',
+            title: `Order Status Updated`,
+            description: `Order #${order.id} from ${order.shopName} is now '${status}'`,
+            href: '/orders',
+        });
     }
 
     switch (order.status) {
         case 'Awaiting Payment':
             return (
-                <Button size="sm" onClick={() => handleStatusChange(order.id, 'Paid')}>
+                <Button size="sm" onClick={() => handleStatusChange(order, 'Paid')}>
                     <CreditCard className="mr-2 h-4 w-4" />
                     Mark as Paid
                 </Button>
             );
         case 'Dispatched':
              return (
-                <Button size="sm" onClick={() => handleStatusChange(order.id, 'Delivered')}>
+                <Button size="sm" onClick={() => handleStatusChange(order, 'Delivered')}>
                     <CheckCircle className="mr-2 h-4 w-4" />
                     Confirm Receipt
                 </Button>
