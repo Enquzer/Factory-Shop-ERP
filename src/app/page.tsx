@@ -66,7 +66,7 @@ export default function Home() {
         <h1 className="text-3xl md:text-5xl font-bold text-white tracking-widest uppercase mb-8" style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.7)' }}>
             Welcome to Carement
         </h1>
-        <Card className="mx-auto max-w-sm w-full bg-card/80 backdrop-blur-sm">
+        <Card className="mx-auto max-w-sm w-full bg-card/90 backdrop-blur-sm">
           <CardHeader className="space-y-4">
             <div className="flex justify-center">
               <Logo />
