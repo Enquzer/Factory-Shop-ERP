@@ -1,6 +1,4 @@
 
-'use client';
-
 import { db } from './firebase';
 import { doc, runTransaction, collection, query, where, onSnapshot, getDocs, writeBatch, serverTimestamp, addDoc, orderBy, Timestamp } from 'firebase/firestore';
 import { type Product, type ProductVariant, updateProductStock } from './products';
