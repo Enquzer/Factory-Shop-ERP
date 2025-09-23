@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { createNotification } from "@/lib/notifications";
 
 const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
     Pending: 'default',
@@ -48,8 +49,17 @@ const getFactoryActions = (status: OrderStatus): OrderStatus[] => {
 export default function OrdersPage() {
     const { allOrders } = useSnapshot(ordersStore);
 
-    const handleStatusChange = (orderId: string, status: OrderStatus) => {
-        ordersStore.updateOrderStatus(orderId, status);
+    const handleStatusChange = (order: Order, status: OrderStatus) => {
+        ordersStore.updateOrderStatus(order.id, status);
+        
+        // Create notification for the shop
+        createNotification({
+            userType: 'shop',
+            shopId: order.shopId,
+            title: `Order Status Updated`,
+            description: `Your order #${order.id} is now '${status}'`,
+            href: '/shop/orders',
+        });
     }
 
     return (
@@ -104,7 +114,7 @@ export default function OrdersPage() {
                                                         {availableActions.map(status => (
                                                             <DropdownMenuItem
                                                                 key={status}
-                                                                onClick={() => handleStatusChange(order.id, status)}
+                                                                onClick={() => handleStatusChange(order, status)}
                                                                 disabled={order.status === status}
                                                             >
                                                                 {status === 'Awaiting Payment' ? 'Confirm Order' : status}

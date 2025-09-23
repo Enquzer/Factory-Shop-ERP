@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { ordersStore, type Order } from "@/lib/orders";
 import { useSnapshot } from "valtio";
 import { useToast } from "./use-toast";
+import { createNotification } from "@/lib/notifications";
 // import jsPDF from "jspdf";
 // import autoTable from 'jspdf-autotable';
 
@@ -152,6 +153,14 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           )
       });
       
+      // Create notification for factory
+      createNotification({
+          userType: 'factory',
+          title: `New Order: ${newOrder.id}`,
+          description: `From ${shopName} for ETB ${newOrder.amount.toFixed(2)}`,
+          href: `/orders`
+      });
+
       router.push('/shop/orders');
   }
 
