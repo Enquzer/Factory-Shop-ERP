@@ -50,7 +50,7 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  productCode: z.string().regex(/^[A-Z]{2}-[A-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
+  productCode: z.string().regex(/^[a-zA-Z]{2}-[a-zA-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
@@ -136,7 +136,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-        const productId = data.productCode;
+        const productId = data.productCode.toUpperCase();
         
         // Upload main image
         const mainImageFile = data.imageUrl as File;
@@ -161,7 +161,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
         const newProduct = {
             id: productId,
             name: data.name,
-            productCode: data.productCode,
+            productCode: productId,
             category: data.category,
             price: data.price,
             description: data.description || '',
@@ -407,5 +407,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
     </Dialog>
   );
 }
+
+    
 
     

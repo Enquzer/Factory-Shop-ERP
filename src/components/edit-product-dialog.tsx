@@ -52,7 +52,7 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  productCode: z.string().regex(/^[A-Z]{2}-[A-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
+  productCode: z.string().regex(/^[a-zA-Z]{2}-[a-zA-Z]{2}-\d{3}$/, "Code must be in XX-XX-XXX format"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
@@ -170,7 +170,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
         
         const updatedProductData = {
             name: data.name,
-            productCode: data.productCode,
+            productCode: data.productCode.toUpperCase(),
             category: data.category,
             price: data.price,
             description: data.description || '',
