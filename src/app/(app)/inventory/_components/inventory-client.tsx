@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { type Product } from "@/lib/products";
+import Image from "next/image";
 
 const LOW_STOCK_THRESHOLD = 10;
 
@@ -36,9 +37,19 @@ export function InventoryClientPage({ products }: { products: Product[] }) {
                             return (
                                 <AccordionItem value={product.id} key={product.id}>
                                     <AccordionTrigger>
-                                        <div className="flex items-center gap-4">
-                                            <span className="font-medium">{product.name}</span>
-                                            <Badge variant={isLowStock ? 'destructive' : 'secondary'}>
+                                        <div className="flex items-center gap-4 w-full">
+                                            <div className="relative h-16 w-12 flex-shrink-0 rounded-md overflow-hidden bg-muted">
+                                                <Image 
+                                                    src={product.imageUrl} 
+                                                    alt={product.name} 
+                                                    fill 
+                                                    className="object-cover"
+                                                />
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <span className="font-medium">{product.name}</span>
+                                            </div>
+                                            <Badge variant={isLowStock ? 'destructive' : 'secondary'} className="ml-auto">
                                                 Total Stock: {totalStock}
                                             </Badge>
                                         </div>
