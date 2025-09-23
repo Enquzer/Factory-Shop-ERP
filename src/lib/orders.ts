@@ -28,6 +28,24 @@ export type Order = {
     createdAt: Timestamp;
 }
 
+// Standalone function to get all orders, suitable for server-side use.
+export async function getOrders(): Promise<Order[]> {
+    const ordersQuery = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+    const snapshot = await getDocs(ordersQuery);
+    if (snapshot.empty) {
+        return [];
+    }
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            ...data,
+            date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
+        } as Order;
+    });
+}
+
+
 class OrdersManager {
     private orders: Order[] = [];
     private subscribers: ((orders: Order[]) => void)[] = [];
@@ -154,4 +172,3 @@ class OrdersManager {
 }
 
 export const ordersStore = new OrdersManager();
-
