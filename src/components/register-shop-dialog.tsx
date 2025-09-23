@@ -69,7 +69,10 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
   const onSubmit = async (data: ShopFormValues) => {
     setIsLoading(true);
     try {
-        await addShop(data);
+        await addShop({
+            ...data,
+            discount: data.discount / 100, // Convert percentage to decimal
+        });
         toast({
           title: "Shop Registered Successfully",
           description: `Shop "${data.name}" has been registered.`,

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { type Product, type ProductVariant } from "@/lib/products";
@@ -6,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ordersStore, type Order } from "@/lib/orders";
 import { useToast } from "./use-toast";
 import { createNotification } from "@/lib/notifications";
+import { getShopById, type Shop } from "@/lib/shops";
 // import jsPDF from "jspdf";
 // import autoTable from 'jspdf-autotable';
 
@@ -28,8 +30,8 @@ interface OrderContextType {
   placeOrder: () => void;
   totalAmount: number;
   shopDiscount: number;
-  shopId: string; // Mock shop ID
-  shopName: string; // Mock shop Name
+  shopId: string;
+  shopName: string;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -66,13 +68,20 @@ const generateInvoicePDF = (order: Order) => {
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [shop, setShop] = useState<Shop | null>(null);
   const router = useRouter();
   const { toast } = useToast();
 
   // Mocking shop-specific data. In a real app, this would come from auth context.
   const shopId = "SHP-001";
-  const shopName = "Bole Boutique";
-  const shopDiscount = 0.05;
+  
+  useEffect(() => {
+    const fetchShopData = async () => {
+        const shopData = await getShopById(shopId);
+        setShop(shopData);
+    }
+    fetchShopData();
+  }, [shopId])
 
   useEffect(() => {
     const unsubscribe = ordersStore.subscribe(allOrders => {
@@ -128,10 +137,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     return items.reduce((total, item) => total + item.price * item.quantity, 0);
   }, [items]);
   
+  const shopDiscount = shop?.discount || 0;
+  const shopName = shop?.name || "";
   const finalAmountAfterDiscount = totalAmount * (1 - shopDiscount);
 
   const placeOrder = async () => {
-      if (items.length === 0) return;
+      if (items.length === 0 || !shop) return;
 
       try {
         const newOrder = await ordersStore.addOrder({
@@ -200,5 +211,3 @@ export function useOrder() {
   }
   return context;
 }
-
-    

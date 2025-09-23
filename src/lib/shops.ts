@@ -11,7 +11,7 @@ const mockShops = [
         contactPerson: "Abebe Bikila",
         city: "Addis Ababa",
         exactLocation: "Bole, next to Edna Mall",
-        discount: 5,
+        discount: 0.05,
         status: "Active"
     },
     {
@@ -31,7 +31,7 @@ const mockShops = [
         contactPerson: "Kenenisa Bekele",
         city: "Addis Ababa",
         exactLocation: "Merkato, main market area",
-        discount: 10,
+        discount: 0.10,
         status: "Pending"
     },
     {
@@ -41,42 +41,63 @@ const mockShops = [
         contactPerson: "Meseret Defar",
         city: "Adama",
         exactLocation: "City center, across from the post office",
-        discount: 5,
+        discount: 0.05,
         status: "Inactive"
     }
 ];
 
-export type Shop = typeof mockShops[0] & {
+export type Shop = {
+    id: string;
+    username: string;
+    name: string;
+    contactPerson: string;
+    city: string;
+    exactLocation: string;
+    discount: number; // Stored as a decimal, e.g., 0.05 for 5%
+    status: "Active" | "Pending" | "Inactive";
     tinNumber?: string;
     tradeLicenseNumber?: string;
     password?: string; // This is NOT secure, for demo only
 };
 
-let shops: Shop[] = [];
+let shopsCache: Shop[] | null = null;
+let lastFetchTime: number | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-export async function getShops(): Promise<Shop[]> {
+export async function getShops(forceRefresh: boolean = false): Promise<Shop[]> {
+     const now = Date.now();
+    if (!forceRefresh && shopsCache && lastFetchTime && (now - lastFetchTime < CACHE_DURATION)) {
+        return shopsCache;
+    }
+
     try {
         const querySnapshot = await getDocs(collection(db, "shops"));
         if (querySnapshot.empty) {
             console.log("No shops found in Firestore, populating with mock data.");
-            const batch = await import('firebase/firestore').then(m => m.writeBatch(db));
+            const batch = writeBatch(db);
             mockShops.forEach((shop) => {
                 const docRef = doc(collection(db, "shops"), shop.id);
                 batch.set(docRef, shop);
             });
             await batch.commit();
-            shops = mockShops;
-            return shops;
+            shopsCache = mockShops as Shop[];
+            return shopsCache;
         }
 
-        shops = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));
-        return shops;
+        shopsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));
+        lastFetchTime = now;
+        return shopsCache;
     } catch (error) {
         console.error("Error fetching shops:", error);
         console.log("Falling back to mock shops due to error.");
-        shops = mockShops;
-        return shops;
+        shopsCache = mockShops as Shop[];
+        return shopsCache;
     }
+}
+
+export async function getShopById(shopId: string): Promise<Shop | null> {
+    const allShops = await getShops();
+    return allShops.find(s => s.id === shopId) || null;
 }
 
 export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Shop> {
@@ -94,7 +115,7 @@ export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Sh
     await setDoc(shopRef, newShop);
 
     // Invalidate local cache
-    shops = [];
+    shopsCache = null;
     
     return newShop;
 }
