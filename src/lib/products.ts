@@ -1,7 +1,8 @@
 
+'use client';
 
 import { db, storage } from './firebase';
-import { collection, getDocs, doc, setDoc, writeBatch, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, deleteDoc, getDoc } from 'firebase/firestore';
 import { deleteObject, ref } from 'firebase/storage';
 
 const mockProducts = [
@@ -12,10 +13,10 @@ const mockProducts = [
         category: "Men", 
         price: 500.00, 
         variants: [
-            { id: "VAR-001", productId: "MCT-001", color: "White", size: "M", stock: 15, imageUrl: "https://picsum.photos/seed/prod1-white/800/1000", imageHint: "man white t-shirt" },
-            { id: "VAR-002", productId: "MCT-001", color: "White", size: "L", stock: 10, imageUrl: "https://picsum.photos/seed/prod1-white/800/1000", imageHint: "man white t-shirt" },
-            { id: "VAR-003", productId: "MCT-001", color: "Black", size: "M", stock: 20, imageUrl: "https://picsum.photos/seed/prod1-black/800/1000", imageHint: "man black t-shirt" },
-            { id: "VAR-004", productId: "MCT-001", color: "Black", size: "XL", stock: 5, imageUrl: "https://picsum.photos/seed/prod1-black/800/1000", imageHint: "man black t-shirt" },
+            { id: "VAR-001", productId: "MCT-001", color: "White", size: "M", stock: 15, imageUrl: "https://picsum.photos/seed/prod1-white/800/1000" },
+            { id: "VAR-002", productId: "MCT-001", color: "White", size: "L", stock: 10, imageUrl: "https://picsum.photos/seed/prod1-white/800/1000" },
+            { id: "VAR-003", productId: "MCT-001", color: "Black", size: "M", stock: 20, imageUrl: "https://picsum.photos/seed/prod1-black/800/1000" },
+            { id: "VAR-004", productId: "MCT-001", color: "Black", size: "XL", stock: 5, imageUrl: "https://picsum.photos/seed/prod1-black/800/1000" },
         ]
     },
     { 
@@ -25,8 +26,8 @@ const mockProducts = [
         category: "Women", 
         price: 1200.00, 
         variants: [
-            { id: "VAR-005", productId: "WSD-012", color: "Floral", size: "S", stock: 8, imageUrl: "https://picsum.photos/seed/prod2/800/1000", imageHint: "woman dress" },
-            { id: "VAR-006", productId: "WSD-012", color: "Floral", size: "M", stock: 12, imageUrl: "https://picsum.photos/seed/prod2/800/1000", imageHint: "woman dress" },
+            { id: "VAR-005", productId: "WSD-012", color: "Floral", size: "S", stock: 8, imageUrl: "https://picsum.photos/seed/prod2/800/1000" },
+            { id: "VAR-006", productId: "WSD-012", color: "Floral", size: "M", stock: 12, imageUrl: "https://picsum.photos/seed/prod2/800/1000" },
         ]
     },
     { 
@@ -36,18 +37,18 @@ const mockProducts = [
         category: "Kids", 
         price: 850.00, 
         variants: [
-            { id: "VAR-007", productId: "KGH-034", color: "Blue", size: "6Y", stock: 18, imageUrl: "https://picsum.photos/seed/prod3-blue/800/1000", imageHint: "kids blue hoodie" },
-            { id: "VAR-008", productId: "KGH-034", color: "Pink", size: "8Y", stock: 22, imageUrl: "https://picsum.photos/seed/prod3-pink/800/1000", imageHint: "kids pink hoodie" },
+            { id: "VAR-007", productId: "KGH-034", color: "Blue", size: "6Y", stock: 18, imageUrl: "https://picsum.photos/seed/prod3-blue/800/1000" },
+            { id: "VAR-008", productId: "KGH-034", color: "Pink", size: "8Y", stock: 22, imageUrl: "https://picsum.photos/seed/prod3-pink/800/1000" },
         ]
     },
     { 
         id: "UDJ-007", 
         productCode: "UN-JK-007",
-        name: "Unisex Denim Jacket", 
+        name: "Unisex Denim Jacket",
         category: "Unisex", 
         price: 2500.00, 
         variants: [
-            { id: "VAR-009", productId: "UDJ-007", color: "Indigo", size: "L", stock: 7, imageUrl: "https://picsum.photos/seed/prod4/800/1000", imageHint: "denim jacket" },
+            { id: "VAR-009", productId: "UDJ-007", color: "Indigo", size: "L", stock: 7, imageUrl: "https://picsum.photos/seed/prod4/800/1000" },
         ]
     },
     { 
@@ -57,8 +58,8 @@ const mockProducts = [
         category: "Men", 
         price: 950.00, 
         variants: [
-            { id: "VAR-010", productId: "MST-002", color: "Navy/White", size: "M", stock: 14, imageUrl: "https://picsum.photos/seed/prod5/800/1000", imageHint: "man shirt" },
-            { id: "VAR-011", productId: "MST-002", color: "Navy/White", size: "L", stock: 11, imageUrl: "https://picsum.photos/seed/prod5/800/1000", imageHint: "man shirt" },
+            { id: "VAR-010", productId: "MST-002", color: "Navy/White", size: "M", stock: 14, imageUrl: "https://picsum.photos/seed/prod5/800/1000" },
+            { id: "VAR-011", productId: "MST-002", color: "Navy/White", size: "L", stock: 11, imageUrl: "https://picsum.photos/seed/prod5/800/1000" },
         ]
     },
     { 
@@ -68,36 +69,35 @@ const mockProducts = [
         category: "Women", 
         price: 1800.00, 
         variants: [
-            { id: "VAR-012", productId: "WJP-005", color: "Black", size: "S", stock: 9, imageUrl: "https://picsum.photos/seed/prod6-black/800/1000", imageHint: "woman black jumpsuit" },
-            { id: "VAR-013", productId: "WJP-005", color: "Olive", size: "M", stock: 6, imageUrl: "https://picsum.photos/seed/prod6-olive/800/1000", imageHint: "woman olive jumpsuit" },
+            { id: "VAR-012", productId: "WJP-005", color: "Black", size: "S", stock: 9, imageUrl: "https://picsum.photos/seed/prod6-black/800/1000" },
+            { id: "VAR-013", productId: "WJP-005", color: "Olive", size: "M", stock: 6, imageUrl: "https://picsum.photos/seed/prod6-olive/800/1000" },
         ]
     },
+    {
+        id: "CK-PN-001",
+        productCode: "CK-PN-001",
+        name: "Tshirt",
+        category: "Men",
+        price: 1000.00,
+        variants: [
+            { id: "VAR-014", productId: "CK-PN-001", color: "Green", size: "L", stock: 25, imageUrl: "https://picsum.photos/seed/prod7-green/800/1000" },
+        ]
+    }
 ].map(product => ({
     ...product,
     imageUrl: product.variants[0].imageUrl,
 }));
 
 
-type BaseProduct = {
+export type Product = {
     id: string;
     productCode: string;
     name: string;
     category: string;
     price: number;
+    description?: string;
     imageUrl: string;
-    imageHint: string;
-    variants: {
-        id: string;
-        color: string;
-        size: string;
-        stock: number;
-        imageUrl: string;
-        imageHint: string;
-    }[];
-}
-
-export type Product = Omit<BaseProduct, 'variants' | 'imageHint'> & {
-    productCode: string;
+    imageHint?: string;
     variants: {
         id: string;
         color: string;
@@ -118,13 +118,15 @@ export async function getProducts(): Promise<Product[]> {
         // If no products in DB, populate with mock data
         const batch = writeBatch(db);
         mockProducts.forEach((product) => {
-            const docRef = doc(productsCollection, product.id);
-            batch.set(docRef, product);
+            const docRef = doc(productsCollection, product.productCode);
+            const { id, ...rest } = product;
+            batch.set(docRef, { ...rest, id: product.productCode });
         });
         await batch.commit();
         products = mockProducts.map(p => ({
             ...p,
-            variants: p.variants.map(v => ({...v, productId: p.id}))
+            id: p.productCode,
+            variants: p.variants.map(v => ({...v, productId: p.productCode}))
         })) as unknown as Product[];
         return products;
     }
@@ -182,5 +184,3 @@ export async function deleteProduct(productId: string) {
     // Finally, delete the product document from Firestore
     await deleteDoc(productRef);
 }
-
-    
