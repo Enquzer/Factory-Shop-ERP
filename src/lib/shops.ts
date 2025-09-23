@@ -1,7 +1,8 @@
 
 
+
 import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, writeBatch, updateDoc } from 'firebase/firestore';
 
 const mockShops = [
     {
@@ -50,15 +51,18 @@ const mockShops = [
     }
 ];
 
+export type ShopStatus = "Active" | "Pending" | "Inactive";
+
 export type Shop = {
     id: string;
     username: string;
     name: string;
     contactPerson: string;
+    contactPhone: string;
     city: string;
     exactLocation: string;
     discount: number; // Stored as a decimal, e.g., 0.05 for 5%
-    status: "Active" | "Pending" | "Inactive";
+    status: ShopStatus;
     monthlySalesTarget?: number;
     tinNumber?: string;
     tradeLicenseNumber?: string;
@@ -121,4 +125,10 @@ export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Sh
     shopsCache = null;
     
     return newShop;
+}
+
+export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop, 'id' | 'username' | 'password'>>): Promise<void> {
+    const shopRef = doc(db, 'shops', shopId);
+    await updateDoc(shopRef, dataToUpdate);
+    shopsCache = null; // Invalidate cache
 }

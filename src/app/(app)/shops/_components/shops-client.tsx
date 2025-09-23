@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { PlusCircle, MoreHorizontal, MapPin, Loader2 } from "lucide-react";
+import { PlusCircle, MoreHorizontal, MapPin, Loader2, Edit, Eye, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import { RegisterShopDialog } from "@/components/register-shop-dialog";
 import {
   Table,
@@ -19,15 +19,27 @@ import {
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuTrigger,
+    DropdownMenuSeparator,
   } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { getShops, type Shop } from "@/lib/shops";
+import { getShops, type Shop, updateShop } from "@/lib/shops";
+import { useToast } from '@/hooks/use-toast';
+import { ShopDetailDialog } from '@/components/shop-detail-dialog';
+import { EditShopDialog } from '@/components/edit-shop-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
 export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
     const [shops, setShops] = useState<Shop[]>(initialShops);
     const [isLoading, setIsLoading] = useState(false);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+    const [shopToView, setShopToView] = useState<Shop | null>(null);
+    const [shopToEdit, setShopToEdit] = useState<Shop | null>(null);
+    const [shopToToggleStatus, setShopToToggleStatus] = useState<Shop | null>(null);
+    
+    const { toast } = useToast();
 
     const fetchShops = async () => {
         setIsLoading(true);
@@ -39,6 +51,39 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
     const onShopRegistered = () => {
         fetchShops();
     }
+    
+    const onShopUpdated = () => {
+        fetchShops();
+        setShopToEdit(null);
+    }
+
+    const handleToggleStatus = async () => {
+        if (!shopToToggleStatus) return;
+        
+        setIsUpdatingStatus(true);
+        const currentStatus = shopToToggleStatus.status;
+        const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+
+        try {
+            await updateShop(shopToToggleStatus.id, { status: newStatus });
+            toast({
+                title: "Status Updated",
+                description: `Shop "${shopToToggleStatus.name}" is now ${newStatus}.`,
+            });
+            fetchShops();
+        } catch (error) {
+            console.error("Error updating shop status", error);
+            toast({
+                title: "Error",
+                description: "Failed to update shop status. Please try again.",
+                variant: 'destructive'
+            });
+        } finally {
+            setIsUpdatingStatus(false);
+            setShopToToggleStatus(null);
+        }
+    }
+
 
     return (
         <>
@@ -106,9 +151,20 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                <DropdownMenuItem disabled>View Details</DropdownMenuItem>
-                                                <DropdownMenuItem disabled>Edit</DropdownMenuItem>
-                                                <DropdownMenuItem className="text-destructive" disabled>Deactivate</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setShopToView(shop)}>
+                                                    <Eye className="mr-2 h-4 w-4" /> View Details
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setShopToEdit(shop)}>
+                                                    <Edit className="mr-2 h-4 w-4" /> Edit
+                                                </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={() => setShopToToggleStatus(shop)} className={shop.status === 'Inactive' ? 'text-green-600 focus:text-green-700' : 'text-destructive focus:text-destructive'}>
+                                                    {shop.status === 'Inactive' ? (
+                                                        <><ToggleRight className="mr-2 h-4 w-4" /> Activate</>
+                                                    ) : (
+                                                        <><ToggleLeft className="mr-2 h-4 w-4" /> Deactivate</>
+                                                    )}
+                                                </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     </TableCell>
@@ -125,6 +181,41 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                     </TableBody>
                 </Table>
             )}
+            
+            {shopToView && (
+                <ShopDetailDialog
+                    shop={shopToView}
+                    open={!!shopToView}
+                    onOpenChange={(isOpen) => !isOpen && setShopToView(null)}
+                />
+            )}
+
+            {shopToEdit && (
+                <EditShopDialog
+                    shop={shopToEdit}
+                    open={!!shopToEdit}
+                    onOpenChange={(isOpen) => !isOpen && setShopToEdit(null)}
+                    onShopUpdated={onShopUpdated}
+                />
+            )}
+            
+            <AlertDialog open={!!shopToToggleStatus} onOpenChange={(isOpen) => !isOpen && setShopToToggleStatus(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will change the status of "{shopToToggleStatus?.name}" to {shopToToggleStatus?.status === 'Active' ? '"Inactive"' : '"Active"'}.
+                        An inactive shop will not be able to log in or place new orders.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isUpdatingStatus}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleToggleStatus} disabled={isUpdatingStatus}>
+                        {isUpdatingStatus ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</> : "Confirm"}
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 }
