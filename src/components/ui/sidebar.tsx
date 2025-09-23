@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -130,7 +131,7 @@ const SidebarProvider = React.forwardRef<
     )
 
     return (
-      <TooltipProvider delayDuration={0}>
+      <SidebarContext.Provider value={contextValue}>
         <div
           style={
             {
@@ -148,7 +149,7 @@ const SidebarProvider = React.forwardRef<
         >
           {children}
         </div>
-      </TooltipProvider>
+      </SidebarContext.Provider>
     )
   }
 )
