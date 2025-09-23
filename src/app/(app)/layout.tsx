@@ -7,12 +7,11 @@ import {
   SidebarContent,
   SidebarHeader,
   SidebarInset,
-  SidebarProvider,
 } from '@/components/ui/sidebar';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
+    <>
       <Sidebar>
         <SidebarHeader className="border-b border-sidebar-border p-3">
           <Logo />
@@ -30,6 +29,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </SidebarInset>
       <AiChatWidget />
-    </SidebarProvider>
+    </>
   );
 }
