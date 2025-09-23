@@ -73,7 +73,7 @@ export function AiChatWidget() {
     }
 
     return (
-        <Card className="fixed bottom-6 right-6 w-full max-w-sm h-[600px] flex flex-col shadow-xl z-50">
+        <Card className="fixed bottom-6 right-6 w-1/3 max-w-md h-[50vh] flex flex-col shadow-xl z-50">
             <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-3">
                     <Avatar>
