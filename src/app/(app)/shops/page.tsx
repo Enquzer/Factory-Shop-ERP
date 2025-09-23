@@ -30,22 +30,26 @@ export default function ShopsPage() {
     const [shops, setShops] = useState<Shop[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchShops = async () => {
-            setIsLoading(true);
-            const shopsData = await getShops();
-            setShops(shopsData);
-            setIsLoading(false);
-        };
+    const fetchShops = async () => {
+        setIsLoading(true);
+        const shopsData = await getShops();
+        setShops(shopsData);
+        setIsLoading(false);
+    };
 
+    useEffect(() => {
         fetchShops();
     }, []);
+
+    const onShopRegistered = () => {
+        fetchShops();
+    }
 
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <h1 className="text-2xl font-semibold self-start sm:self-center">Shops</h1>
-                <RegisterShopDialog>
+                <RegisterShopDialog onShopRegistered={onShopRegistered}>
                     <Button className="w-full sm:w-auto">
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Register Shop
@@ -114,9 +118,9 @@ export default function ShopsPage() {
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                                                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive">Deactivate</DropdownMenuItem>
+                                                        <DropdownMenuItem disabled>View Details</DropdownMenuItem>
+                                                        <DropdownMenuItem disabled>Edit</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" disabled>Deactivate</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -138,3 +142,4 @@ export default function ShopsPage() {
         </div>
     );
 }
+

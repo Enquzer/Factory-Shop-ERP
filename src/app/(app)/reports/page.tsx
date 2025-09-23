@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -70,8 +71,9 @@ export default function ReportsPage() {
                 ]);
                 setProducts(productsData);
                 setShops(shopsData);
-                // Orders are from valtio store, which is synchronous after initial load
-                setOrders(ordersStore.allOrders);
+                // Subscribe to order changes
+                const unsubscribe = ordersStore.subscribe(setOrders);
+                return unsubscribe;
             } catch (error) {
                 console.error("Error fetching report data:", error);
             } finally {

@@ -1,7 +1,7 @@
 
+
 'use client';
 
-import { reactive, subscribe } from 'valtio';
 import { type Product, type ProductVariant } from './products';
 
 export type OrderItem = { 
@@ -25,81 +25,94 @@ export type Order = {
     items: OrderItem[];
 }
 
-const getInitialOrders = (): Order[] => {
-    if (typeof window !== 'undefined') {
-        const storedOrders = localStorage.getItem('carement_orders');
-        return storedOrders ? JSON.parse(storedOrders) : [];
+class OrdersManager {
+    private orders: Order[] = [];
+    private subscribers: ((orders: Order[]) => void)[] = [];
+
+    constructor() {
+        this.loadOrders();
     }
-    return [];
-};
 
-
-const state = reactive<{
-    orders: Order[];
-}>({
-    orders: getInitialOrders(),
-});
-
-subscribe(state, () => {
-    if (typeof window !== 'undefined') {
-        localStorage.setItem('carement_orders', JSON.stringify(state.orders));
+    private loadOrders() {
+        if (typeof window !== 'undefined') {
+            const storedOrders = localStorage.getItem('carement_orders');
+            if (storedOrders) {
+                try {
+                    this.orders = JSON.parse(storedOrders);
+                } catch (e) {
+                    console.error("Failed to parse orders from localStorage", e);
+                    this.orders = [];
+                }
+            } else {
+                 this.populateMockData();
+            }
+        }
     }
-});
-
-
-export const ordersStore = {
-    get allOrders() {
-        return state.orders;
-    },
     
-    getShopOrders(shopId: string) {
-        return state.orders.filter(order => order.shopId === shopId);
-    },
+    private populateMockData() {
+         const mockOrders: Omit<Order, 'id' | 'date' | 'status'>[] = [
+            { shopId: 'SHP-001', shopName: 'Bole Boutique', amount: 25000, items: [] },
+            { shopId: 'SHP-002', shopName: 'Hawassa Habesha', amount: 15000, items: [] },
+            { shopId: 'SHP-001', shopName: 'Bole Boutique', amount: 8000, items: [] },
+        ];
+        
+        const newOrders: Order[] = mockOrders.map((order, index) => ({
+             ...order,
+            id: `ORD-MOCK-${index}`,
+            date: new Date(new Date().setDate(new Date().getDate() - (3-index))).toISOString().split('T')[0],
+            status: 'Pending',
+        }));
 
-    addOrder(order: Omit<Order, 'id' | 'date' | 'status'>) {
+        newOrders[0].status = 'Awaiting Payment';
+        newOrders[1].status = 'Paid';
+        newOrders[2].status = 'Dispatched';
+        this.orders = newOrders;
+        this.saveOrders();
+    }
+
+    private saveOrders() {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('carement_orders', JSON.stringify(this.orders));
+            this.notifySubscribers();
+        }
+    }
+
+    private notifySubscribers() {
+        this.subscribers.forEach(callback => callback(this.orders));
+    }
+
+    subscribe(callback: (orders: Order[]) => void) {
+        this.subscribers.push(callback);
+        // Immediately notify with current data
+        callback(this.orders); 
+        return () => {
+            this.subscribers = this.subscribers.filter(sub => sub !== callback);
+        };
+    }
+
+    get allOrders() {
+        return [...this.orders];
+    }
+    
+    addOrder(order: Omit<Order, 'id' | 'date' | 'status'>): Order {
         const newOrder: Order = {
             ...order,
             id: `ORD-${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
             date: new Date().toISOString().split('T')[0],
             status: 'Pending',
         };
-        state.orders = [newOrder, ...state.orders];
+        this.orders = [newOrder, ...this.orders];
+        this.saveOrders();
         return newOrder;
-    },
+    }
 
     updateOrderStatus(orderId: string, newStatus: OrderStatus) {
-        const orderIndex = state.orders.findIndex(order => order.id === orderId);
+        const orderIndex = this.orders.findIndex(order => order.id === orderId);
         if (orderIndex > -1) {
-            state.orders[orderIndex].status = newStatus;
-            // Create a new array to trigger re-render
-            state.orders = [...state.orders];
+            this.orders[orderIndex].status = newStatus;
+            this.saveOrders();
         }
     }
-};
-
-// Example initial data for demonstration if local storage is empty
-if (typeof window !== 'undefined' && !localStorage.getItem('carement_orders')) {
-    const firstOrder = ordersStore.addOrder({
-        shopId: 'SHP-001',
-        shopName: 'Bole Boutique',
-        amount: 25000,
-        items: [],
-    });
-     ordersStore.updateOrderStatus(firstOrder.id, 'Awaiting Payment');
-     
-     const secondOrder = ordersStore.addOrder({
-        shopId: 'SHP-002',
-        shopName: 'Hawassa Habesha',
-        amount: 15000,
-        items: [],
-    });
-    ordersStore.updateOrderStatus(secondOrder.id, 'Paid');
-
-    const thirdOrder = ordersStore.addOrder({
-        shopId: 'SHP-001',
-        shopName: 'Bole Boutique',
-        amount: 8000,
-        items: [],
-    });
-     ordersStore.updateOrderStatus(thirdOrder.id, 'Dispatched');
 }
+
+export const ordersStore = new OrdersManager();

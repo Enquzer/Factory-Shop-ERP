@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,7 +13,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ordersStore, type Order, type OrderStatus } from "@/lib/orders";
-import { useSnapshot } from "valtio";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -21,7 +21,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createNotification } from "@/lib/notifications";
 
@@ -47,7 +47,14 @@ const getFactoryActions = (status: OrderStatus): OrderStatus[] => {
 
 
 export default function OrdersPage() {
-    const { allOrders } = useSnapshot(ordersStore);
+    const [allOrders, setAllOrders] = useState<Order[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const unsubscribe = ordersStore.subscribe(setAllOrders);
+        setIsLoading(false);
+        return () => unsubscribe();
+    }, []);
 
     const handleStatusChange = (order: Order, status: OrderStatus) => {
         ordersStore.updateOrderStatus(order.id, status);
@@ -60,6 +67,14 @@ export default function OrdersPage() {
             description: `Your order #${order.id} is now '${status}'`,
             href: '/shop/orders',
         });
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
     }
 
     return (

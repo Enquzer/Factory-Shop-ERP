@@ -25,26 +25,28 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "./ui/textarea";
+import { addShop } from "@/lib/shops";
+import { Loader2 } from "lucide-react";
 
 const shopSchema = z.object({
     username: z.string().min(1, "Username is required"),
     password: z.string().min(8, "Password must be at least 8 characters"),
+    name: z.string().min(1, "Shop name is required"),
     contactPerson: z.string().min(1, "Contact person is required"),
     contactPhone: z.string().min(1, "Contact phone is required"),
     city: z.string().min(1, "City is required"),
     exactLocation: z.string().min(1, "Exact location is required"),
-    discountPercent: z.coerce.number().min(0, "Discount can't be negative").max(100, "Discount can't be over 100").default(0),
+    discount: z.coerce.number().min(0, "Discount can't be negative").max(100, "Discount can't be over 100").default(0),
     tradeLicenseNumber: z.string().optional(),
     tinNumber: z.string().optional(),
-    shopPictures: z.any().optional(),
-    licenseAttachment: z.any().optional(),
 });
 
 type ShopFormValues = z.infer<typeof shopSchema>;
 
 
-export function RegisterShopDialog({ children }: { children: ReactNode }) {
+export function RegisterShopDialog({ children, onShopRegistered }: { children: ReactNode, onShopRegistered: () => void }) {
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<ShopFormValues>({
@@ -52,25 +54,38 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
     defaultValues: {
         username: "",
         password: "",
+        name: "",
         contactPerson: "",
         contactPhone: "",
         city: "",
         exactLocation: "",
-        discountPercent: 0,
+        discount: 0,
         tradeLicenseNumber: "",
         tinNumber: "",
     },
   });
 
-  const onSubmit = (data: ShopFormValues) => {
-    console.log("New Shop Data:", data);
-    // Here you would typically handle file uploads and call an API to save the shop
-    toast({
-      title: "Shop Registered",
-      description: `Shop "${data.username}" has been registered.`,
-    });
-    setOpen(false);
-    form.reset();
+  const onSubmit = async (data: ShopFormValues) => {
+    setIsLoading(true);
+    try {
+        await addShop(data);
+        toast({
+          title: "Shop Registered Successfully",
+          description: `Shop "${data.name}" has been registered.`,
+        });
+        setOpen(false);
+        form.reset();
+        onShopRegistered();
+    } catch (error) {
+        console.error("Error registering shop:", error);
+        toast({
+            title: "Registration Failed",
+            description: "An error occurred while registering the shop. Please try again.",
+            variant: "destructive",
+        })
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   return (
@@ -112,6 +127,17 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
                         )}
                     />
                     <h3 className="text-lg font-medium pt-4">Shop Information</h3>
+                     <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Shop Name</FormLabel>
+                            <FormControl><Input placeholder="e.g., Bole Boutique" {...field} /></FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
                      <FormField
                         control={form.control}
                         name="contactPerson"
@@ -162,7 +188,7 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
                     />
                      <FormField
                         control={form.control}
-                        name="discountPercent"
+                        name="discount"
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>Discount (%)</FormLabel>
@@ -176,7 +202,7 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
                 <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Business Details</h3>
+                    <h3 className="text-lg font-medium">Business Details (Optional)</h3>
                     <FormField
                         control={form.control}
                         name="tradeLicenseNumber"
@@ -201,50 +227,32 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
                     />
                 </div>
                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Attachments</h3>
-                    <FormField
-                        control={form.control}
-                        name="shopPictures"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Shop Picture(s)</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        type="file" 
-                                        accept="image/*" 
-                                        multiple
-                                        onChange={(e) => field.onChange(e.target.files)}
-                                        className="file:text-primary-foreground"
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-                    <FormField
-                        control={form.control}
-                        name="licenseAttachment"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>License Attachment</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        type="file" 
-                                        accept="image/*,application/pdf"
-                                        onChange={(e) => field.onChange(e.target.files?.[0])}
-                                        className="file:text-primary-foreground"
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                        />
+                    <h3 className="text-lg font-medium">Attachments (Coming Soon)</h3>
+                    <FormItem>
+                        <FormLabel>Shop Picture(s)</FormLabel>
+                        <FormControl>
+                            <Input type="file" disabled />
+                        </FormControl>
+                    </FormItem>
+                     <FormItem>
+                        <FormLabel>License Attachment</FormLabel>
+                        <FormControl>
+                            <Input type="file" disabled />
+                        </FormControl>
+                    </FormItem>
                 </div>
             </div>
 
             <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">Cancel</Button>
-                <Button type="submit" className="w-full sm:w-auto">Register Shop</Button>
+                <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto" disabled={isLoading}>Cancel</Button>
+                <Button type="submit" className="w-full sm:w-auto" disabled={isLoading}>
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Registering...
+                        </>
+                    ) : "Register Shop"}
+                </Button>
             </DialogFooter>
           </form>
         </Form>
@@ -252,5 +260,3 @@ export function RegisterShopDialog({ children }: { children: ReactNode }) {
     </Dialog>
   );
 }
-
-    

@@ -1,6 +1,7 @@
 
+
 import { db } from './firebase';
-import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
 
 const mockShops = [
     {
@@ -41,20 +42,19 @@ const mockShops = [
     }
 ];
 
-export type Shop = typeof mockShops[0];
+export type Shop = typeof mockShops[0] & {
+    tinNumber?: string;
+    tradeLicenseNumber?: string;
+    username?: string;
+};
 
 let shops: Shop[] = [];
 
 export async function getShops(): Promise<Shop[]> {
-    if (shops.length > 0) {
-        return shops;
-    }
-
     try {
         const querySnapshot = await getDocs(collection(db, "shops"));
         if (querySnapshot.empty) {
             console.log("No shops found in Firestore, populating with mock data.");
-            // If no shops in DB, populate with mock data
             const batch = await import('firebase/firestore').then(m => m.writeBatch(db));
             mockShops.forEach((shop) => {
                 const docRef = doc(collection(db, "shops"), shop.id);
@@ -70,8 +70,26 @@ export async function getShops(): Promise<Shop[]> {
     } catch (error) {
         console.error("Error fetching shops:", error);
         console.log("Falling back to mock shops due to error.");
-        // Fallback to mock data in case of an error
         shops = mockShops;
         return shops;
     }
 }
+
+export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Shop> {
+    // In a real app, you'd likely have a more robust ID generation system
+    const newShopId = `SHP-${Date.now().toString().slice(-6)}`;
+    const newShop: Shop = {
+        ...shopData,
+        id: newShopId,
+        status: "Active", // Default status for new shops
+    };
+
+    const shopRef = doc(db, 'shops', newShopId);
+    await setDoc(shopRef, newShop);
+
+    // Invalidate local cache
+    shops = [];
+    
+    return newShop;
+}
+

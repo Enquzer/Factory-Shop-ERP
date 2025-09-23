@@ -1,12 +1,11 @@
 
 
-"use client";
+'use client';
 
 import { type Product, type ProductVariant } from "@/lib/products";
-import { createContext, useContext, useState, ReactNode, useMemo } from "react";
+import { createContext, useContext, useState, ReactNode, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ordersStore, type Order } from "@/lib/orders";
-import { useSnapshot } from "valtio";
 import { useToast } from "./use-toast";
 import { createNotification } from "@/lib/notifications";
 // import jsPDF from "jspdf";
@@ -68,6 +67,7 @@ const generateInvoicePDF = (order: Order) => {
 
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -76,8 +76,13 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const shopName = "Bole Boutique";
   const shopDiscount = 0.05;
 
-  const orderState = useSnapshot(ordersStore);
-  const orders = orderState.allOrders.filter(o => o.shopId === shopId);
+  useEffect(() => {
+    const unsubscribe = ordersStore.subscribe(allOrders => {
+      const shopOrders = allOrders.filter(o => o.shopId === shopId);
+      setOrders(shopOrders);
+    });
+    return () => unsubscribe();
+  }, [shopId]);
 
 
   const addItem = (product: Product, variant: ProductVariant, quantity: number = 1) => {
