@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Loader2 } from "lucide-react";
+import { PlusCircle, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { AddProductDialog } from "@/components/add-product-dialog";
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
@@ -57,9 +57,23 @@ export default function ProductsPage() {
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                             {products.map(product => (
-                                <Card key={product.id} className="overflow-hidden">
+                                <Card key={product.id} className="overflow-hidden group">
                                     <div className="relative w-full aspect-[4/5]">
                                         <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} data-ai-hint={product.imageHint} />
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                            <Button size="icon" variant="secondary">
+                                                <Eye className="h-5 w-5" />
+                                                <span className="sr-only">View Product</span>
+                                            </Button>
+                                            <Button size="icon" variant="secondary">
+                                                <Pencil className="h-5 w-5" />
+                                                 <span className="sr-only">Edit Product</span>
+                                            </Button>
+                                            <Button size="icon" variant="destructive">
+                                                <Trash2 className="h-5 w-5" />
+                                                 <span className="sr-only">Delete Product</span>
+                                            </Button>
+                                        </div>
                                     </div>
                                     <CardHeader className='pb-2'>
                                         <CardTitle className="text-lg truncate">{product.name}</CardTitle>
@@ -78,5 +92,3 @@ export default function ProductsPage() {
         </div>
     );
 }
-
-    
