@@ -1,6 +1,5 @@
 
 
-
 import { db } from './firebase';
 import { collection, getDocs, doc, setDoc, writeBatch, updateDoc } from 'firebase/firestore';
 
@@ -82,13 +81,7 @@ export async function getShops(forceRefresh: boolean = false): Promise<Shop[]> {
     try {
         const querySnapshot = await getDocs(collection(db, "shops"));
         if (querySnapshot.empty) {
-            console.log("No shops found in Firestore, populating with mock data.");
-            const batch = writeBatch(db);
-            mockShops.forEach((shop) => {
-                const docRef = doc(collection(db, "shops"), shop.id);
-                batch.set(docRef, shop);
-            });
-            await batch.commit();
+            console.log("No shops found in Firestore, using mock data locally.");
             shopsCache = mockShops as Shop[];
         } else {
              shopsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));

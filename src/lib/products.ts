@@ -126,25 +126,7 @@ export async function getProducts(forceRefresh: boolean = false): Promise<Produc
         const querySnapshot = await getDocs(productsCollection);
 
         if (querySnapshot.empty) {
-            // If no products in DB, populate with mock data
-            const batch = writeBatch(db);
-            mockProducts.forEach((product) => {
-                const docRef = doc(productsCollection, product.productCode);
-                const { id, ...rest } = product;
-                batch.set(docRef, { ...rest, id: product.productCode });
-
-                // Create initial stock events
-                product.variants.forEach(variant => {
-                    createStockEvent({
-                        productId: product.productCode,
-                        variantId: variant.id,
-                        type: 'Stock In',
-                        quantity: variant.stock,
-                        reason: 'Initial stock',
-                    }, batch);
-                })
-            });
-            await batch.commit();
+            console.log("No products found in Firestore, using mock data locally.");
             productsCache = mockProducts.map(p => ({
                 ...p,
                 id: p.productCode,
