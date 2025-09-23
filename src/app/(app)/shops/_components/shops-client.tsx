@@ -42,10 +42,8 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
     const { toast } = useToast();
 
     const fetchShops = async () => {
-        setIsLoading(true);
         const shopsData = await getShops(true); // Force refresh
         setShops(shopsData);
-        setIsLoading(false);
     };
 
     const onShopRegistered = () => {
@@ -70,7 +68,7 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                 title: "Status Updated",
                 description: `Shop "${shopToToggleStatus.name}" is now ${newStatus}.`,
             });
-            fetchShops();
+            await fetchShops();
         } catch (error) {
             console.error("Error updating shop status", error);
             toast({
