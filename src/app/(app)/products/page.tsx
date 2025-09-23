@@ -7,9 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlusCircle, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { AddProductDialog } from "@/components/add-product-dialog";
-import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
-import { Product, deleteProduct } from '@/lib/products';
+import { Product, deleteProduct, getProducts } from '@/lib/products';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -37,9 +35,7 @@ export default function ProductsPage() {
 
     const fetchProducts = async () => {
         setIsLoading(true);
-        const productsQuery = query(collection(db, 'products'), orderBy('name'));
-        const productsSnapshot = await getDocs(productsQuery);
-        const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        const productsData = await getProducts();
         setProducts(productsData);
         setIsLoading(false);
     };
