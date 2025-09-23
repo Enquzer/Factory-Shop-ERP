@@ -1,5 +1,6 @@
+
 import { db } from './firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
 
 const mockProducts = [
     { 
@@ -101,10 +102,9 @@ export async function getProducts(): Promise<Product[]> {
     const querySnapshot = await getDocs(collection(db, "products"));
     if (querySnapshot.empty) {
         // If no products in DB, populate with mock data
-        const { writeBatch } = await import('firebase/firestore');
         const batch = writeBatch(db);
         mockProducts.forEach((product) => {
-            const docRef = require('firebase/firestore').doc(collection(db, "products"), product.id);
+            const docRef = doc(collection(db, "products"), product.id);
             batch.set(docRef, product);
         });
         await batch.commit();
@@ -116,4 +116,3 @@ export async function getProducts(): Promise<Product[]> {
     return products;
 }
 
-    
