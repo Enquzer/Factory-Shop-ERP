@@ -42,8 +42,10 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
     const { toast } = useToast();
 
     const fetchShops = async () => {
+        setIsLoading(true);
         const shopsData = await getShops(true); // Force refresh
         setShops(shopsData);
+        setIsLoading(false);
     };
 
     const onShopRegistered = () => {
