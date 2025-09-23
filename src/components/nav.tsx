@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -36,9 +37,7 @@ export function Nav() {
           >
             <Link href={link.href}>
               <link.icon className="h-4 w-4" />
-              <span className={cn(
-                "group-data-[collapsible=icon]:hidden",
-              )}>
+              <span>
                 {link.label}
               </span>
             </Link>

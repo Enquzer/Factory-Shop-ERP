@@ -39,9 +39,7 @@ export function ShopNav() {
           >
             <Link href={link.href}>
               <link.icon className="h-4 w-4" />
-              <span className={cn(
-                "group-data-[collapsible=icon]:hidden",
-              )}>
+              <span>
                 {link.label}
               </span>
             </Link>
@@ -57,7 +55,7 @@ export function ShopNav() {
           >
             <Link href="/shop/orders/create">
               <ShoppingCart className="h-4 w-4" />
-              <span className={cn("group-data-[collapsible=icon]:hidden")}>
+              <span>
                 Create Order
               </span>
               {items.length > 0 && <Badge className="ml-auto">{items.length}</Badge>}
