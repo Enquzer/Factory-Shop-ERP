@@ -15,7 +15,7 @@ export function ShopAppProvider({ children }: { children: React.ReactNode }) {
         <OrderProvider>
             <TooltipProvider>
                 <SidebarProvider>
-                     <Sidebar>
+                     <Sidebar collapsible="icon">
                         <SidebarHeader className="border-b border-sidebar-border p-3">
                         <Logo />
                         </SidebarHeader>
