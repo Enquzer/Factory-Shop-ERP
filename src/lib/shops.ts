@@ -70,7 +70,7 @@ let lastFetchTime: number | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export async function getShops(forceRefresh: boolean = false): Promise<Shop[]> {
-     const now = Date.now();
+    const now = Date.now();
     if (!forceRefresh && shopsCache && lastFetchTime && (now - lastFetchTime < CACHE_DURATION)) {
         return shopsCache;
     }
@@ -86,17 +86,15 @@ export async function getShops(forceRefresh: boolean = false): Promise<Shop[]> {
             });
             await batch.commit();
             shopsCache = mockShops as Shop[];
-            return shopsCache;
+        } else {
+             shopsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));
         }
 
-        shopsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));
         lastFetchTime = now;
         return shopsCache;
     } catch (error) {
         console.error("Error fetching shops:", error);
-        console.log("Falling back to mock shops due to error.");
-        shopsCache = mockShops as Shop[];
-        return shopsCache;
+        return shopsCache || mockShops as Shop[];
     }
 }
 

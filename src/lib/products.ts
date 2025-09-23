@@ -117,41 +117,46 @@ export async function getProducts(forceRefresh: boolean = false): Promise<Produc
         return productsCache;
     }
 
-    const productsCollection = collection(db, "products");
-    const querySnapshot = await getDocs(productsCollection);
+    try {
+        const productsCollection = collection(db, "products");
+        const querySnapshot = await getDocs(productsCollection);
 
-    if (querySnapshot.empty) {
-        // If no products in DB, populate with mock data
-        const batch = writeBatch(db);
-        mockProducts.forEach((product) => {
-            const docRef = doc(productsCollection, product.productCode);
-            const { id, ...rest } = product;
-            batch.set(docRef, { ...rest, id: product.productCode });
+        if (querySnapshot.empty) {
+            // If no products in DB, populate with mock data
+            const batch = writeBatch(db);
+            mockProducts.forEach((product) => {
+                const docRef = doc(productsCollection, product.productCode);
+                const { id, ...rest } = product;
+                batch.set(docRef, { ...rest, id: product.productCode });
 
-            // Create initial stock events
-            product.variants.forEach(variant => {
-                createStockEvent({
-                    productId: product.productCode,
-                    variantId: variant.id,
-                    type: 'Stock In',
-                    quantity: variant.stock,
-                    reason: 'Initial stock',
-                }, batch);
-            })
-        });
-        await batch.commit();
-        productsCache = mockProducts.map(p => ({
-            ...p,
-            id: p.productCode,
-            variants: p.variants.map(v => ({...v, productId: p.productCode}))
-        })) as unknown as Product[];
+                // Create initial stock events
+                product.variants.forEach(variant => {
+                    createStockEvent({
+                        productId: product.productCode,
+                        variantId: variant.id,
+                        type: 'Stock In',
+                        quantity: variant.stock,
+                        reason: 'Initial stock',
+                    }, batch);
+                })
+            });
+            await batch.commit();
+            productsCache = mockProducts.map(p => ({
+                ...p,
+                id: p.productCode,
+                variants: p.variants.map(v => ({...v, productId: p.productCode}))
+            })) as unknown as Product[];
+        } else {
+            productsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+        }
+        
         lastFetchTime = now;
         return productsCache;
-    }
 
-    productsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
-    lastFetchTime = now;
-    return productsCache;
+    } catch (error) {
+        console.error("Error fetching products, falling back to cache or mock:", error);
+        return productsCache || mockProducts as unknown as Product[];
+    }
 }
 
 export async function updateProductStock(transaction: Transaction, productId: string, variantId: string, quantityChange: number, reason: StockEvent['reason'] = 'Order fulfillment') {
