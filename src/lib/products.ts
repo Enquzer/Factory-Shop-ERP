@@ -1,7 +1,7 @@
 
 
 import { db, storage } from './firebase';
-import { collection, getDocs, doc, writeBatch, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, deleteDoc, getDoc, Transaction, updateDoc } from 'firebase/firestore';
 import { deleteObject, ref } from 'firebase/storage';
 
 const mockProducts = [
@@ -107,9 +107,16 @@ export type Product = {
 };
 export type ProductVariant = Product["variants"][0];
 
-let products: Product[] = [];
+let productsCache: Product[] | null = null;
+let lastFetchTime: number | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-export async function getProducts(): Promise<Product[]> {
+export async function getProducts(forceRefresh: boolean = false): Promise<Product[]> {
+    const now = Date.now();
+    if (!forceRefresh && productsCache && lastFetchTime && (now - lastFetchTime < CACHE_DURATION)) {
+        return productsCache;
+    }
+
     const productsCollection = collection(db, "products");
     const querySnapshot = await getDocs(productsCollection);
 
@@ -122,16 +129,47 @@ export async function getProducts(): Promise<Product[]> {
             batch.set(docRef, { ...rest, id: product.productCode });
         });
         await batch.commit();
-        products = mockProducts.map(p => ({
+        productsCache = mockProducts.map(p => ({
             ...p,
             id: p.productCode,
             variants: p.variants.map(v => ({...v, productId: p.productCode}))
         })) as unknown as Product[];
-        return products;
+        lastFetchTime = now;
+        return productsCache;
     }
 
-    products = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
-    return products;
+    productsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+    lastFetchTime = now;
+    return productsCache;
+}
+
+export async function updateProductStock(transaction: Transaction, productId: string, variantId: string, quantityChange: number) {
+    const productRef = doc(db, 'products', productId);
+    const productDoc = await transaction.get(productRef);
+
+    if (!productDoc.exists()) {
+        throw new Error(`Product ${productId} not found!`);
+    }
+
+    const productData = productDoc.data() as Product;
+    const variantIndex = productData.variants.findIndex(v => v.id === variantId);
+
+    if (variantIndex === -1) {
+        throw new Error(`Variant ${variantId} not found in product ${productId}!`);
+    }
+    
+    const newStock = productData.variants[variantIndex].stock + quantityChange;
+    if (newStock < 0) {
+        throw new Error(`Insufficient stock for ${productData.name} (${productData.variants[variantIndex].color}, ${productData.variants[variantIndex].size}).`);
+    }
+
+    const newVariants = [...productData.variants];
+    newVariants[variantIndex] = {
+        ...newVariants[variantIndex],
+        stock: newStock
+    };
+
+    transaction.update(productRef, { variants: newVariants });
 }
 
 export async function deleteProduct(productId: string) {
@@ -182,4 +220,6 @@ export async function deleteProduct(productId: string) {
     
     // Finally, delete the product document from Firestore
     await deleteDoc(productRef);
+    // Invalidate cache
+    productsCache = null; 
 }

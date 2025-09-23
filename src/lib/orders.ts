@@ -2,7 +2,9 @@
 
 'use client';
 
-import { type Product, type ProductVariant } from './products';
+import { db } from './firebase';
+import { doc, runTransaction } from 'firebase/firestore';
+import { type Product, type ProductVariant, updateProductStock } from './products';
 
 export type OrderItem = { 
   productId: string;
@@ -94,13 +96,27 @@ class OrdersManager {
         return [...this.orders];
     }
     
-    addOrder(order: Omit<Order, 'id' | 'date' | 'status'>): Order {
+    async addOrder(order: Omit<Order, 'id' | 'date' | 'status'>): Promise<Order> {
         const newOrder: Order = {
             ...order,
             id: `ORD-${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
             date: new Date().toISOString().split('T')[0],
             status: 'Pending',
         };
+
+        // Deduct stock
+        try {
+            await runTransaction(db, async (transaction) => {
+                for (const item of newOrder.items) {
+                    await updateProductStock(transaction, item.productId, item.variant.id, -item.quantity);
+                }
+            });
+        } catch (error) {
+            console.error("Stock update transaction failed: ", error);
+            throw new Error("Failed to update stock. Order not placed.");
+        }
+
+
         this.orders = [newOrder, ...this.orders];
         this.saveOrders();
         return newOrder;

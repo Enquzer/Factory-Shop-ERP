@@ -99,7 +99,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           productId: product.id,
           name: product.name,
           price: product.price,
-          imageUrl: variant.imageUrl, 
+          imageUrl: variant.imageUrl || product.imageUrl, 
           variant, 
           quantity 
       }];
@@ -132,41 +132,50 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   
   const finalAmountAfterDiscount = totalAmount * (1 - shopDiscount);
 
-  const placeOrder = () => {
+  const placeOrder = async () => {
       if (items.length === 0) return;
 
-      const newOrder = ordersStore.addOrder({
-          shopId,
-          shopName,
-          amount: finalAmountAfterDiscount,
-          items: [...items],
-      });
-      
-      clearOrder();
+      try {
+        const newOrder = await ordersStore.addOrder({
+            shopId,
+            shopName,
+            amount: finalAmountAfterDiscount,
+            items: [...items],
+        });
+        
+        clearOrder();
 
-       toast({
-          title: "Order Placed Successfully!",
-          description: `Your order #${newOrder.id} has been sent for processing.`,
-          action: (
-              <button
-                onClick={() => generateInvoicePDF(newOrder)}
-                className="bg-primary text-primary-foreground py-1 px-3 rounded-md text-sm"
-                disabled
-              >
-                Download Invoice
-              </button>
-          )
-      });
-      
-      // Create notification for factory
-      createNotification({
-          userType: 'factory',
-          title: `New Order: ${newOrder.id}`,
-          description: `From ${shopName} for ETB ${newOrder.amount.toFixed(2)}`,
-          href: `/orders`
-      });
+        toast({
+            title: "Order Placed Successfully!",
+            description: `Your order #${newOrder.id} has been sent for processing.`,
+            action: (
+                <button
+                  onClick={() => generateInvoicePDF(newOrder)}
+                  className="bg-primary text-primary-foreground py-1 px-3 rounded-md text-sm"
+                  disabled
+                >
+                  Download Invoice
+                </button>
+            )
+        });
+        
+        // Create notification for factory
+        createNotification({
+            userType: 'factory',
+            title: `New Order: ${newOrder.id}`,
+            description: `From ${shopName} for ETB ${newOrder.amount.toFixed(2)}`,
+            href: `/orders`
+        });
 
-      router.push('/shop/orders');
+        router.push('/shop/orders');
+      } catch (error) {
+         console.error("Failed to place order:", error);
+         toast({
+            title: "Order Failed",
+            description: "There was an issue placing your order. It might be due to insufficient stock. Please try again.",
+            variant: "destructive",
+         });
+      }
   }
 
   const value = {
