@@ -208,6 +208,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
             description: `"${data.name}" has been updated.`,
         });
         
+        onOpenChange(false);
         onProductUpdated();
 
     } catch (error) {
