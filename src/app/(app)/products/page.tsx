@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -38,7 +37,7 @@ export default function ProductsPage() {
 
     const fetchProducts = async () => {
         setIsLoading(true);
-        const productsData = await getProducts();
+        const productsData = await getProducts(true); // Force refresh
         setProducts(productsData);
         setIsLoading(false);
     };
@@ -196,5 +195,3 @@ export default function ProductsPage() {
         </div>
     );
 }
-
-    

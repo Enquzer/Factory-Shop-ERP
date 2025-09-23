@@ -1,13 +1,7 @@
-
-
-"use client";
-
-import { useState, useEffect } from 'react';
 import {
     ArrowDownUp,
     Package,
     ShoppingCart,
-    Loader2
   } from "lucide-react"
   
 import {
@@ -27,10 +21,10 @@ import {
 } from "@/components/ui/table"
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useOrder } from '@/hooks/use-order';
+import { getOrdersForShop } from '@/lib/orders';
 import { getProducts } from '@/lib/products';
 import { Badge } from '@/components/ui/badge';
-import type { Order, OrderStatus } from "@/lib/orders";
+import type { OrderStatus } from "@/lib/orders";
 
 const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
     Pending: 'default',
@@ -41,20 +35,15 @@ const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive
     Cancelled: 'destructive'
 };
 
-export default function ShopDashboardPage() {
-    const { orders } = useOrder();
-    const [totalProducts, setTotalProducts] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
+// This is a placeholder. In a real app, you'd get this from the user's session.
+const MOCK_SHOP_ID = "SHP-001";
 
-     useEffect(() => {
-        const fetchProductCount = async () => {
-            setIsLoading(true);
-            const products = await getProducts();
-            setTotalProducts(products.length);
-            setIsLoading(false);
-        };
-        fetchProductCount();
-    }, []);
+export default async function ShopDashboardPage() {
+    const [orders, products] = await Promise.all([
+        getOrdersForShop(MOCK_SHOP_ID),
+        getProducts()
+    ]);
+    const totalProducts = products.length;
 
     const metrics = {
       pendingOrders: orders.filter(o => o.status === 'Pending' || o.status === 'Awaiting Payment').length,
@@ -63,14 +52,6 @@ export default function ShopDashboardPage() {
     };
     
     const recentOrders = orders.slice(0, 5);
-  
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            </div>
-        );
-    }
 
     return (
       <div className="flex flex-col gap-6">
@@ -165,4 +146,4 @@ export default function ShopDashboardPage() {
         </Card>
       </div>
     )
-  }
+}

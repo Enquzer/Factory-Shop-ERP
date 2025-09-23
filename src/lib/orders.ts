@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { db } from './firebase';
@@ -45,6 +44,27 @@ export async function getOrders(): Promise<Order[]> {
     });
 }
 
+// Standalone function to get all orders for a specific shop.
+export async function getOrdersForShop(shopId: string): Promise<Order[]> {
+    const ordersQuery = query(
+        collection(db, "orders"), 
+        where("shopId", "==", shopId),
+        orderBy("createdAt", "desc")
+    );
+    const snapshot = await getDocs(ordersQuery);
+    if (snapshot.empty) {
+        return [];
+    }
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            ...data,
+            date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
+        } as Order;
+    });
+}
+
 
 class OrdersManager {
     private orders: Order[] = [];
@@ -64,46 +84,23 @@ class OrdersManager {
         
         this.unsubscribeFromFirestore = onSnapshot(ordersQuery, async (snapshot) => {
             if (snapshot.empty) {
-                console.log("No orders found in Firestore. Populating with mock data.");
-                await this.populateMockData();
-                return;
+                console.log("No orders found in Firestore.");
+                // We won't populate mock data here anymore to avoid conflicts with server-side rendering
+                this.orders = [];
+            } else {
+                this.orders = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        ...data,
+                        date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
+                    } as Order;
+                });
             }
-            
-            this.orders = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    ...data,
-                    // Firebase timestamps need to be converted
-                    date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
-                } as Order;
-            });
             this.notifySubscribers();
         }, (error) => {
             console.error("Error listening to orders collection:", error);
         });
-    }
-    
-    private async populateMockData() {
-         const mockOrdersData = [
-            { shopId: 'SHP-001', shopName: 'Bole Boutique', amount: 25000, items: [], status: 'Awaiting Payment' },
-            { shopId: 'SHP-002', shopName: 'Hawassa Habesha', amount: 15000, items: [], status: 'Paid' },
-            { shopId: 'SHP-001', shopName: 'Bole Boutique', amount: 8000, items: [], status: 'Dispatched' },
-        ];
-        
-        const batch = writeBatch(db);
-        mockOrdersData.forEach((order, index) => {
-            const orderRef = doc(collection(db, 'orders'));
-            const orderDate = new Date();
-            orderDate.setDate(orderDate.getDate() - (3 - index));
-            batch.set(orderRef, {
-                ...order,
-                createdAt: Timestamp.fromDate(orderDate),
-            });
-        });
-        
-        await batch.commit();
-        // The listener will pick up the new data automatically
     }
 
     private notifySubscribers() {
@@ -112,7 +109,6 @@ class OrdersManager {
 
     subscribe(callback: (orders: Order[]) => void): () => void {
         this.subscribers.push(callback);
-        // Immediately notify with current data
         callback(this.orders); 
         return () => {
             this.subscribers = this.subscribers.filter(sub => sub !== callback);
@@ -124,7 +120,6 @@ class OrdersManager {
     }
     
     async addOrder(order: Omit<Order, 'id' | 'date' | 'status' | 'createdAt'>): Promise<Order> {
-        // Deduct stock
         try {
             await runTransaction(db, async (transaction) => {
                 for (const item of order.items) {
@@ -132,21 +127,15 @@ class OrdersManager {
                 }
             });
 
-            // If stock deduction is successful, create the order
-            const orderRef = doc(collection(db, 'orders'));
-            const newOrderData = {
+            const docRef = await addDoc(collection(db, 'orders'), {
                 ...order,
                 status: 'Pending' as OrderStatus,
                 createdAt: serverTimestamp(),
-            };
-            await addDoc(collection(db, 'orders'), newOrderData);
+            });
             
-            // The listener will automatically update the local state.
-            // We can construct a temporary object to return, but the ID will be wrong.
-            // Best to rely on the listener to update UI.
              return {
                 ...order,
-                id: 'TEMP-' + Date.now(), // temporary ID
+                id: docRef.id,
                 status: 'Pending',
                 date: new Date().toISOString().split('T')[0],
                 createdAt: Timestamp.now(),
@@ -164,7 +153,6 @@ class OrdersManager {
             await runTransaction(db, async (transaction) => {
                 transaction.update(orderRef, { status: newStatus });
             });
-            // Listener will update local state
         } catch (error) {
             console.error(`Failed to update status for order ${orderId}:`, error);
         }
