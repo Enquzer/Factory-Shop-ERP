@@ -1,6 +1,8 @@
 
-import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
+
+import { db, storage } from './firebase';
+import { collection, getDocs, doc, setDoc, writeBatch, deleteDoc } from 'firebase/firestore';
+import { deleteObject, ref } from 'firebase/storage';
 
 const mockProducts = [
     { 
@@ -80,7 +82,6 @@ type BaseProduct = {
     imageHint: string;
     variants: {
         id: string;
-        productId: string;
         color: string;
         size: string;
         stock: number;
@@ -89,26 +90,36 @@ type BaseProduct = {
     }[];
 }
 
-export type Product = BaseProduct;
+export type Product = Omit<BaseProduct, 'variants'> & {
+    variants: {
+        id: string;
+        color: string;
+        size: string;
+        stock: number;
+        imageUrl: string;
+        imageHint: string;
+    }[];
+};
 export type ProductVariant = Product["variants"][0];
 
 let products: Product[] = [];
 
 export async function getProducts(): Promise<Product[]> {
-    if (products.length > 0) {
-        return products;
-    }
+    const productsCollection = collection(db, "products");
+    const querySnapshot = await getDocs(productsCollection);
 
-    const querySnapshot = await getDocs(collection(db, "products"));
     if (querySnapshot.empty) {
         // If no products in DB, populate with mock data
         const batch = writeBatch(db);
         mockProducts.forEach((product) => {
-            const docRef = doc(collection(db, "products"), product.id);
+            const docRef = doc(productsCollection, product.id);
             batch.set(docRef, product);
         });
         await batch.commit();
-        products = mockProducts;
+        products = mockProducts.map(p => ({
+            ...p,
+            variants: p.variants.map(v => ({...v, productId: p.id}))
+        })) as unknown as Product[];
         return products;
     }
 
@@ -116,3 +127,54 @@ export async function getProducts(): Promise<Product[]> {
     return products;
 }
 
+export async function deleteProduct(productId: string) {
+    if (!productId) {
+        throw new Error("Product ID is required to delete a product.");
+    }
+
+    // First, get the product document to find image paths
+    const productRef = doc(db, 'products', productId);
+    const productDoc = await import('firebase/firestore').then(m => m.getDoc(productRef));
+
+    if (productDoc.exists()) {
+        const productData = productDoc.data() as Product;
+        const imagePaths: string[] = [];
+
+        // Collect main image path
+        if (productData.imageUrl) {
+            try {
+               const mainImageRef = ref(storage, productData.imageUrl);
+               imagePaths.push(mainImageRef.fullPath);
+            } catch (e) {
+                console.warn(`Could not parse storage URL for main image: ${productData.imageUrl}`);
+            }
+        }
+        // Collect variant image paths
+        productData.variants.forEach(variant => {
+            if (variant.imageUrl) {
+                 try {
+                    const variantImageRef = ref(storage, variant.imageUrl);
+                    imagePaths.push(variantImageRef.fullPath);
+                 } catch(e) {
+                     console.warn(`Could not parse storage URL for variant image: ${variant.imageUrl}`);
+                 }
+            }
+        });
+        
+        // Delete all images from storage
+        const deletePromises = imagePaths.map(path => {
+            const imageRef = ref(storage, path);
+            return deleteObject(imageRef).catch(error => {
+                // Log error but don't block deletion of DB entry
+                console.error(`Failed to delete image ${path}:`, error);
+            });
+        });
+
+        await Promise.all(deletePromises);
+    }
+    
+    // Finally, delete the product document from Firestore
+    await deleteDoc(productRef);
+}
+
+    

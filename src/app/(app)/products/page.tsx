@@ -7,32 +7,84 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PlusCircle, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { AddProductDialog } from "@/components/add-product-dialog";
 import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { Product } from '@/lib/products';
+import { collection, getDocs, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { Product, deleteProduct } from '@/lib/products';
 import Image from 'next/image';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ProductDetailDialog } from '@/components/product-detail-dialog-view';
+import { EditProductDialog } from '@/components/edit-product-dialog';
+
 
 export default function ProductsPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+    const [productToView, setProductToView] = useState<Product | null>(null);
+    const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const { toast } = useToast();
+
+    const fetchProducts = async () => {
+        setIsLoading(true);
+        const productsQuery = query(collection(db, 'products'), orderBy('name'));
+        const productsSnapshot = await getDocs(productsQuery);
+        const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        setProducts(productsData);
+        setIsLoading(false);
+    };
 
     useEffect(() => {
-        const fetchProducts = async () => {
-            setIsLoading(true);
-            const productsQuery = query(collection(db, 'products'), orderBy('name'));
-            const productsSnapshot = await getDocs(productsQuery);
-            const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(productsData);
-            setIsLoading(false);
-        };
-
         fetchProducts();
     }, []);
+
+    const onProductAdded = () => {
+      fetchProducts();
+    }
+
+    const onProductUpdated = () => {
+      fetchProducts();
+      setProductToEdit(null);
+    }
+
+    const handleDeleteConfirm = async () => {
+        if (!productToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteProduct(productToDelete.id);
+            toast({
+                title: "Product Deleted",
+                description: `"${productToDelete.name}" has been removed from your catalog.`,
+            });
+            setProductToDelete(null);
+            fetchProducts();
+        } catch (error) {
+            console.error("Error deleting product:", error);
+            toast({
+                title: "Error",
+                description: "Failed to delete product. Please try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsDeleting(false);
+        }
+    }
+
 
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <h1 className="text-2xl font-semibold self-start sm:self-center">Products</h1>
-                <AddProductDialog>
+                <AddProductDialog onProductAdded={onProductAdded}>
                     <Button className="w-full sm:w-auto">
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Add Product
@@ -60,16 +112,16 @@ export default function ProductsPage() {
                                 <Card key={product.id} className="overflow-hidden group">
                                     <div className="relative w-full aspect-[4/5]">
                                         <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} data-ai-hint={product.imageHint} />
-                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                            <Button size="icon" variant="secondary">
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                            <Button size="icon" variant="secondary" onClick={() => setProductToView(product)}>
                                                 <Eye className="h-5 w-5" />
                                                 <span className="sr-only">View Product</span>
                                             </Button>
-                                            <Button size="icon" variant="secondary">
+                                            <Button size="icon" variant="secondary" onClick={() => setProductToEdit(product)}>
                                                 <Pencil className="h-5 w-5" />
                                                  <span className="sr-only">Edit Product</span>
                                             </Button>
-                                            <Button size="icon" variant="destructive">
+                                            <Button size="icon" variant="destructive" onClick={() => setProductToDelete(product)}>
                                                 <Trash2 className="h-5 w-5" />
                                                  <span className="sr-only">Delete Product</span>
                                             </Button>
@@ -89,6 +141,47 @@ export default function ProductsPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* View Product Dialog */}
+            {productToView && (
+                <ProductDetailDialog
+                    product={productToView}
+                    open={!!productToView}
+                    onOpenChange={(isOpen) => !isOpen && setProductToView(null)}
+                />
+            )}
+            
+            {/* Edit Product Dialog */}
+            {productToEdit && (
+                <EditProductDialog
+                    product={productToEdit}
+                    open={!!productToEdit}
+                    onOpenChange={(isOpen) => !isOpen && setProductToEdit(null)}
+                    onProductUpdated={onProductUpdated}
+                />
+            )}
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!productToDelete} onOpenChange={(isOpen) => !isOpen && setProductToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure you want to delete this product?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the product
+                        "{productToDelete?.name}" and all its associated data from the database.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteConfirm} disabled={isDeleting}>
+                        {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
         </div>
     );
 }
+
+    

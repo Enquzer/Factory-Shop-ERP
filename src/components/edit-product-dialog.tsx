@@ -1,9 +1,8 @@
 
-
 "use client";
 
 import * as React from "react";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,7 +14,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -38,14 +36,18 @@ import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, Trash2, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { db, storage } from "@/lib/firebase";
-import { collection, doc, setDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { doc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { Product, ProductVariant } from "@/lib/products";
 
 const variantSchema = z.object({
+  id: z.string(),
   color: z.string().min(1, "Color is required"),
   size: z.string().min(1, "Size is required"),
   stock: z.coerce.number().int().positive("Stock must be a positive number"),
   image: z.any().optional(),
+  imageUrl: z.string().optional(),
+  imageHint: z.string().optional(),
 });
 
 const productSchema = z.object({
@@ -53,7 +55,7 @@ const productSchema = z.object({
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
-  imageUrl: z.any().refine((file) => file, "Main product image is required."),
+  imageUrl: z.any(),
   imageHint: z.string().optional(),
   variants: z.array(variantSchema).min(1, "At least one variant is required"),
 });
@@ -63,24 +65,32 @@ type ProductFormValues = z.infer<typeof productSchema>;
 const categories = ["Men", "Women", "Kids", "Unisex"];
 
 const VariantImagePreview = ({ control, index }: { control: any, index: number }) => {
-    const imageFile = useWatch({
+    const image = useWatch({
       control,
       name: `variants.${index}.image`,
+    });
+
+    const existingUrl = useWatch({
+        control,
+        name: `variants.${index}.imageUrl`,
     });
   
     const [preview, setPreview] = useState<string | null>(null);
   
-    React.useEffect(() => {
-      if (imageFile && typeof imageFile !== 'string') {
-        const url = URL.createObjectURL(imageFile);
+    useEffect(() => {
+      if (image instanceof File) {
+        const url = URL.createObjectURL(image);
         setPreview(url);
         return () => URL.revokeObjectURL(url);
-      } else if (typeof imageFile === 'string') {
-        setPreview(imageFile);
-      } else {
+      } else if (typeof image === 'string') {
+        setPreview(image);
+      } else if (existingUrl) {
+        setPreview(existingUrl);
+      }
+      else {
         setPreview(null);
       }
-    }, [imageFile]);
+    }, [image, existingUrl]);
   
     if (!preview) return null;
   
@@ -91,20 +101,17 @@ const VariantImagePreview = ({ control, index }: { control: any, index: number }
     );
 };
 
-export function AddProductDialog({ children, onProductAdded }: { children: ReactNode, onProductAdded: () => void }) {
-  const [open, setOpen] = useState(false);
+export function EditProductDialog({ product, open, onOpenChange, onProductUpdated }: { product: Product, open: boolean, onOpenChange: (open: boolean) => void, onProductUpdated: () => void }) {
   const [isLoading, setIsLoading] = useState(false);
-  const [mainImagePreview, setMainImagePreview] = useState<string | null>(null);
+  const [mainImagePreview, setMainImagePreview] = useState<string | null>(product.imageUrl);
   const { toast } = useToast();
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
-      name: "",
-      category: "",
-      price: 0,
-      description: "",
-      variants: [{ color: "", size: "", stock: 1 }],
+      ...product,
+      imageUrl: product.imageUrl,
+      variants: product.variants.map(v => ({ ...v, image: v.imageUrl })),
     },
   });
 
@@ -117,9 +124,6 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
     const file = event.target.files?.[0];
     if (file) {
       const newPreviewUrl = URL.createObjectURL(file);
-      if (mainImagePreview) {
-          URL.revokeObjectURL(mainImagePreview);
-      }
       setMainImagePreview(newPreviewUrl);
       form.setValue("imageUrl", file);
     }
@@ -135,21 +139,28 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-        const productId = `PROD-${Date.now()}`;
-        
-        // Upload main image
-        const mainImageFile = data.imageUrl as File;
-        const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
+        const productRef = doc(db, "products", product.id);
 
-        // Upload variant images
+        let mainImageUrl = product.imageUrl;
+        if (data.imageUrl instanceof File) {
+            mainImageUrl = await uploadImage(data.imageUrl, `products/${product.id}/main.jpg`);
+        }
+
         const uploadedVariants = await Promise.all(data.variants.map(async (variant, index) => {
-            let variantImageUrl = '';
-            if (variant.image) {
-                const variantImageFile = variant.image as File;
-                variantImageUrl = await uploadImage(variantImageFile, `products/${productId}/variant-${index}.jpg`);
+            let variantImageUrl = variant.imageUrl || '';
+            if (variant.image instanceof File) {
+                 if (variant.imageUrl) {
+                    try {
+                        const oldImageRef = ref(storage, variant.imageUrl);
+                        await deleteObject(oldImageRef);
+                    } catch(e) {
+                        console.warn("Old variant image not found, could not delete.", e);
+                    }
+                 }
+                variantImageUrl = await uploadImage(variant.image, `products/${product.id}/variant-${variant.id}.jpg`);
             }
             return {
-                id: `VAR-${Date.now()}-${index}`,
+                id: variant.id,
                 color: variant.color,
                 size: variant.size,
                 stock: variant.stock,
@@ -158,8 +169,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
             };
         }));
         
-        const newProduct = {
-            id: productId,
+        const updatedProductData = {
             name: data.name,
             category: data.category,
             price: data.price,
@@ -169,23 +179,20 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
             variants: uploadedVariants,
         };
 
-        await setDoc(doc(db, "products", productId), newProduct);
+        await updateDoc(productRef, updatedProductData);
 
         toast({
-            title: "Product Added Successfully",
-            description: `"${data.name}" has been added to your catalog.`,
+            title: "Product Updated Successfully",
+            description: `"${data.name}" has been updated.`,
         });
         
-        setOpen(false);
-        form.reset();
-        setMainImagePreview(null);
-        onProductAdded();
+        onProductUpdated();
 
     } catch (error) {
-        console.error("Error adding product:", error);
+        console.error("Error updating product:", error);
         toast({
             title: "Error",
-            description: "Failed to add the product. Please try again.",
+            description: "Failed to update the product. Please try again.",
             variant: "destructive",
         });
     } finally {
@@ -194,13 +201,12 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Add New Product</DialogTitle>
+          <DialogTitle>Edit Product</DialogTitle>
           <DialogDescription>
-            Fill in the details below to add a new product to your catalog.
+            Update the details for "{product.name}".
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -378,7 +384,7 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
                  <Button
                     type="button"
                     variant="outline"
-                    onClick={() => append({ color: "", size: "", stock: 1, image: undefined })}
+                    onClick={() => append({ id: `NEWVAR-${Date.now()}`, color: "", size: "", stock: 1, image: undefined })}
                     className="mt-4"
                     disabled={isLoading}
                   >
@@ -390,14 +396,15 @@ export function AddProductDialog({ children, onProductAdded }: { children: React
             </div>
 
             <DialogFooter>
-              <Button type="submit" disabled={isLoading}>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                <Button type="submit" disabled={isLoading}>
                 {isLoading ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding Product...
+                        Saving Changes...
                     </>
                 ) : (
-                    "Add Product"
+                    "Save Changes"
                 )}
                 </Button>
             </DialogFooter>
