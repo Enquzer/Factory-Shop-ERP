@@ -9,8 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useOrder } from "@/hooks/use-order";
 import { Eye, Download, CreditCard, Truck, CheckCircle, Loader2 } from "lucide-react";
 import type { Order, OrderStatus } from "@/lib/orders";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { ordersStore } from "@/lib/orders";
 import { createNotification } from "@/lib/notifications";
 import { addItemsToShopInventory } from "@/lib/shop-inventory";
@@ -27,7 +25,10 @@ const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive
     Cancelled: 'destructive'
 };
 
-const generateOrderConfirmationPDF = (order: Order, shop: Shop) => {
+const generateOrderConfirmationPDF = async (order: Order, shop: Shop) => {
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+
     const doc = new jsPDF();
     const discountedPrice = order.amount;
     const originalPrice = order.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -58,7 +59,7 @@ const generateOrderConfirmationPDF = (order: Order, shop: Shop) => {
     // Create a new array for autotable that includes the image
     const tableBody = order.items.map(item => ([
         '', // Placeholder for image
-        item.productId,
+        item.productCode,
         `${item.name}\n${item.variant.color}, ${item.variant.size}`,
         item.quantity,
         `ETB ${item.price.toFixed(2)}`,
