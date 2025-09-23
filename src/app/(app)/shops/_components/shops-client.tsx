@@ -70,7 +70,12 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                 title: "Status Updated",
                 description: `Shop "${shopToToggleStatus.name}" is now ${newStatus}.`,
             });
-            await fetchShops();
+            // Directly update the state to reflect the change immediately
+            setShops(prevShops =>
+                prevShops.map(shop =>
+                    shop.id === shopToToggleStatus.id ? { ...shop, status: newStatus } : shop
+                )
+            );
         } catch (error) {
             console.error("Error updating shop status", error);
             toast({
@@ -158,11 +163,11 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                                                     <Edit className="mr-2 h-4 w-4" /> Edit
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuItem onClick={() => setShopToToggleStatus(shop)} className={shop.status === 'Inactive' ? 'text-green-600 focus:text-green-700' : 'text-destructive focus:text-destructive'}>
-                                                    {shop.status === 'Inactive' ? (
-                                                        <><ToggleRight className="mr-2 h-4 w-4" /> Activate</>
-                                                    ) : (
+                                                <DropdownMenuItem onClick={() => setShopToToggleStatus(shop)} className={shop.status === 'Active' ? 'text-destructive focus:text-destructive' : 'text-green-600 focus:text-green-700'}>
+                                                    {shop.status === 'Active' ? (
                                                         <><ToggleLeft className="mr-2 h-4 w-4" /> Deactivate</>
+                                                    ) : (
+                                                        <><ToggleRight className="mr-2 h-4 w-4" /> Activate</>
                                                     )}
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
