@@ -12,7 +12,8 @@ const mockShops = [
         city: "Addis Ababa",
         exactLocation: "Bole, next to Edna Mall",
         discount: 0.05,
-        status: "Active"
+        status: "Active",
+        monthlySalesTarget: 50000,
     },
     {
         id: "SHP-002",
@@ -22,7 +23,8 @@ const mockShops = [
         city: "Hawassa",
         exactLocation: "Piassa, near the lake",
         discount: 0,
-        status: "Active"
+        status: "Active",
+        monthlySalesTarget: 30000,
     },
     {
         id: "SHP-003",
@@ -32,7 +34,8 @@ const mockShops = [
         city: "Addis Ababa",
         exactLocation: "Merkato, main market area",
         discount: 0.10,
-        status: "Pending"
+        status: "Pending",
+        monthlySalesTarget: 75000,
     },
     {
         id: "SHP-004",
@@ -42,7 +45,8 @@ const mockShops = [
         city: "Adama",
         exactLocation: "City center, across from the post office",
         discount: 0.05,
-        status: "Inactive"
+        status: "Inactive",
+        monthlySalesTarget: 25000,
     }
 ];
 
@@ -55,6 +59,7 @@ export type Shop = {
     exactLocation: string;
     discount: number; // Stored as a decimal, e.g., 0.05 for 5%
     status: "Active" | "Pending" | "Inactive";
+    monthlySalesTarget?: number;
     tinNumber?: string;
     tradeLicenseNumber?: string;
     password?: string; // This is NOT secure, for demo only

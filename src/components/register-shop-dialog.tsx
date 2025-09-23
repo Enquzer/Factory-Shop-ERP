@@ -38,6 +38,7 @@ const shopSchema = z.object({
     city: z.string().min(1, "City is required"),
     exactLocation: z.string().min(1, "Exact location is required"),
     discount: z.coerce.number().min(0, "Discount can't be negative").max(100, "Discount can't be over 100").default(0),
+    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional(),
     tradeLicenseNumber: z.string().optional(),
     tinNumber: z.string().optional(),
 });
@@ -61,6 +62,7 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
         city: "",
         exactLocation: "",
         discount: 0,
+        monthlySalesTarget: 10000,
         tradeLicenseNumber: "",
         tinNumber: "",
     },
@@ -167,7 +169,7 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
                 </div>
                 {/* Column 2 */}
                 <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Location & Discount</h3>
+                    <h3 className="text-lg font-medium">Location &amp; Financials</h3>
                      <FormField
                         control={form.control}
                         name="city"
@@ -197,6 +199,17 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
                             <FormItem>
                             <FormLabel>Discount (%)</FormLabel>
                             <FormControl><Input type="number" min="0" max="100" {...field} /></FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                     <FormField
+                        control={form.control}
+                        name="monthlySalesTarget"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Monthly Sales Target (ETB)</FormLabel>
+                            <FormControl><Input type="number" min="0" {...field} /></FormControl>
                             <FormMessage />
                             </FormItem>
                         )}

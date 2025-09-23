@@ -1,8 +1,9 @@
+
 "use client";
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Package, ShoppingCart, User } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, User, LineChart } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -17,6 +18,7 @@ const links = [
   { href: '/shop/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/shop/products', label: 'Products', icon: Package },
   { href: '/shop/orders', label: 'My Orders', icon: ShoppingCart },
+  { href: '/shop/analytics', label: 'Analytics', icon: LineChart },
   { href: '/shop/profile', label: 'My Profile', icon: User },
 ];
 
