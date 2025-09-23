@@ -82,9 +82,18 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     const fetchShopData = async () => {
         const shopData = await getShopById(shopId);
         setShop(shopData);
+        if (shopData?.status === 'Inactive') {
+            toast({
+                title: "Account Deactivated",
+                description: "Your shop account is currently inactive. Please contact the factory for support.",
+                variant: "destructive",
+                duration: Infinity,
+            });
+            router.push('/shop/login');
+        }
     }
     fetchShopData();
-  }, [shopId])
+  }, [shopId, router, toast])
 
   useEffect(() => {
     setIsLoading(true);
@@ -206,6 +215,10 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     shopId,
     shopName,
   };
+
+  if (shop?.status === 'Inactive') {
+    return null; // Don't render the app for inactive shops
+  }
 
   return <OrderContext.Provider value={value}>{children}</OrderContext.Provider>;
 }
