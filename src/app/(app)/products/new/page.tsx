@@ -144,7 +144,8 @@ export default function NewProductPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    let localIsLoading = true;
+    setProgressMessage("Compressing image...");
+    setIsLoading(true);
     try {
       const compressedFile = await compressImage(file);
       const newPreviewUrl = URL.createObjectURL(compressedFile);
@@ -159,14 +160,16 @@ export default function NewProductPage() {
         variant: "destructive",
       });
     } finally {
-      localIsLoading = false;
+      setIsLoading(false);
+      setProgressMessage("");
     }
   };
 
   const handleVariantImageChange = async (file: File | undefined, onChange: (...event: any[]) => void) => {
     if (!file) return;
     
-    let localIsLoading = true;
+    setProgressMessage("Compressing image...");
+    setIsLoading(true);
     try {
       const compressedFile = await compressImage(file);
       onChange(compressedFile);
@@ -178,7 +181,8 @@ export default function NewProductPage() {
         variant: "destructive",
       });
     } finally {
-      localIsLoading = false;
+      setIsLoading(false);
+      setProgressMessage("");
     }
   };
 
@@ -318,15 +322,7 @@ export default function NewProductPage() {
                       <Input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                              const newPreviewUrl = URL.createObjectURL(file);
-                              if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
-                              setMainImagePreview(newPreviewUrl);
-                              field.onChange(file);
-                          }
-                        }}
+                        onChange={handleMainImageChange}
                         className="file:text-primary-foreground"
                         disabled={isLoading}
                       />
