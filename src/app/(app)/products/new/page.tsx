@@ -184,40 +184,45 @@ export default function NewProductPage() {
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-        const batch = writeBatch(db);
         const productId = data.productCode.toUpperCase();
         
+        // 1. Upload main image
         const mainImageFile = data.imageUrl as File;
         const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
 
-        const variantsWithIds = data.variants.map((v, index) => ({
-            ...v,
-            id: `VAR-${Date.now()}-${index}`
-        }));
+        // 2. Process all variants sequentially
+        const uploadedVariants = [];
+        const batch = writeBatch(db);
 
-        const uploadedVariants = await Promise.all(variantsWithIds.map(async (variant) => {
+        for (let i = 0; i < data.variants.length; i++) {
+            const variantData = data.variants[i];
+            const variantId = `VAR-${Date.now()}-${i}`;
             let variantImageUrl = '';
-            if (variant.image instanceof File) {
-                variantImageUrl = await uploadImage(variant.image, `products/${productId}/variant-${variant.id}.jpg`);
-            }
 
+            // Upload variant image if it exists
+            if (variantData.image instanceof File) {
+                variantImageUrl = await uploadImage(variantData.image, `products/${productId}/variant-${variantId}.jpg`);
+            }
+            
+            // Create stock event in batch
             createStockEvent({
                 productId: productId,
-                variantId: variant.id,
+                variantId: variantId,
                 type: 'Stock In',
-                quantity: variant.stock,
+                quantity: variantData.stock,
                 reason: 'Initial stock',
             }, batch);
 
-            return {
-                id: variant.id,
-                color: variant.color,
-                size: variant.size,
-                stock: variant.stock,
+            uploadedVariants.push({
+                id: variantId,
+                color: variantData.color,
+                size: variantData.size,
+                stock: variantData.stock,
                 imageUrl: variantImageUrl,
-            };
-        }));
+            });
+        }
         
+        // 3. Assemble the final product object
         const newProduct = {
             id: productId,
             name: data.name,
@@ -230,9 +235,9 @@ export default function NewProductPage() {
             variants: uploadedVariants,
         };
         
+        // 4. Add product to the batch and commit
         const productRef = doc(db, "products", productId);
         batch.set(productRef, newProduct);
-
         await batch.commit();
 
         toast({
@@ -240,15 +245,17 @@ export default function NewProductPage() {
             description: `"${data.name}" has been added to your catalog.`,
         });
 
+        // 5. Send notifications (and wait for it to finish)
         await sendNewProductNotifications(newProduct.name, newProduct.id);
 
+        // 6. Navigate only after everything is done
         router.push("/products");
 
     } catch (error) {
         console.error("Error adding product:", error);
         toast({
             title: "Error",
-            description: "Failed to add the product. Please try again.",
+            description: "Failed to add the product. Please check the logs and try again.",
             variant: "destructive",
         });
     } finally {
@@ -478,7 +485,7 @@ export default function NewProductPage() {
                 </Card>
 
                 <div className="flex justify-end gap-4">
-                    <Button type="button" variant="outline" onClick={() => router.push('/products')}>
+                    <Button type="button" variant="outline" onClick={() => router.push('/products')} disabled={isLoading}>
                         Cancel
                     </Button>
                     <Button type="submit" disabled={isLoading}>
@@ -499,9 +506,3 @@ export default function NewProductPage() {
     </div>
   );
 }
-
-    
-
-    
-
-    
