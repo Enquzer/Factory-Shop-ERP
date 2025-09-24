@@ -191,12 +191,11 @@ export default function NewProductPage() {
         const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
 
         // 2. Process all variants sequentially
-        const uploadedVariants = [];
         const batch = writeBatch(db);
+        const uploadedVariants = [];
 
-        for (let i = 0; i < data.variants.length; i++) {
-            const variantData = data.variants[i];
-            const variantId = `VAR-${Date.now()}-${i}`;
+        for (const variantData of data.variants) {
+            const variantId = `VAR-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
             let variantImageUrl = '';
 
             // Upload variant image if it exists
@@ -204,7 +203,6 @@ export default function NewProductPage() {
                 variantImageUrl = await uploadImage(variantData.image, `products/${productId}/variant-${variantId}.jpg`);
             }
             
-            // Create stock event in batch
             createStockEvent({
                 productId: productId,
                 variantId: variantId,
@@ -485,7 +483,7 @@ export default function NewProductPage() {
                 </Card>
 
                 <div className="flex justify-end gap-4">
-                    <Button type="button" variant="outline" onClick={() => router.push('/products')} disabled={isLoading}>
+                    <Button type="button" variant="outline" onClick={() => router.push('/products')}>
                         Cancel
                     </Button>
                     <Button type="submit" disabled={isLoading}>
