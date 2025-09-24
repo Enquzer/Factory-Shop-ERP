@@ -186,38 +186,38 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
 
         const originalVariants = product.variants;
 
-        const uploadedVariants = await Promise.all(data.variants.map(async (variant, index) => {
-            let variantImageUrl = variant.imageUrl || '';
-            if (variant.image instanceof File) {
-                 if (variant.imageUrl) {
+        const uploadedVariants = await Promise.all(data.variants.map(async (variantData, index) => {
+            let variantImageUrl = variantData.imageUrl || '';
+            if (variantData.image instanceof File) {
+                 if (variantData.imageUrl) {
                     try {
-                        const oldImageRef = ref(storage, variant.imageUrl);
+                        const oldImageRef = ref(storage, variantData.imageUrl);
                         await deleteObject(oldImageRef);
                     } catch(e) {
                         console.warn("Old variant image not found, could not delete.", e);
                     }
                  }
-                variantImageUrl = await uploadImage(variant.image, `products/${product.id}/variant-${variant.id}.jpg`);
+                variantImageUrl = await uploadImage(variantData.image, `products/${product.id}/variant-${variantData.id}.jpg`);
             }
 
-            const originalVariant = originalVariants.find(v => v.id === variant.id);
-            const stockChange = variant.stock - (originalVariant?.stock || 0);
+            const originalVariant = originalVariants.find(v => v.id === variantData.id);
+            const stockChange = variantData.stock - (originalVariant?.stock || 0);
 
-            if (stockChange > 0) {
+            if (stockChange !== 0) {
                  createStockEvent({
                     productId: product.id,
-                    variantId: variant.id,
-                    type: 'Stock In',
-                    quantity: stockChange,
+                    variantId: variantData.id,
+                    type: stockChange > 0 ? 'Stock In' : 'Stock Out',
+                    quantity: Math.abs(stockChange),
                     reason: 'Manual adjustment',
                 }, batch);
             }
 
             return {
-                id: variant.id,
-                color: variant.color,
-                size: variant.size,
-                stock: variant.stock,
+                id: variantData.id,
+                color: variantData.color,
+                size: variantData.size,
+                stock: variantData.stock,
                 imageUrl: variantImageUrl,
             };
         }));
