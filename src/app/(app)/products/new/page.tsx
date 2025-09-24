@@ -117,6 +117,7 @@ const VariantImagePreview = ({ control, index }: { control: any; index: number }
 
 export default function NewProductPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [progressMessage, setProgressMessage] = useState("");
   const [mainImagePreview, setMainImagePreview] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -197,30 +198,29 @@ export default function NewProductPage() {
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-      console.log("Starting product submission...");
+      setProgressMessage("Initializing...");
       const productId = data.productCode.toUpperCase();
 
       // 1. Upload main image
-      console.log("Uploading main image...");
+      setProgressMessage("Uploading main image...");
       const mainImageFile = data.imageUrl as File;
       const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
 
       // 2. Process variants
-      console.log("Processing variants...");
+      setProgressMessage("Processing variants...");
       const batch = writeBatch(db);
       const uploadedVariants = [];
 
       for (const [index, variantData] of data.variants.entries()) {
-        console.log(`Processing variant ${index + 1}...`);
+        setProgressMessage(`Processing variant ${index + 1} of ${data.variants.length}...`);
         const variantId = `VAR-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
         let variantImageUrl = "";
 
         if (variantData.image instanceof File) {
-          console.log(`Uploading variant image for variant ${index + 1}...`);
+          setProgressMessage(`Uploading image for variant ${index + 1}...`);
           variantImageUrl = await uploadImage(variantData.image, `products/${productId}/variant-${variantId}.jpg`);
         }
 
-        console.log(`Creating stock event for variant ${index + 1}...`);
         createStockEvent(
           {
             productId: productId,
@@ -242,7 +242,7 @@ export default function NewProductPage() {
       }
 
       // 3. Assemble product
-      console.log("Assembling product data...");
+      setProgressMessage("Saving product details...");
       const newProduct = {
         id: productId,
         name: data.name,
@@ -256,18 +256,16 @@ export default function NewProductPage() {
       };
 
       // 4. Commit to Firestore
-      console.log("Committing product to Firestore...");
       const productRef = doc(db, "products", productId);
       batch.set(productRef, newProduct);
       await batch.commit();
-      console.log("Batch committed successfully");
 
       // 5. Send notifications
-      console.log("Sending notifications...");
+      setProgressMessage("Sending notifications to shops...");
       await sendNewProductNotifications(newProduct.name, newProduct.id);
 
-      // 6. Reset form and state
-      console.log("Resetting form...");
+      // 6. Finish up
+      setProgressMessage("Done!");
       form.reset();
       if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
       setMainImagePreview(null);
@@ -277,8 +275,6 @@ export default function NewProductPage() {
         description: `"${data.name}" has been added to your catalog.`,
       });
 
-      // 7. Navigate
-      console.log("Navigating to products page...");
       router.push("/products");
     } catch (error) {
       console.error("Error adding product:", error);
@@ -289,6 +285,7 @@ export default function NewProductPage() {
       });
     } finally {
       setIsLoading(false);
+      setProgressMessage("");
     }
   };
 
@@ -321,7 +318,15 @@ export default function NewProductPage() {
                       <Input
                         type="file"
                         accept="image/*"
-                        onChange={handleMainImageChange}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                              const newPreviewUrl = URL.createObjectURL(file);
+                              if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
+                              setMainImagePreview(newPreviewUrl);
+                              field.onChange(file);
+                          }
+                        }}
                         className="file:text-primary-foreground"
                         disabled={isLoading}
                       />
@@ -534,7 +539,7 @@ export default function NewProductPage() {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding Product...
+                      {progressMessage || "Adding Product..."}
                     </>
                   ) : (
                     "Add Product"
