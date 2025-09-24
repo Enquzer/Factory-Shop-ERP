@@ -1,11 +1,11 @@
 
+
 "use client";
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlusCircle, Loader2, Eye, Pencil, Trash2, History } from "lucide-react";
-import { AddProductDialog } from "@/components/add-product-dialog";
 import { Product, deleteProduct, getProducts } from '@/lib/products';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,7 @@ import { ProductDetailDialog } from '@/components/product-detail-dialog-view';
 import { EditProductDialog } from '@/components/edit-product-dialog';
 import { Badge } from '@/components/ui/badge';
 import { ProductHistoryDialog } from '@/components/product-history-dialog';
+import Link from 'next/link';
 
 
 export default function ProductsPage() {
@@ -45,10 +46,6 @@ export default function ProductsPage() {
     useEffect(() => {
         fetchProducts();
     }, []);
-
-    const onProductAdded = () => {
-      fetchProducts();
-    }
 
     const onProductUpdated = () => {
       fetchProducts();
@@ -83,12 +80,12 @@ export default function ProductsPage() {
         <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <h1 className="text-2xl font-semibold self-start sm:self-center">Products</h1>
-                <AddProductDialog onProductAdded={onProductAdded}>
-                    <Button className="w-full sm:w-auto">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Add Product
-                    </Button>
-                </AddProductDialog>
+                <Button asChild className="w-full sm:w-auto">
+                  <Link href="/products/new">
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Add Product
+                  </Link>
+                </Button>
             </div>
             <Card>
                 <CardHeader>
