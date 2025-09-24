@@ -197,9 +197,8 @@ export default function NewProductPage() {
 
         const uploadedVariants = await Promise.all(variantsWithIds.map(async (variant) => {
             let variantImageUrl = '';
-            if (variant.image) {
-                const variantImageFile = variant.image as File;
-                variantImageUrl = await uploadImage(variantImageFile, `products/${productId}/variant-${variant.id}.jpg`);
+            if (variant.image instanceof File) {
+                variantImageUrl = await uploadImage(variant.image, `products/${productId}/variant-${variant.id}.jpg`);
             }
 
             createStockEvent({
@@ -479,7 +478,7 @@ export default function NewProductPage() {
                 </Card>
 
                 <div className="flex justify-end gap-4">
-                    <Button type="button" variant="outline" onClick={() => router.push('/products')} disabled={isLoading}>
+                    <Button type="button" variant="outline" onClick={() => router.push('/products')}>
                         Cancel
                     </Button>
                     <Button type="submit" disabled={isLoading}>
