@@ -140,6 +140,14 @@ export function MarketingOrderDetailDialog({
                   <p className="mt-1">{order.description}</p>
                 </div>
               )}
+              {order.isCompleted && (
+                <div className="mt-3 p-3 bg-green-50 rounded border border-green-200">
+                  <p className="text-sm text-green-800">
+                    <span className="font-medium">Inventory Update:</span> Factory inventory has been updated with the produced quantities. 
+                    Product is now available for shop orders.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

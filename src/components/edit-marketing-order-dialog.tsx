@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { MarketingOrder, MarketingOrderItem, updateMarketingOrder } from "@/lib/marketing-orders";
 import { useState, useEffect } from "react";
+import Image from "next/image";
+import { Trash2 } from "lucide-react";
 
 interface EditMarketingOrderDialogProps {
   order: MarketingOrder | null;
@@ -38,10 +40,15 @@ export function EditMarketingOrderDialog({
       setProductName(order.productName);
       setProductCode(order.productCode);
       setDescription(order.description || "");
-      setQuantity(order.quantity);
       setItems(order.items.map(item => ({ ...item })));
     }
   }, [order]);
+
+  // Update the quantity whenever items change
+  useEffect(() => {
+    const total = items.reduce((sum, item) => sum + item.quantity, 0);
+    setQuantity(total);
+  }, [items]);
 
   const handleUpdateOrder = async () => {
     if (!order) return;
@@ -94,6 +101,15 @@ export function EditMarketingOrderDialog({
     setItems(newItems);
   };
 
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const addItem = () => {
+    // This would be used if we want to add new items in the edit dialog
+    // For now, we'll just keep the existing items editable
+  };
+
   if (!order) return null;
 
   return (
@@ -112,7 +128,7 @@ export function EditMarketingOrderDialog({
                   alt={order.productName} 
                   fill 
                   sizes="(max-width: 768px) 100vw, 50vw"
-                  style={{ objectFit: "cover" }} 
+                  className="object-cover" 
                 />
               </div>
             )}
@@ -168,6 +184,7 @@ export function EditMarketingOrderDialog({
                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Size</th>
                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Color</th>
                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Quantity</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -183,6 +200,15 @@ export function EditMarketingOrderDialog({
                           className="w-24"
                           min="0"
                         />
+                      </td>
+                      <td className="px-4 py-2">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => removeItem(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </td>
                     </tr>
                   ))}

@@ -196,6 +196,7 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           dueDate: order.dueDate,
           completedDate: order.completedDate,
           pdfUrl: order.pdfUrl,
+          imageUrl: order.imageUrl,
           isCompleted: order.isCompleted === 1,
           createdBy: order.createdBy,
           createdAt: new Date(order.createdAt),

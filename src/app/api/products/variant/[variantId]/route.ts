@@ -15,7 +15,7 @@ export async function PUT(request: Request, { params }: { params: { variantId: s
     // Get current variant and product info before updating
     const db = await getDb();
     const variant = await db.get(`
-      SELECT pv.stock, p.minimumStockLevel, p.name, pv.color, pv.size
+      SELECT pv.stock, p.minimumStockLevel, p.name, pv.color, pv.size, p.id as productId
       FROM product_variants pv
       JOIN products p ON pv.productId = p.id
       WHERE pv.id = ?
@@ -33,6 +33,25 @@ export async function PUT(request: Request, { params }: { params: { variantId: s
           description: `Product "${variant.name}" (${variant.color}, ${variant.size}) stock is at ${newStock}, which is at or below the minimum level of ${variant.minimumStockLevel}.`,
           href: `/products`,
         });
+      }
+      
+      // Create notification for shops that have this variant in their inventory
+      if (variant) {
+        // Get all shops that have this product variant in their inventory
+        const shopsWithVariant = await db.all(`
+          SELECT shopId FROM shop_inventory WHERE productVariantId = ?
+        `, params.variantId);
+        
+        // Create notification for each shop
+        for (const shop of shopsWithVariant) {
+          await createNotification({
+            userType: 'shop',
+            shopId: shop.shopId,
+            title: 'Product Variant Updated',
+            description: `Product "${variant.name}" (${variant.color}, ${variant.size}) has been updated. Please check for changes in stock or other attributes.`,
+            href: '/shop/inventory',
+          });
+        }
       }
       
       return NextResponse.json({ message: 'Variant stock updated successfully' });

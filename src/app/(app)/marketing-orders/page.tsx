@@ -203,7 +203,7 @@ export default function MarketingOrdersPage() {
         
         toast({
           title: "Success",
-          description: "Order marked as completed. Product is now available for shop orders.",
+          description: "Order marked as completed. Factory inventory has been updated with produced quantities. Product is now available for shop orders.",
         });
       } else {
         throw new Error("Failed to mark order as completed");
@@ -335,6 +335,9 @@ export default function MarketingOrdersPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Marketing Orders</h1>
         <div className="flex gap-2">
+          <Button onClick={fetchOrders} variant="outline">
+            Refresh
+          </Button>
           <Button asChild>
             <Link href="/marketing-orders/new">Create New Order</Link>
           </Button>
@@ -345,7 +348,7 @@ export default function MarketingOrdersPage() {
         <CardHeader>
           <CardTitle>Order Tracking</CardTitle>
           <CardDescription>
-            Track the progress of marketing orders through production stages.
+            Track the progress of marketing orders through production stages. Each order shows the product image for quick identification.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -353,7 +356,8 @@ export default function MarketingOrdersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Order Number</TableHead>
-                <TableHead>Product</TableHead>
+                <TableHead>Product Name & Code</TableHead>
+                <TableHead>Image</TableHead>
                 <TableHead>Quantity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created By</TableHead>
@@ -365,23 +369,25 @@ export default function MarketingOrdersPage() {
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.orderNumber}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      {order.imageUrl && (
-                        <div className="relative h-10 w-10 rounded-md overflow-hidden border">
-                          <Image 
-                            src={order.imageUrl} 
-                            alt={order.productName} 
-                            fill 
-                            sizes="40px"
-                            style={{ objectFit: "cover" }} 
-                          />
-                        </div>
-                      )}
-                      <div>
-                        <div>{order.productName}</div>
-                        <div className="text-sm text-muted-foreground">{order.productCode}</div>
+                    <div>{order.productName}</div>
+                    <div className="text-sm text-muted-foreground">{order.productCode}</div>
+                  </TableCell>
+                  <TableCell>
+                    {order.imageUrl ? (
+                      <div className="relative h-10 w-10 rounded-md overflow-hidden border">
+                        <Image 
+                          src={order.imageUrl} 
+                          alt={order.productName} 
+                          fill 
+                          sizes="40px"
+                          className="object-cover" 
+                        />
                       </div>
-                    </div>
+                    ) : (
+                      <div className="h-10 w-10 rounded-md bg-gray-200 flex items-center justify-center">
+                        <span className="text-xs text-gray-500">No Image</span>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>{order.quantity}</TableCell>
                   <TableCell>

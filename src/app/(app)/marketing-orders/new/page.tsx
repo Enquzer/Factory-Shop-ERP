@@ -136,6 +136,12 @@ export default function NewMarketingOrderPage() {
     setItems(items.filter((_, i) => i !== index));
   };
 
+  // Update the quantity whenever items change
+  useEffect(() => {
+    const total = items.reduce((sum, item) => sum + item.quantity, 0);
+    setQuantity(total);
+  }, [items]);
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
@@ -149,10 +155,7 @@ export default function NewMarketingOrderPage() {
       newErrors.productCode = "Product code must be in XX-XX-XXX format";
     }
     
-    if (quantity <= 0) {
-      newErrors.quantity = "Total quantity must be greater than 0";
-    }
-    
+    // Quantity is now auto-calculated, so we only validate that items exist
     if (items.length === 0) {
       newErrors.items = "At least one item is required";
     }
@@ -501,11 +504,11 @@ export default function NewMarketingOrderPage() {
                 <Input
                   type="number"
                   value={quantity || ""}
-                  onChange={(e) => setQuantity(Number(e.target.value))}
-                  placeholder="e.g., 1000"
-                  className={errors.quantity ? "border-red-500" : ""}
+                  readOnly
+                  placeholder="Auto-calculated from size/color breakdown"
+                  className="bg-gray-100"
                 />
-                {errors.quantity && <p className="text-red-500 text-sm mt-1">{errors.quantity}</p>}
+                <p className="text-sm text-muted-foreground mt-1">Automatically calculated from size and color breakdown</p>
               </div>
             </div>
           </div>
