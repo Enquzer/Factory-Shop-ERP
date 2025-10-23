@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useOrder } from "@/hooks/use-order";
@@ -10,14 +8,24 @@ import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 
 
 export default function CreateOrderPage() {
-    const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder, shopDiscount } = useOrder();
+    const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder, shopDiscount, getAvailableStock } = useOrder();
     
     const handlePlaceOrder = () => {
         placeOrder();
     }
+
+    // Calculate available stock considering items already in the order
+    const getRealTimeAvailableStock = (variantId: string) => {
+        const inventoryStock = getAvailableStock(variantId);
+        const orderedQuantity = items
+            .filter(item => item.variant.id === variantId)
+            .reduce((sum, item) => sum + item.quantity, 0);
+        return inventoryStock - orderedQuantity;
+    };
 
     const finalAmount = totalAmount * (1 - shopDiscount);
 
@@ -70,34 +78,65 @@ export default function CreateOrderPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {items.map(item => (
-                                <TableRow key={item.variant.id}>
-                                    <TableCell className="hidden md:table-cell">
-                                        <Image src={item.imageUrl} alt={item.name} width={64} height={80} className="rounded-md object-cover" />
-                                    </TableCell>
-                                    <TableCell>
-                                        <p className="font-medium">{item.name}</p>
-                                        <p className="text-sm text-muted-foreground">{`Color: ${item.variant.color}, Size: ${item.variant.size}`}</p>
-                                    </TableCell>
-                                    <TableCell>ETB {item.price.toFixed(2)}</TableCell>
-                                    <TableCell>
-                                        <Input 
-                                            type="number" 
-                                            min="1"
-                                            value={item.quantity} 
-                                            onChange={(e) => updateQuantity(item.variant.id, parseInt(e.target.value))}
-                                            className="w-24"
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium">ETB {(item.price * item.quantity).toFixed(2)}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => removeItem(item.variant.id)}>
-                                            <Trash2 className="h-4 w-4" />
-                                            <span className="sr-only">Remove Item</span>
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                            {items.map(item => {
+                                const availableStock = getRealTimeAvailableStock(item.variant.id);
+                                const isLowStock = availableStock < item.quantity;
+                                
+                                return (
+                                    <TableRow key={item.variant.id}>
+                                        <TableCell className="hidden md:table-cell">
+                                             <Image 
+                                                src={item.imageUrl || '/placeholder-product.png'} 
+                                                alt={item.name} 
+                                                width={64} 
+                                                height={80} 
+                                                className="rounded-md object-cover"
+                                                onError={(e) => {
+                                                    const target = e.target as HTMLImageElement;
+                                                    target.src = '/placeholder-product.png';
+                                                }}
+                                                unoptimized={true}
+                                             />
+                                        </TableCell>
+                                        <TableCell>
+                                            <p className="font-medium">{item.name}</p>
+                                            <p className="text-sm text-muted-foreground">{`Color: ${item.variant.color}, Size: ${item.variant.size}`}</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <Badge variant={isLowStock ? "destructive" : availableStock > 0 ? "secondary" : "outline"}>
+                                                    {availableStock > 0 ? `${availableStock} in stock` : 'Out of Stock'}
+                                                </Badge>
+                                                {isLowStock && availableStock > 0 && (
+                                                    <Badge variant="destructive">Low stock!</Badge>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>ETB {item.price.toFixed(2)}</TableCell>
+                                        <TableCell>
+                                            <Input 
+                                                type="number" 
+                                                min="1"
+                                                max={availableStock + item.quantity}
+                                                value={item.quantity} 
+                                                onChange={(e) => {
+                                                    const value = parseInt(e.target.value) || 0;
+                                                    const maxAllowed = availableStock + item.quantity;
+                                                    if (value <= maxAllowed) {
+                                                        updateQuantity(item.variant.id, value);
+                                                    }
+                                                }}
+                                                className="w-24"
+                                            />
+                                        </TableCell>
+                                        <TableCell className="text-right font-medium">ETB {(item.price * item.quantity).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" onClick={() => removeItem(item.variant.id)}>
+                                                <Trash2 className="h-4 w-4" />
+                                                <span className="sr-only">Remove Item</span>
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </CardContent>

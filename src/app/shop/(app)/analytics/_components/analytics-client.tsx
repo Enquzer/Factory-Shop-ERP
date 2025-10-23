@@ -185,21 +185,19 @@ export function ShopAnalyticsClientPage({ shop, orders }: ShopAnalyticsClientPag
                 </CardHeader>
                 <CardContent>
                     <Tabs defaultValue="monthly">
-                        <TabsList>
-                            <TabsTrigger value="monthly">This Month</TabsTrigger>
-                            <TabsTrigger value="weekly">This Month (by Week)</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                            <TabsTrigger value="weekly">Weekly</TabsTrigger>
                         </TabsList>
                         <TabsContent value="monthly" className="h-[350px] pt-4">
                             {analytics.monthlySalesData.length > 0 ? (
                                 <ChartContainer config={chartConfig}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={analytics.monthlySalesData}>
-                                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v / 1000}k`} />
-                                        <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
-                                        <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    <BarChart data={analytics.monthlySalesData} width={653} height={350}>
+                                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v / 1000}k`} />
+                                    <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
+                                    <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
                                 </ChartContainer>
                             ) : (
                                 <div className="flex items-center justify-center h-full"><p className="text-muted-foreground">No sales data for this month yet.</p></div>
@@ -208,14 +206,12 @@ export function ShopAnalyticsClientPage({ shop, orders }: ShopAnalyticsClientPag
                          <TabsContent value="weekly" className="h-[350px] pt-4">
                             {analytics.weeklySalesData.length > 0 ? (
                                 <ChartContainer config={chartConfig}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={analytics.weeklySalesData}>
-                                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v / 1000}k`} />
-                                        <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
-                                        <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    <BarChart data={analytics.weeklySalesData} width={653} height={350}>
+                                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v / 1000}k`} />
+                                    <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
+                                    <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
                                 </ChartContainer>
                             ) : (
                                 <div className="flex items-center justify-center h-full"><p className="text-muted-foreground">No sales data for this month yet.</p></div>

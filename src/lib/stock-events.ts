@@ -1,44 +1,44 @@
+// Client-side functions that call the API
+import { StockEvent } from './stock-events-sqlite';
 
-import { db } from './firebase';
-import { collection, getDocs, query, where, orderBy, doc, WriteBatch, serverTimestamp, addDoc } from 'firebase/firestore';
-
-export type StockEvent = {
-    id?: string;
-    productId: string;
-    variantId: string;
-    type: 'Stock In' | 'Stock Out';
-    quantity: number;
-    reason: 'Initial stock' | 'Manual adjustment' | 'Order fulfillment' | 'Return';
-    createdAt: Date;
+// Create a stock event via API
+export async function createStockEvent(event: Omit<StockEvent, 'id' | 'createdAt'>): Promise<StockEvent> {
+  const response = await fetch('/api/stock-events', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(event),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to create stock event');
+  }
+  
+  return await response.json();
 }
 
-// Function to create a stock event within a batch write
-export const createStockEvent = (
-    event: Omit<StockEvent, 'id' | 'createdAt'>,
-    batch: WriteBatch
-) => {
-    const stockEventRef = doc(collection(db, 'stockEvents'));
-    batch.set(stockEventRef, {
-        ...event,
-        createdAt: serverTimestamp(),
-    });
-};
-
+// Get stock events for a product via API
 export async function getStockEventsForProduct(productId: string): Promise<StockEvent[]> {
-    const q = query(
-        collection(db, "stockEvents"),
-        where("productId", "==", productId),
-        orderBy("createdAt", "desc")
-    );
-
-    const querySnapshot = await getDocs(q);
-    
-    return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate() || new Date(),
-        } as StockEvent;
-    });
+  const response = await fetch(`/api/stock-events?productId=${productId}`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch stock events for product');
+  }
+  
+  return await response.json();
 }
+
+// Get stock events for a variant via API
+export async function getStockEventsForVariant(variantId: string): Promise<StockEvent[]> {
+  const response = await fetch(`/api/stock-events?variantId=${variantId}`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch stock events for variant');
+  }
+  
+  return await response.json();
+}
+
+// Export the types
+export type { StockEvent } from './stock-events-sqlite';

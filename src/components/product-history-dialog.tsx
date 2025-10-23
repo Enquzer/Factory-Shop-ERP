@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -23,11 +22,33 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "./ui/scroll-area";
-import { ordersStore, type Order, type OrderItem } from "@/lib/orders";
 import { getStockEventsForProduct, type StockEvent } from "@/lib/stock-events";
 import { format, parseISO } from "date-fns";
 import { Loader2, TrendingUp, TrendingDown, Package, DollarSign } from "lucide-react";
 import { Badge } from "./ui/badge";
+
+// Define the Order type locally since we can't import it from orders.ts on the client
+type OrderItem = {
+  productId: string;
+  variant: {
+    id: string;
+    color: string;
+    size: string;
+  };
+  quantity: number;
+  price: number;
+};
+
+type Order = {
+  id: string;
+  shopId: string;
+  shopName: string;
+  date: string;
+  status: string;
+  amount: number;
+  items: OrderItem[];
+  createdAt: Date;
+};
 
 type SalesHistoryItem = OrderItem & {
     orderId: string;
@@ -46,28 +67,35 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
         const fetchHistory = async () => {
             setIsLoading(true);
             
-            // Fetch Sales History from Orders
-            const allOrders = ordersStore.allOrders;
-            const productSales: SalesHistoryItem[] = [];
-            allOrders.forEach(order => {
-                order.items.forEach(item => {
-                    if (item.productId === product.id) {
-                        productSales.push({
-                            ...item,
-                            orderId: order.id,
-                            shopName: order.shopName,
-                            date: order.date,
+            try {
+                // Fetch Sales History from Orders API
+                const response = await fetch('/api/orders');
+                if (response.ok) {
+                    const allOrders: Order[] = await response.json();
+                    const productSales: SalesHistoryItem[] = [];
+                    allOrders.forEach(order => {
+                        order.items.forEach(item => {
+                            if (item.productId === product.id) {
+                                productSales.push({
+                                    ...item,
+                                    orderId: order.id,
+                                    shopName: order.shopName,
+                                    date: order.date,
+                                });
+                            }
                         });
-                    }
-                });
-            });
-            setSalesHistory(productSales.sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
-            
-            // Fetch Replenishment History
-            const stockEvents = await getStockEventsForProduct(product.id);
-            setReplenishmentHistory(stockEvents.filter(e => e.type === 'Stock In'));
-
-            setIsLoading(false);
+                    });
+                    setSalesHistory(productSales.sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
+                }
+                
+                // Fetch Replenishment History
+                const stockEvents = await getStockEventsForProduct(product.id);
+                setReplenishmentHistory(stockEvents.filter(e => e.type === 'Stock In'));
+            } catch (error) {
+                console.error("Error fetching history:", error);
+            } finally {
+                setIsLoading(false);
+            }
         };
 
         fetchHistory();
@@ -89,7 +117,7 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Transaction History: {product.name}</DialogTitle>
           <DialogDescription>
@@ -134,12 +162,15 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
             </div>
 
 
-            <Tabs defaultValue="sales" className="w-full">
+            <Tabs defaultValue="sales" className="w-full flex-1 flex flex-col">
                 <TabsList>
                     <TabsTrigger value="sales">Sales History</TabsTrigger>
                     <TabsTrigger value="replenishments">Replenishment History</TabsTrigger>
+                    {product.agePricing && product.agePricing.length > 0 && (
+                        <TabsTrigger value="pricing">Age-Based Pricing</TabsTrigger>
+                    )}
                 </TabsList>
-                <ScrollArea className="h-[40vh] mt-4 pr-4">
+                <ScrollArea className="flex-1 mt-4 pr-4">
                     <TabsContent value="sales">
                         <Table>
                             <TableHeader>
@@ -198,6 +229,26 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                             </TableBody>
                         </Table>
                     </TabsContent>
+                    {product.agePricing && product.agePricing.length > 0 && (
+                        <TabsContent value="pricing">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Age Range</TableHead>
+                                        <TableHead className="text-right">Price (ETB)</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {product.agePricing.map((pricing) => (
+                                        <TableRow key={pricing.id}>
+                                            <TableCell>{pricing.ageMin} - {pricing.ageMax} years</TableCell>
+                                            <TableCell className="text-right font-medium">ETB {pricing.price.toFixed(2)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TabsContent>
+                    )}
                 </ScrollArea>
             </Tabs>
         </>

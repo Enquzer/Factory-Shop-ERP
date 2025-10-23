@@ -1,194 +1,82 @@
-
-
 "use client";
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Loader2, Eye, Pencil, Trash2, History } from "lucide-react";
-import { Product, deleteProduct, getProducts } from '@/lib/products';
-import Image from 'next/image';
-import { useToast } from '@/hooks/use-toast';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { ProductDetailDialog } from '@/components/product-detail-dialog-view';
-import { EditProductDialog } from '@/components/edit-product-dialog';
-import { Badge } from '@/components/ui/badge';
-import { ProductHistoryDialog } from '@/components/product-history-dialog';
-import Link from 'next/link';
+import { Input } from "@/components/ui/input";
+import { Search, PlusCircle, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Product, getProducts } from '@/lib/products';
+import { ProductList } from './_components/product-list';
 
-
-export default function ProductsPage() {
+export default function ProductsPage({
+    searchParams
+}: {
+    searchParams?: {
+        query?: string;
+    }
+}) {
+    const searchTerm = searchParams?.query || "";
     const [products, setProducts] = useState<Product[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [productToDelete, setProductToDelete] = useState<Product | null>(null);
-    const [productToView, setProductToView] = useState<Product | null>(null);
-    const [productToEdit, setProductToEdit] = useState<Product | null>(null);
-    const [productToViewHistory, setProductToViewHistory] = useState<Product | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const { toast } = useToast();
-
-    const fetchProducts = async () => {
-        setIsLoading(true);
-        const productsData = await getProducts(true); // Force refresh
-        setProducts(productsData);
-        setIsLoading(false);
-    };
-
+    const [loading, setLoading] = useState(true);
+    
     useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                // Use forceRefresh to bypass any caching
+                const productsData = await getProducts(true);
+                setProducts(productsData);
+            } catch (error) {
+                console.error('Error fetching products:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        
         fetchProducts();
     }, []);
-
-    const onProductUpdated = () => {
-      fetchProducts();
-      setProductToEdit(null);
+    
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
     }
-
-    const handleDeleteConfirm = async () => {
-        if (!productToDelete) return;
-        setIsDeleting(true);
-        try {
-            await deleteProduct(productToDelete.id);
-            toast({
-                title: "Product Deleted",
-                description: `"${productToDelete.name}" has been removed from your catalog.`,
-            });
-            setProductToDelete(null);
-            fetchProducts();
-        } catch (error) {
-            console.error("Error deleting product:", error);
-            toast({
-                title: "Error",
-                description: "Failed to delete product. Please try again.",
-                variant: "destructive",
-            });
-        } finally {
-            setIsDeleting(false);
-        }
-    }
-
-
+    
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <h1 className="text-2xl font-semibold self-start sm:self-center">Products</h1>
-                <Button asChild className="w-full sm:w-auto">
-                  <Link href="/products/new">
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Add Product
-                  </Link>
-                </Button>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex-1">
+                    <h1 className="text-2xl font-semibold">Products</h1>
+                    <p className="text-muted-foreground">Manage your product catalog.</p>
+                </div>
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                    <form className="relative w-full md:w-auto">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            name="query"
+                            placeholder="Search products..."
+                            className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px] w-full"
+                            defaultValue={searchTerm}
+                        />
+                    </form>
+                    <Button asChild>
+                        <Link href="/products/new">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Add Product
+                        </Link>
+                    </Button>
+                </div>
             </div>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Product List</CardTitle>
-                    <CardDescription>Manage your product catalog here.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="flex justify-center items-center py-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    ) : products.length === 0 ? (
-                        <div className="text-center py-12 text-muted-foreground">
-                            <p>No products yet.</p>
-                            <p className="text-sm">Click "Add Product" to get started.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                            {products.map(product => (
-                                <Card key={product.id} className="overflow-hidden group">
-                                    <div className="relative w-full aspect-[4/5]">
-                                        <Image src={product.imageUrl} alt={product.name} fill style={{objectFit: 'cover'}} />
-                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                            <Button size="icon" variant="secondary" onClick={() => setProductToView(product)}>
-                                                <Eye className="h-5 w-5" />
-                                                <span className="sr-only">View Product</span>
-                                            </Button>
-                                            <Button size="icon" variant="secondary" onClick={() => setProductToEdit(product)}>
-                                                <Pencil className="h-5 w-5" />
-                                                 <span className="sr-only">Edit Product</span>
-                                            </Button>
-                                            <Button size="icon" variant="secondary" onClick={() => setProductToViewHistory(product)}>
-                                                <History className="h-5 w-5" />
-                                                 <span className="sr-only">View History</span>
-                                            </Button>
-                                            <Button size="icon" variant="destructive" onClick={() => setProductToDelete(product)}>
-                                                <Trash2 className="h-5 w-5" />
-                                                 <span className="sr-only">Delete Product</span>
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <CardHeader className='pb-2'>
-                                        <CardTitle className="text-lg truncate">{product.name}</CardTitle>
-                                        <CardDescription>{product.productCode}</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="flex items-center justify-between">
-                                        <p className="text-lg font-semibold">ETB {product.price.toFixed(2)}</p>
-                                        <Badge>Total Stock: {product.variants.reduce((acc, v) => acc + v.stock, 0)}</Badge>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
 
-            {/* View Product Dialog */}
-            {productToView && (
-                <ProductDetailDialog
-                    product={productToView}
-                    open={!!productToView}
-                    onOpenChange={(isOpen) => !isOpen && setProductToView(null)}
-                />
-            )}
-
-            {/* View History Dialog */}
-            {productToViewHistory && (
-                <ProductHistoryDialog
-                    product={productToViewHistory}
-                    open={!!productToViewHistory}
-                    onOpenChange={(isOpen) => !isOpen && setProductToViewHistory(null)}
-                />
-            )}
-            
-            {/* Edit Product Dialog */}
-            {productToEdit && (
-                <EditProductDialog
-                    product={productToEdit}
-                    open={!!productToEdit}
-                    onOpenChange={(isOpen) => !isOpen && setProductToEdit(null)}
-                    onProductUpdated={onProductUpdated}
-                />
-            )}
-
-            {/* Delete Confirmation Dialog */}
-            <AlertDialog open={!!productToDelete} onOpenChange={(isOpen) => !isOpen && setProductToDelete(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure you want to delete this product?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the product
-                        "{productToDelete?.name}" and all its associated data from the database.
-                    </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteConfirm} disabled={isDeleting}>
-                        {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
-                    </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-
+            <Suspense fallback={
+                <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                </div>
+            }>
+                <ProductList products={products} query={searchTerm} />
+            </Suspense>
         </div>
     );
 }

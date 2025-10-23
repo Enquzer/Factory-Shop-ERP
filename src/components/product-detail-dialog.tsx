@@ -15,25 +15,48 @@ import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import { useOrder } from "@/hooks/use-order";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, MinusCircle, ShoppingCart } from "lucide-react";
+import { PlusCircle, MinusCircle, ShoppingCart, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from '@/contexts/auth-context';
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 type OrderQuantities = {
     [variantId: string]: number;
 }
 
 export function ProductDetailDialog({ product, open, onOpenChange }: { product: Product; open: boolean; onOpenChange: (open: boolean) => void }) {
-    const { addItem, shopDiscount } = useOrder();
+    // Try to use the order context, but provide fallbacks for factory context
+    const orderContext = useOrder();
     const { toast } = useToast();
+    const { user } = useAuth();
     const [quantities, setQuantities] = useState<OrderQuantities>({});
+    const [isReadyToDeliver, setIsReadyToDeliver] = useState(product.readyToDeliver === 1);
+    const [updatingStatus, setUpdatingStatus] = useState(false);
+
+    // Fallback functions for when orderContext is not available (factory context)
+    const getAvailableStock = orderContext?.getAvailableStock || ((variantId: string) => {
+        // For factory users, return the actual product variant stock
+        const variant = product.variants.find(v => v.id === variantId);
+        return variant ? variant.stock : 0;
+    });
+    const orderItems = orderContext?.items || [];
+    const shopDiscount = orderContext?.shopDiscount || 0;
+    const addItem = orderContext?.addItem || (() => {
+        toast({
+            title: "Not Available",
+            description: "This feature is only available for shop users.",
+            variant: "destructive",
+        });
+    });
 
     const variantsByColor = useMemo(() => {
         return product.variants.reduce((acc, variant) => {
             if (!acc[variant.color]) {
                 acc[variant.color] = {
-                    imageUrl: variant.imageUrl || product.imageUrl,
+                    imageUrl: variant.imageUrl || product.imageUrl || '/placeholder-product.png',
                     variants: [],
                 };
             }
@@ -42,10 +65,41 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
         }, {} as Record<string, { imageUrl: string; variants: ProductVariant[] }>);
     }, [product.variants, product.imageUrl]);
 
+    // Calculate available stock considering items already in the order
+    const getRealTimeAvailableStock = (variantId: string) => {
+        // For factory users, show the actual product stock
+        if (user?.role === 'factory') {
+            const variant = product.variants.find(v => v.id === variantId);
+            return variant ? variant.stock : 0;
+        }
+        
+        // For shop users, check the shop inventory
+        const inventoryStock = getAvailableStock(variantId);
+        const orderedQuantity = orderItems
+            .filter(item => item.variant.id === variantId)
+            .reduce((sum, item) => sum + item.quantity, 0);
+        return inventoryStock - orderedQuantity;
+    };
+
     const handleQuantityChange = (variantId: string, amount: number) => {
+        const currentQuantity = quantities[variantId] || 0;
+        const newQuantity = Math.max(0, currentQuantity + amount);
+        
+        // Check available stock
+        const availableStock = getRealTimeAvailableStock(variantId);
+        
+        if (newQuantity > availableStock && amount > 0) {
+            toast({
+                title: "Insufficient Stock",
+                description: `Only ${availableStock} items available in stock.`,
+                variant: "destructive",
+            });
+            return;
+        }
+        
         setQuantities(prev => ({
             ...prev,
-            [variantId]: Math.max(0, (prev[variantId] || 0) + amount)
+            [variantId]: newQuantity
         }));
     }
 
@@ -77,6 +131,44 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
         }
     };
     
+    const handleReadyToDeliverChange = async (checked: boolean) => {
+        if (user?.role !== 'factory') return;
+        
+        setUpdatingStatus(true);
+        try {
+            const response = await fetch(`/api/products?id=${product.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    readyToDeliver: checked ? 1 : 0
+                }),
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to update product status');
+            }
+            
+            setIsReadyToDeliver(checked);
+            toast({
+                title: "Product Status Updated",
+                description: `Product is now ${checked ? 'available' : 'unavailable'} for ordering.`,
+            });
+        } catch (error) {
+            console.error('Error updating product status:', error);
+            toast({
+                title: "Error",
+                description: "Failed to update product status. Please try again.",
+                variant: "destructive",
+            });
+            // Revert the switch state if the update failed
+            setIsReadyToDeliver(!checked);
+        } finally {
+            setUpdatingStatus(false);
+        }
+    };
+    
     const totalSelected = Object.values(quantities).reduce((sum, qty) => sum + qty, 0);
     const subTotal = Object.entries(quantities).reduce((total, [variantId, quantity]) => {
         return total + (product.price * quantity);
@@ -94,44 +186,112 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 max-h-[65vh] overflow-y-auto pr-4">
+           {/* Factory controls */}
+           {user?.role === 'factory' && (
+             <div className="mb-4 p-4 border rounded-lg bg-muted">
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center space-x-2">
+                   <Switch
+                     id="ready-to-deliver"
+                     checked={isReadyToDeliver}
+                     onCheckedChange={handleReadyToDeliverChange}
+                     disabled={updatingStatus}
+                   />
+                   <Label htmlFor="ready-to-deliver">
+                     Ready for Shop Orders
+                   </Label>
+                 </div>
+                 <Badge variant={isReadyToDeliver ? "default" : "destructive"}>
+                   {isReadyToDeliver ? "Available" : "Unavailable"}
+                 </Badge>
+               </div>
+               <p className="text-sm text-muted-foreground mt-2">
+                 Toggle this switch to control whether shops can order this product.
+               </p>
+             </div>
+           )}
+           
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
                     <Card key={color} className="overflow-hidden">
-                         <div className="relative w-full aspect-[4/5]">
-                            <Image src={imageUrl} alt={`${product.name} - ${color}`} fill style={{objectFit: 'cover'}} />
-                        </div>
+                         <div className="relative h-48 w-full">
+                            <Image 
+                              src={imageUrl} 
+                              alt={`${product.name} - ${color}`} 
+                              fill 
+                              sizes="(max-width: 768px) 100vw, 50vw"
+                              style={{objectFit: 'cover'}} 
+                            />
+                          </div>
                         <CardContent className="p-4 space-y-3">
                             <h3 className="font-bold text-lg">{color}</h3>
                             <Separator />
                             <div className="space-y-4">
-                                {variants.map(variant => (
-                                    <div key={variant.id} className="grid grid-cols-3 items-center gap-2">
-                                        <div className="space-y-1">
-                                            <p className="font-medium">{variant.size}</p>
-                                             <Badge variant={variant.stock > 0 ? "secondary" : "destructive"}>
-                                                {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
-                                            </Badge>
-                                        </div>
+                                {variants.map(variant => {
+                                    const availableStock = getRealTimeAvailableStock(variant.id);
+                                    const orderedQuantity = quantities[variant.id] || 0;
+                                    const totalInOrder = orderItems
+                                        .filter(item => item.variant.id === variant.id)
+                                        .reduce((sum, item) => sum + item.quantity, 0);
+                                    
+                                    return (
+                                        <div key={variant.id} className="grid grid-cols-3 items-center gap-2">
+                                            <div className="space-y-1">
+                                                <p className="font-medium">{variant.size}</p>
+                                                <Badge variant={availableStock > 0 ? "secondary" : "destructive"}>
+                                                    {availableStock > 0 ? `${availableStock} in stock` : 'Out of Stock'}
+                                                </Badge>
+                                                {totalInOrder > 0 && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {totalInOrder} already in order
+                                                    </p>
+                                                )}
+                                            </div>
 
-                                        <div className="col-span-2 flex items-center justify-end gap-2">
-                                            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, -1)} disabled={(quantities[variant.id] || 0) === 0}>
-                                                <MinusCircle className="h-4 w-4" />
-                                            </Button>
-                                            <Input
-                                                type="number"
-                                                className="w-16 h-8 text-center"
-                                                value={quantities[variant.id] || 0}
-                                                onChange={(e) => setQuantities(prev => ({...prev, [variant.id]: Math.max(0, parseInt(e.target.value) || 0)}))}
-                                                min="0"
-                                                max={variant.stock}
-                                                disabled={variant.stock === 0}
-                                            />
-                                            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleQuantityChange(variant.id, 1)} disabled={(quantities[variant.id] || 0) >= variant.stock}>
-                                                <PlusCircle className="h-4 w-4" />
-                                            </Button>
+                                            <div className="col-span-2 flex items-center justify-end gap-2">
+                                                <Button 
+                                                    size="icon" 
+                                                    variant="outline" 
+                                                    className="h-8 w-8" 
+                                                    onClick={() => handleQuantityChange(variant.id, -1)} 
+                                                    disabled={orderedQuantity === 0 || availableStock === 0}
+                                                >
+                                                    <MinusCircle className="h-4 w-4" />
+                                                </Button>
+                                                <Input
+                                                    type="number"
+                                                    className="w-16 h-8 text-center"
+                                                    value={orderedQuantity}
+                                                    onChange={(e) => {
+                                                        const value = parseInt(e.target.value) || 0;
+                                                        const maxAllowed = availableStock + (quantities[variant.id] || 0);
+                                                        if (value <= maxAllowed) {
+                                                            setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
+                                                        } else {
+                                                            toast({
+                                                                title: "Insufficient Stock",
+                                                                description: `Only ${maxAllowed} items available in stock.`,
+                                                                variant: "destructive",
+                                                            });
+                                                        }
+                                                    }}
+                                                    min="0"
+                                                    max={availableStock + (quantities[variant.id] || 0)}
+                                                    disabled={availableStock === 0}
+                                                />
+                                                <Button 
+                                                    size="icon" 
+                                                    variant="outline" 
+                                                    className="h-8 w-8" 
+                                                    onClick={() => handleQuantityChange(variant.id, 1)} 
+                                                    disabled={orderedQuantity >= availableStock || availableStock === 0}
+                                                >
+                                                    <PlusCircle className="h-4 w-4" />
+                                                </Button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </CardContent>
                     </Card>
@@ -165,5 +325,3 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
     </Dialog>
   );
 }
-
-    

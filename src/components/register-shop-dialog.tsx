@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, type ReactNode } from "react";
@@ -46,7 +45,7 @@ const shopSchema = z.object({
 type ShopFormValues = z.infer<typeof shopSchema>;
 
 
-export function RegisterShopDialog({ children, onShopRegistered }: { children: ReactNode, onShopRegistered: () => void }) {
+export function RegisterShopDialog({ children, onShopRegistered, userRole }: { children: ReactNode, onShopRegistered: () => void, userRole?: 'factory' | 'shop' }) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -71,10 +70,27 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
   const onSubmit = async (data: ShopFormValues) => {
     setIsLoading(true);
     try {
-        await addShop({
-            ...data,
+        // Only include discount in shop data if user is factory
+        const shopData: any = {
+            username: data.username,
+            password: data.password,
+            name: data.name,
+            contactPerson: data.contactPerson,
+            contactPhone: data.contactPhone,
+            city: data.city,
+            exactLocation: data.exactLocation,
             discount: data.discount / 100, // Convert percentage to decimal
-        });
+            monthlySalesTarget: data.monthlySalesTarget ?? 0, // Provide default value if undefined
+            tradeLicenseNumber: data.tradeLicenseNumber ?? "",
+            tinNumber: data.tinNumber ?? ""
+        };
+        
+        // If user is not factory, remove discount from shop data
+        if (userRole !== 'factory') {
+            delete shopData.discount;
+        }
+
+        await addShop(shopData);
         toast({
           title: "Shop Registered Successfully",
           description: `Shop "${data.name}" has been registered.`,
@@ -82,11 +98,26 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
         setOpen(false);
         form.reset();
         onShopRegistered();
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error registering shop:", error);
+        // Provide a more user-friendly error message for username conflicts
+        // Handle both Error object and plain object cases
+        let errorMessage = "An error occurred while registering the shop. Please try again.";
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        } else if (error && typeof error === 'object' && 'message' in error) {
+            errorMessage = error.message;
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        }
+        
+        const userFriendlyMessage = errorMessage.includes("already exists") 
+            ? `The username "${data.username}" is already taken. Please choose a different username.`
+            : errorMessage;
+            
         toast({
             title: "Registration Failed",
-            description: "An error occurred while registering the shop. Please try again.",
+            description: userFriendlyMessage,
             variant: "destructive",
         })
     } finally {
@@ -198,7 +229,20 @@ export function RegisterShopDialog({ children, onShopRegistered }: { children: R
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>Discount (%)</FormLabel>
-                            <FormControl><Input type="number" min="0" max="100" {...field} /></FormControl>
+                            <FormControl>
+                                <Input 
+                                    type="number" 
+                                    min="0" 
+                                    max="100" 
+                                    {...field} 
+                                    disabled={userRole !== 'factory'} // Disable for non-factory users
+                                />
+                            </FormControl>
+                            {userRole !== 'factory' && (
+                                <p className="text-xs text-muted-foreground">
+                                    Only factory users can set discount percentage
+                                </p>
+                            )}
                             <FormMessage />
                             </FormItem>
                         )}

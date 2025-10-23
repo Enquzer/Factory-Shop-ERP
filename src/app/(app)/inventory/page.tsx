@@ -7,7 +7,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { getProducts, type Product } from "@/lib/products";
+import { getProducts, type Product } from "@/lib/products-sqlite";
 import { InventoryClientPage } from "./_components/inventory-client";
 
 export default async function InventoryPage() {

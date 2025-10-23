@@ -43,7 +43,7 @@ const editShopSchema = z.object({
 
 type EditShopFormValues = z.infer<typeof editShopSchema>;
 
-export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated }: { shop: Shop; open: boolean; onOpenChange: (open: boolean) => void; onShopUpdated: () => void }) {
+export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRole }: { shop: Shop; open: boolean; onOpenChange: (open: boolean) => void; onShopUpdated: () => void; userRole?: 'factory' | 'shop' }) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -64,10 +64,18 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated }: { sh
   const onSubmit = async (data: EditShopFormValues) => {
     setIsLoading(true);
     try {
-        await updateShop(shop.id, {
+        // Only include discount in update data if user is factory
+        const updateData: any = {
             ...data,
             discount: data.discount / 100, // Convert back to decimal
-        });
+        };
+        
+        // If user is not factory, remove discount from update data
+        if (userRole !== 'factory') {
+            delete updateData.discount;
+        }
+
+        await updateShop(shop.id, updateData);
 
         toast({
             title: "Shop Updated Successfully",
@@ -167,7 +175,20 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated }: { sh
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>Discount (%)</FormLabel>
-                            <FormControl><Input type="number" min="0" max="100" {...field} /></FormControl>
+                            <FormControl>
+                                <Input 
+                                    type="number" 
+                                    min="0" 
+                                    max="100" 
+                                    {...field} 
+                                    disabled={userRole !== 'factory'} // Disable for non-factory users
+                                />
+                            </FormControl>
+                            {userRole !== 'factory' && (
+                                <p className="text-xs text-muted-foreground">
+                                    Only factory users can edit discount percentage
+                                </p>
+                            )}
                             <FormMessage />
                             </FormItem>
                         )}

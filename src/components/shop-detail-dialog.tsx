@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Shop } from "@/lib/shops";
@@ -14,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "./ui/scroll-area";
-import { MapPin, Phone, User, Tag, Percent, Target } from "lucide-react";
+import { MapPin, Phone, User, Tag, Percent, Target, CreditCard, FileText } from "lucide-react";
 
 export function ShopDetailDialog({ shop, open, onOpenChange }: { shop: Shop; open: boolean; onOpenChange: (open: boolean) => void }) {
 
@@ -42,7 +41,7 @@ export function ShopDetailDialog({ shop, open, onOpenChange }: { shop: Shop; ope
                     <Phone className="h-5 w-5 mr-3 text-muted-foreground" />
                     <div>
                         <p className="text-sm font-medium">Contact Phone</p>
-                        <p className="text-sm text-muted-foreground">{shop.contactPhone}</p>
+                        <p className="text-sm text-muted-foreground">{shop.contactPhone || "Not provided"}</p>
                     </div>
                 </div>
                 

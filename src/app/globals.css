@@ -1,6 +1,9 @@
+/* stylelint-disable at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@import '../components/loading-bar.css';
 
 @layer base {
   :root {
@@ -76,9 +79,12 @@
 
 @layer base {
   * {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply border-border;
   }
   body {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply bg-background text-foreground;
   }
 }
+/* stylelint-enable at-rule-no-unknown */

@@ -27,15 +27,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, Trash2, Loader2, ArrowLeft } from "lucide-react";
 import Image from "next/image";
-import { db, storage } from "@/lib/firebase";
-import { collection, doc, setDoc, writeBatch } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { compressImage } from "@/lib/image-compression";
-import { createStockEvent } from "@/lib/stock-events";
-import { getShops } from "@/lib/shops";
-import { createNotificationForBatch } from "@/lib/notifications";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createProduct } from "@/lib/products";
+import { getShops } from "@/lib/shops";
+import { createStockEvent } from "@/lib/stock-events";
 
 const variantSchema = z.object({
   color: z.string().min(1, "Color is required"),
@@ -58,33 +54,6 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>;
 
 const categories = ["Men", "Women", "Kids", "Unisex"];
-
-const sendNewProductNotifications = async (productName: string, productId: string) => {
-  try {
-    const shops = await getShops();
-    if (shops.length === 0) return;
-
-    const batch = writeBatch(db);
-    shops.forEach((shop) => {
-      createNotificationForBatch(
-        {
-          userType: "shop",
-          shopId: shop.id,
-          title: `New Product Available!`,
-          description: `Check out the new "${productName}" in the catalog.`,
-          href: `/shop/products?query=${productId}`,
-        },
-        batch
-      );
-    });
-
-    await batch.commit();
-    console.log(`Sent notifications to ${shops.length} shops for new product: ${productName}`);
-  } catch (error) {
-    console.error("Failed to send new product notifications:", error);
-    throw error;
-  }
-};
 
 const VariantImagePreview = ({ control, index }: { control: any; index: number }) => {
   const imageFile = useWatch({
@@ -109,8 +78,14 @@ const VariantImagePreview = ({ control, index }: { control: any; index: number }
   if (!preview) return null;
 
   return (
-    <div className="mt-2 relative w-full h-24 rounded-md overflow-hidden border">
-      <Image src={preview} alt={`Variant ${index + 1} preview`} fill style={{ objectFit: "cover" }} />
+    <div className="relative h-32 w-full rounded-md overflow-hidden">
+      <Image 
+        src={preview} 
+        alt={`Variant ${index + 1} preview`} 
+        fill 
+        sizes="(max-width: 768px) 50vw, 25vw" // Added sizes property
+        style={{ objectFit: "cover" }} 
+      />
     </div>
   );
 };
@@ -140,137 +115,112 @@ export default function NewProductPage() {
     name: "variants",
   });
 
-  const handleMainImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMainImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setProgressMessage("Compressing image...");
-    setIsLoading(true);
-    try {
-      const compressedFile = await compressImage(file);
-      const newPreviewUrl = URL.createObjectURL(compressedFile);
-      if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
-      setMainImagePreview(newPreviewUrl);
-      form.setValue("imageUrl", compressedFile);
-    } catch (error) {
-      console.error("Main image processing error:", error);
-      toast({
-        title: "Image Error",
-        description: "Could not process main image file.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-      setProgressMessage("");
-    }
+    const newPreviewUrl = URL.createObjectURL(file);
+    if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
+    setMainImagePreview(newPreviewUrl);
+    form.setValue("imageUrl", file);
   };
 
-  const handleVariantImageChange = async (file: File | undefined, onChange: (...event: any[]) => void) => {
+  const handleVariantImageChange = (file: File | undefined, onChange: (...event: any[]) => void) => {
     if (!file) return;
-    
-    setProgressMessage("Compressing image...");
-    setIsLoading(true);
-    try {
-      const compressedFile = await compressImage(file);
-      onChange(compressedFile);
-    } catch (error) {
-      console.error("Variant image processing error:", error);
-      toast({
-        title: "Image Error",
-        description: "Could not process variant image.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-      setProgressMessage("");
-    }
-  };
-
-  const uploadImage = async (file: File, path: string): Promise<string> => {
-    try {
-      const storageRef = ref(storage, path);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
-      console.log(`Image uploaded successfully to ${path}`);
-      return url;
-    } catch (error) {
-      console.error(`Failed to upload image to ${path}:`, error);
-      throw error;
-    }
+    onChange(file);
   };
 
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-      setProgressMessage("Initializing...");
-      const productId = data.productCode.toUpperCase();
-
-      // 1. Upload main image
-      setProgressMessage("Uploading main image...");
-      const mainImageFile = data.imageUrl as File;
-      const mainImageUrl = await uploadImage(mainImageFile, `products/${productId}/main.jpg`);
-
-      // 2. Process variants
-      setProgressMessage("Processing variants...");
-      const batch = writeBatch(db);
-      const uploadedVariants = [];
-
-      for (const [index, variantData] of data.variants.entries()) {
-        setProgressMessage(`Processing variant ${index + 1} of ${data.variants.length}...`);
-        const variantId = `VAR-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-        let variantImageUrl = "";
-
-        if (variantData.image instanceof File) {
-          setProgressMessage(`Uploading image for variant ${index + 1}...`);
-          variantImageUrl = await uploadImage(variantData.image, `products/${productId}/variant-${variantId}.jpg`);
+      setProgressMessage("Creating product...");
+      
+      // Upload main product image if provided
+      let mainImageUrl = undefined;
+      if (data.imageUrl instanceof File) {
+        const formData = new FormData();
+        formData.append('file', data.imageUrl);
+        const mainImageName = `${data.productCode.toUpperCase()}_main.${data.imageUrl.name.split('.').pop()}`;
+        formData.append('filename', mainImageName);
+        
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          const result = await uploadResponse.json();
+          mainImageUrl = result.imageUrl;
         }
+      }
+      
+      // Upload variant images if provided
+      const variantsWithImages = await Promise.all(data.variants.map(async (variant) => {
+        let imageUrl = undefined;
+        if (variant.image instanceof File) {
+          const formData = new FormData();
+          formData.append('file', variant.image);
+          const variantImageName = `${data.productCode.toUpperCase()}_${variant.color}_${variant.size}.${variant.image.name.split('.').pop()}`;
+          formData.append('filename', variantImageName);
+          
+          const uploadResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (uploadResponse.ok) {
+            const result = await uploadResponse.json();
+            imageUrl = result.imageUrl;
+          }
+        }
+        return {
+          ...variant,
+          imageUrl
+        };
+      }));
 
-        createStockEvent(
-          {
-            productId: productId,
-            variantId: variantId,
+      // Create the product in SQLite
+      const newProduct = await createProduct({
+        name: data.name,
+        productCode: data.productCode.toUpperCase(),
+        category: data.category,
+        price: data.price,
+        minimumStockLevel: data.minimumStockLevel || 10,
+        imageUrl: mainImageUrl,
+        description: data.description,
+        variants: variantsWithImages.map(variant => ({
+          // Note: id and productId will be generated by the backend
+          id: "", // Placeholder, will be generated by backend
+          productId: "", // Placeholder, will be generated by backend
+          color: variant.color,
+          size: variant.size,
+          stock: variant.stock,
+          imageUrl: variant.imageUrl
+        }))
+      });
+
+      // Create stock events for each variant
+      try {
+        for (const variant of newProduct.variants) {
+          await createStockEvent({
+            productId: newProduct.id,
+            variantId: variant.id,
             type: "Stock In",
-            quantity: variantData.stock,
-            reason: "Initial stock",
-          },
-          batch
-        );
-
-        uploadedVariants.push({
-          id: variantId,
-          color: variantData.color,
-          size: variantData.size,
-          stock: variantData.stock,
-          imageUrl: variantImageUrl,
+            quantity: variant.stock,
+            reason: "Initial stock"
+          });
+        }
+      } catch (stockError) {
+        console.error("Error creating stock events:", stockError);
+        // Don't fail the entire product creation if stock events fail
+        toast({
+          title: "Warning",
+          description: "Product created successfully, but there was an issue recording initial stock levels.",
+          variant: "destructive",
         });
       }
 
-      // 3. Assemble product
-      setProgressMessage("Saving product details...");
-      const newProduct = {
-        id: productId,
-        name: data.name,
-        productCode: productId,
-        category: data.category,
-        price: data.price,
-        description: data.description || "",
-        minimumStockLevel: data.minimumStockLevel,
-        imageUrl: mainImageUrl,
-        variants: uploadedVariants,
-      };
-
-      // 4. Commit to Firestore
-      const productRef = doc(db, "products", productId);
-      batch.set(productRef, newProduct);
-      await batch.commit();
-
-      // 5. Send notifications
-      setProgressMessage("Sending notifications to shops...");
-      await sendNewProductNotifications(newProduct.name, newProduct.id);
-
-      // 6. Finish up
-      setProgressMessage("Done!");
-      form.reset();
+      // Clean up object URLs
       if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
       setMainImagePreview(null);
 
@@ -280,11 +230,22 @@ export default function NewProductPage() {
       });
 
       router.push("/products");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding product:", error);
+      
+      // Handle specific error cases
+      let errorMessage = "Failed to add the product. Please try again.";
+      if (error.message) {
+        if (error.message.includes('already exists')) {
+          errorMessage = error.message;
+        } else if (error.message.includes('Failed to create product')) {
+          errorMessage = "Failed to create product. Please check your inputs and try again.";
+        }
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to add the product. Please check the logs and try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -329,7 +290,13 @@ export default function NewProductPage() {
                     </FormControl>
                     {mainImagePreview && (
                       <div className="mt-2 relative w-full aspect-video max-w-sm rounded-md overflow-hidden border">
-                        <Image src={mainImagePreview} alt="Main product preview" fill style={{ objectFit: "contain" }} />
+                        <Image 
+                          src={mainImagePreview} 
+                          alt="Main product preview" 
+                          fill 
+                          sizes="(max-width: 768px) 100vw, 50vw" // Added sizes property
+                          style={{ objectFit: "contain" }} 
+                        />
                       </div>
                     )}
                     <FormMessage />
@@ -549,3 +516,13 @@ export default function NewProductPage() {
     </div>
   );
 }
+
+// Helper function to convert file to base64
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};

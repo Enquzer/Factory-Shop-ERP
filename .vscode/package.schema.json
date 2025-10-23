@@ -1,0 +1,358 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Package",
+  "description": "A package.json file describes a npm package.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The name of the package.",
+      "type": "string",
+      "maxLength": 214,
+      "minProperties": 1
+    },
+    "version": {
+      "description": "Version of the package.",
+      "type": "string"
+    },
+    "description": {
+      "description": "Package description.",
+      "type": "string"
+    },
+    "keywords": {
+      "description": "Keywords for package discovery.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "homepage": {
+      "description": "Project homepage.",
+      "type": "string",
+      "format": "uri"
+    },
+    "bugs": {
+      "description": "Bug tracking information.",
+      "type": ["object", "string"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        }
+      },
+      "additionalProperties": false
+    },
+    "license": {
+      "description": "License of the package.",
+      "type": "string"
+    },
+    "licenses": {
+      "description": "License of the package (deprecated).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "author": {
+      "description": "Author of the package.",
+      "type": ["object", "string"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "contributors": {
+      "description": "Contributors to the package.",
+      "type": "array",
+      "items": {
+        "type": ["object", "string"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    "files": {
+      "description": "Files included in the package.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "main": {
+      "description": "Main entry point of the package.",
+      "type": "string"
+    },
+    "bin": {
+      "description": "Executable files.",
+      "type": ["object", "string"],
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "man": {
+      "description": "Man pages for the package.",
+      "type": ["array", "string"],
+      "items": {
+        "type": "string"
+      }
+    },
+    "directories": {
+      "description": "Directories relevant to the package.",
+      "type": "object",
+      "properties": {
+        "bin": {
+          "description": "Executable files directory.",
+          "type": "string"
+        },
+        "doc": {
+          "description": "Documentation files directory.",
+          "type": "string"
+        },
+        "example": {
+          "description": "Example files directory.",
+          "type": "string"
+        },
+        "lib": {
+          "description": "Library files directory.",
+          "type": "string"
+        },
+        "man": {
+          "description": "Man pages directory.",
+          "type": "string"
+        },
+        "test": {
+          "description": "Test files directory.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "repository": {
+      "description": "Repository information.",
+      "type": ["object", "string"],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "directory": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "url"],
+      "additionalProperties": false
+    },
+    "scripts": {
+      "description": "Scripts for package lifecycle events.",
+      "type": "object",
+      "properties": {
+        "prepublish": {
+          "type": "string"
+        },
+        "publish": {
+          "type": "string"
+        },
+        "postpublish": {
+          "type": "string"
+        },
+        "preinstall": {
+          "type": "string"
+        },
+        "install": {
+          "type": "string"
+        },
+        "postinstall": {
+          "type": "string"
+        },
+        "preuninstall": {
+          "type": "string"
+        },
+        "uninstall": {
+          "type": "string"
+        },
+        "postuninstall": {
+          "type": "string"
+        },
+        "preversion": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "postversion": {
+          "type": "string"
+        },
+        "pretest": {
+          "type": "string"
+        },
+        "test": {
+          "type": "string"
+        },
+        "posttest": {
+          "type": "string"
+        },
+        "prestop": {
+          "type": "string"
+        },
+        "stop": {
+          "type": "string"
+        },
+        "poststop": {
+          "type": "string"
+        },
+        "prestart": {
+          "type": "string"
+        },
+        "start": {
+          "type": "string"
+        },
+        "poststart": {
+          "type": "string"
+        },
+        "prerestart": {
+          "type": "string"
+        },
+        "restart": {
+          "type": "string"
+        },
+        "postrestart": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "config": {
+      "description": "Configuration options for scripts.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "dependencies": {
+      "description": "Dependencies required for production.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "devDependencies": {
+      "description": "Dependencies required for development.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "peerDependencies": {
+      "description": "Dependencies required by peer packages.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "optionalDependencies": {
+      "description": "Optional dependencies.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "bundledDependencies": {
+      "description": "Bundled dependencies.",
+      "type": ["array", "boolean"],
+      "items": {
+        "type": "string"
+      }
+    },
+    "engines": {
+      "description": "Engine compatibility requirements.",
+      "type": "object",
+      "properties": {
+        "node": {
+          "type": "string"
+        },
+        "npm": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "engineStrict": {
+      "description": "Engine strict mode (deprecated).",
+      "type": "boolean"
+    },
+    "os": {
+      "description": "Operating system compatibility.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cpu": {
+      "description": "CPU architecture compatibility.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preferGlobal": {
+      "description": "Prefer global installation (deprecated).",
+      "type": "boolean"
+    },
+    "private": {
+      "description": "Prevents publishing to npm.",
+      "type": "boolean"
+    },
+    "publishConfig": {
+      "description": "Publish configuration.",
+      "type": "object",
+      "properties": {
+        "registry": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

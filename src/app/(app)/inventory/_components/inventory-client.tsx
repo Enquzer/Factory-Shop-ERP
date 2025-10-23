@@ -1,5 +1,4 @@
-
-
+import { useState, useEffect } from 'react';
 "use client";
 
 import {
@@ -42,10 +41,16 @@ export function InventoryClientPage({ products }: { products: Product[] }) {
                                         <div className="flex items-center gap-4 w-full">
                                             <div className="relative h-16 w-12 flex-shrink-0 rounded-md overflow-hidden bg-muted">
                                                 <Image 
-                                                    src={product.imageUrl} 
+                                                    src={product.imageUrl || '/placeholder-product.png'} 
                                                     alt={product.name} 
                                                     fill 
                                                     className="object-cover"
+                                                    onError={(e) => {
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.src = '/placeholder-product.png';
+                                                    }}
+                                                    unoptimized={true}
+                                                    loading="eager"
                                                 />
                                             </div>
                                             <div className="flex-1 text-left">
@@ -57,6 +62,36 @@ export function InventoryClientPage({ products }: { products: Product[] }) {
                                         </div>
                                     </AccordionTrigger>
                                     <AccordionContent>
+                                        {/* Variant Images Gallery */}
+                                        {product.variants.some(v => v.imageUrl) && (
+                                            <div className="mb-4">
+                                                <h4 className="font-medium mb-2">Variant Images</h4>
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                                    {product.variants.map(variant => (
+                                                        variant.imageUrl && (
+                                                            <div key={variant.id} className="relative aspect-square rounded-md overflow-hidden border">
+                                                                <Image 
+                                                                    src={variant.imageUrl} 
+                                                                    alt={`${product.name} - ${variant.color}, ${variant.size}`} 
+                                                                    fill 
+                                                                    style={{objectFit: 'cover'}} 
+                                                                    onError={(e) => {
+                                                                        const target = e.target as HTMLImageElement;
+                                                                        target.src = '/placeholder-product.png';
+                                                                    }}
+                                                                    unoptimized={true}
+                                                                    loading="eager"
+                                                                />
+                                                                <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 text-center">
+                                                                    {variant.color}, {variant.size}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>

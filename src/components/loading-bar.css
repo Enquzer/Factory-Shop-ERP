@@ -1,0 +1,33 @@
+.loading-bar-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 9999;
+}
+
+.loading-bar {
+  height: 3px;
+  background-color: #e5e7eb;
+  overflow: hidden;
+}
+
+.loading-bar-progress {
+  height: 100%;
+  background-color: #3b82f6;
+  transition: width 0.3s ease-out;
+}
+
+.loading-message {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #3b82f6;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+}

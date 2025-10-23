@@ -1,14 +1,18 @@
-
-import { db } from './firebase';
-import { doc, runTransaction, collection, query, where, onSnapshot, getDocs, writeBatch, serverTimestamp, addDoc, orderBy, Timestamp } from 'firebase/firestore';
-import { type Product, type ProductVariant, updateProductStock } from './products';
+import { getDb } from './db';
+import { updateVariantStock } from './products';
 
 export type OrderItem = { 
   productId: string;
   name: string;
   price: number;
   imageUrl: string;
-  variant: ProductVariant;
+  variant: {
+    id: string;
+    color: string;
+    size: string;
+    stock: number;
+    imageUrl?: string;
+  };
   quantity: number;
 };
 
@@ -22,83 +26,118 @@ export type Order = {
     status: OrderStatus;
     amount: number;
     items: OrderItem[];
-    createdAt: Timestamp;
+    createdAt: Date;
+    // Additional fields for enhanced workflow
+    paymentSlipUrl?: string;
+    dispatchInfo?: {
+        shopName: string; // Changed from accountId to shopName
+        transportLicensePlate: string;
+        contactPerson: string;
+        dispatchDate: string;
+        driverName?: string; // Added driver name field
+    };
+    deliveryDate?: string;
+    isClosed?: boolean;
+    feedback?: string;
 }
 
-// Standalone function to get all orders, suitable for server-side use.
+// Client-side function to fetch orders from API
 export async function getOrders(): Promise<Order[]> {
-    const ordersQuery = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-    const snapshot = await getDocs(ordersQuery);
-    if (snapshot.empty) {
+  try {
+    // Use absolute URL for server-side requests, relative for client-side
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const url = typeof window === 'undefined' 
+      ? `${baseUrl}/api/orders`
+      : '/api/orders';
+      
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('Failed to fetch orders');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    return [];
+  }
+}
+
+// Server-side function to get all orders from database
+export async function getOrdersFromDB(): Promise<Order[]> {
+    try {
+        const db = await getDb();
+        const orders = await db.all(`
+          SELECT * FROM orders
+          ORDER BY created_at DESC
+        `);
+        
+        return orders.map((order: any) => ({
+            id: order.id,
+            shopId: order.shopId,
+            shopName: order.shopName,
+            date: order.date,
+            status: order.status,
+            amount: order.amount,
+            items: JSON.parse(order.items),
+            paymentSlipUrl: order.paymentSlipUrl,
+            dispatchInfo: order.dispatchInfo ? JSON.parse(order.dispatchInfo) : undefined,
+            deliveryDate: order.deliveryDate,
+            isClosed: order.isClosed === 1,
+            feedback: order.feedback,
+            createdAt: new Date(order.created_at)
+        }));
+    } catch (error) {
+        console.error('Error fetching orders:', error);
         return [];
     }
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
-        } as Order;
-    });
 }
 
 // Standalone function to get all orders for a specific shop.
 export async function getOrdersForShop(shopId: string): Promise<Order[]> {
-    const ordersQuery = query(
-        collection(db, "orders"), 
-        where("shopId", "==", shopId),
-        orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(ordersQuery);
-    if (snapshot.empty) {
+    try {
+        const db = await getDb();
+        const orders = await db.all(`
+          SELECT * FROM orders 
+          WHERE shopId = ?
+          ORDER BY created_at DESC
+        `, shopId);
+        
+        return orders.map((order: any) => ({
+            id: order.id,
+            shopId: order.shopId,
+            shopName: order.shopName,
+            date: order.date,
+            status: order.status,
+            amount: order.amount,
+            items: JSON.parse(order.items),
+            paymentSlipUrl: order.paymentSlipUrl,
+            dispatchInfo: order.dispatchInfo ? JSON.parse(order.dispatchInfo) : undefined,
+            deliveryDate: order.deliveryDate,
+            isClosed: order.isClosed === 1,
+            feedback: order.feedback,
+            createdAt: new Date(order.created_at)
+        }));
+    } catch (error) {
+        console.error('Error fetching orders for shop:', error);
         return [];
     }
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
-        } as Order;
-    });
 }
-
 
 class OrdersManager {
     private orders: Order[] = [];
     private subscribers: ((orders: Order[]) => void)[] = [];
-    private unsubscribeFromFirestore: (() => void) | null = null;
 
     constructor() {
-        this.listenForOrders();
+        // Only initialize on the server side
+        if (typeof window === 'undefined') {
+            this.loadOrders();
+        }
     }
 
-    private listenForOrders() {
-        if (this.unsubscribeFromFirestore) {
-            this.unsubscribeFromFirestore();
-        }
-
-        const ordersQuery = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-        
-        this.unsubscribeFromFirestore = onSnapshot(ordersQuery, async (snapshot) => {
-            if (snapshot.empty) {
-                console.log("No orders found in Firestore.");
-                // We won't populate mock data here anymore to avoid conflicts with server-side rendering
-                this.orders = [];
-            } else {
-                this.orders = snapshot.docs.map(doc => {
-                    const data = doc.data();
-                    return {
-                        id: doc.id,
-                        ...data,
-                        date: (data.createdAt as Timestamp).toDate().toISOString().split('T')[0],
-                    } as Order;
-                });
-            }
-            this.notifySubscribers();
-        }, (error) => {
-            console.error("Error listening to orders collection:", error);
-        });
+    private async loadOrders() {
+        this.orders = await getOrdersFromDB();
+        this.notifySubscribers();
     }
 
     private notifySubscribers() {
@@ -107,7 +146,10 @@ class OrdersManager {
 
     subscribe(callback: (orders: Order[]) => void): () => void {
         this.subscribers.push(callback);
-        callback(this.orders); 
+        // Only send initial data if we're on the server
+        if (typeof window === 'undefined') {
+            callback(this.orders); 
+        }
         return () => {
             this.subscribers = this.subscribers.filter(sub => sub !== callback);
         };
@@ -118,43 +160,85 @@ class OrdersManager {
     }
     
     async addOrder(order: Omit<Order, 'id' | 'date' | 'status' | 'createdAt'>): Promise<Order> {
+        // Only allow database operations on the server side
+        if (typeof window !== 'undefined') {
+            throw new Error('Database operations are only available on the server side');
+        }
+        
         try {
-            await runTransaction(db, async (transaction) => {
-                for (const item of order.items) {
-                    await updateProductStock(transaction, item.productId, item.variant.id, -item.quantity);
-                }
-            });
-
-            const docRef = await addDoc(collection(db, 'orders'), {
-                ...order,
-                status: 'Pending' as OrderStatus,
-                createdAt: serverTimestamp(),
-            });
+            const db = await getDb();
             
-             return {
-                ...order,
-                id: docRef.id,
-                status: 'Pending',
-                date: new Date().toISOString().split('T')[0],
-                createdAt: Timestamp.now(),
-            };
+            // Update product stock
+            for (const item of order.items) {
+                await updateVariantStock(item.variant.id, -item.quantity);
+            }
 
+            // Generate order ID
+            const orderId = `ORD-${Date.now()}`;
+            
+            // Insert order into database
+            const orderData = {
+                ...order,
+                id: orderId,
+                status: 'Pending' as OrderStatus,
+                date: new Date().toISOString().split('T')[0],
+                createdAt: new Date(),
+                items: JSON.stringify(order.items)
+            };
+            
+            await db.run(`
+              INSERT INTO orders (id, shopId, shopName, date, status, amount, items)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+                orderId,
+                order.shopId,
+                order.shopName,
+                orderData.date,
+                orderData.status,
+                order.amount,
+                orderData.items
+            );
+            
+            const newOrder: Order = {
+                ...orderData,
+                items: order.items
+            };
+            
+            this.orders.push(newOrder);
+            this.notifySubscribers();
+            
+            return newOrder;
         } catch (error) {
-            console.error("Order placement transaction failed: ", error);
+            console.error("Order placement failed: ", error);
             throw new Error("Failed to update stock. Order not placed.");
         }
     }
 
     async updateOrderStatus(orderId: string, newStatus: OrderStatus) {
-        const orderRef = doc(db, "orders", orderId);
+        // Only allow database operations on the server side
+        if (typeof window !== 'undefined') {
+            throw new Error('Database operations are only available on the server side');
+        }
+        
         try {
-            await runTransaction(db, async (transaction) => {
-                transaction.update(orderRef, { status: newStatus });
-            });
+            const db = await getDb();
+            await db.run(`
+              UPDATE orders 
+              SET status = ? 
+              WHERE id = ?
+            `, newStatus, orderId);
+            
+            // Update local cache
+            const orderIndex = this.orders.findIndex(order => order.id === orderId);
+            if (orderIndex !== -1) {
+                this.orders[orderIndex].status = newStatus;
+                this.notifySubscribers();
+            }
         } catch (error) {
             console.error(`Failed to update status for order ${orderId}:`, error);
         }
     }
 }
 
-export const ordersStore = new OrdersManager();
+// Only export the ordersStore instance on the server side
+export const ordersStore = typeof window === 'undefined' ? new OrdersManager() : null;

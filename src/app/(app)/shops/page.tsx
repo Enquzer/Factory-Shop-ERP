@@ -2,11 +2,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlusCircle } from "lucide-react";
 import { RegisterShopDialog } from "@/components/register-shop-dialog";
-import { getShops } from "@/lib/shops";
+import { getShops, type Shop } from "@/lib/shops";
 import { ShopsClientPage } from "./_components/shops-client";
 
+export const dynamic = 'force-dynamic';
+
 export default async function ShopsPage() {
-    const shops = await getShops();
+    let shops: Shop[] = [];
+    try {
+        shops = await getShops();
+    } catch (error) {
+        console.error('Error fetching shops for server-side rendering:', error);
+        shops = [];
+    }
     
     return (
         <div className="flex flex-col gap-6">

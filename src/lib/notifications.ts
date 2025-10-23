@@ -1,9 +1,4 @@
-
-
-'use client';
-
-import { db } from './firebase';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { getDb } from './db';
 
 export type Notification = {
     id: string;
@@ -19,69 +14,102 @@ export type Notification = {
 // Create a notification
 export const createNotification = async (notification: Omit<Notification, 'id' | 'isRead' | 'createdAt'>) => {
     try {
-        await addDoc(collection(db, 'notifications'), {
-            ...notification,
-            isRead: false,
-            createdAt: serverTimestamp(),
-        });
+        const db = await getDb();
+        const notificationId = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        
+        console.log('Creating notification:', { ...notification, id: notificationId });
+        
+        await db.run(`
+          INSERT INTO notifications (id, userType, shopId, title, description, href, isRead, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+            notificationId,
+            notification.userType,
+            notification.shopId || null,
+            notification.title,
+            notification.description,
+            notification.href,
+            0, // isRead = false
+            new Date().toISOString()
+        );
+        
+        console.log('Notification created successfully:', notificationId);
+        return notificationId;
     } catch (error) {
         console.error("Error creating notification: ", error);
+        throw error;
     }
-}
-
-// Create a notification as part of a batch
-export const createNotificationForBatch = (notification: Omit<Notification, 'id' | 'isRead' | 'createdAt'>, batch: ReturnType<typeof writeBatch>) => {
-    const notificationRef = doc(collection(db, 'notifications'));
-    batch.set(notificationRef, {
-        ...notification,
-        isRead: false,
-        createdAt: serverTimestamp(),
-    });
 };
 
 // Get notifications for a user type (and optional shopId)
-export const getNotifications = (userType: 'factory' | 'shop', shopId: string | null, callback: (notifications: Notification[]) => void) => {
-    let q;
-    if (userType === 'factory') {
-        q = query(collection(db, 'notifications'), where('userType', '==', 'factory'));
-    } else {
-        if (!shopId) return () => {};
-        q = query(collection(db, 'notifications'), where('userType', '==', 'shop'), where('shopId', '==', shopId));
-    }
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const notifications = querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate() || new Date(),
-            } as Notification;
-        }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        callback(notifications);
-    });
-
-    return unsubscribe;
-}
-
-// Mark notifications as read
-export const markNotificationsAsRead = async (userType: 'factory' | 'shop', shopId: string | null) => {
-    let q;
-     if (userType === 'factory') {
-        q = query(collection(db, 'notifications'), where('userType', '==', 'factory'), where('isRead', '==', false));
-    } else {
-        if (!shopId) return;
-        q = query(collection(db, 'notifications'), where('userType', '==', 'shop'), where('shopId', '==', shopId), where('isRead', '==', false));
-    }
-
+export const getNotifications = async (userType: 'factory' | 'shop', shopId: string | null): Promise<Notification[]> => {
     try {
-        const querySnapshot = await getDocs(q);
-        const batch = writeBatch(db);
-        querySnapshot.docs.forEach(doc => {
-            batch.update(doc.ref, { isRead: true });
-        });
-        await batch.commit();
-    } catch(error) {
-        console.error("Error marking notifications as read: ", error);
+        const db = await getDb();
+        let notifications;
+        if (userType === 'shop' && shopId) {
+            console.log('Fetching shop notifications for shopId:', shopId); // Debug log
+            // Modified query to ensure shop notifications are fetched correctly
+            notifications = await db.all(`
+              SELECT * FROM notifications 
+              WHERE userType = ? AND (shopId = ? OR shopId IS NULL)
+              ORDER BY created_at DESC
+            `, userType, shopId);
+            console.log('Found shop notifications:', notifications); // Debug log
+        } else {
+            console.log('Fetching factory notifications'); // Debug log
+            notifications = await db.all(`
+              SELECT * FROM notifications 
+              WHERE userType = ?
+              ORDER BY created_at DESC
+            `, userType);
+            console.log('Found factory notifications:', notifications); // Debug log
+        }
+        return notifications.map((notification: any) => ({
+            ...notification,
+            createdAt: new Date(notification.created_at)
+        }));
+    } catch (error) {
+        console.error("Error getting notifications: ", error);
+        return [];
     }
-}
+};
+
+// Mark a notification as read
+export const markNotificationAsRead = async (notificationId: string) => {
+    try {
+        const db = await getDb();
+        console.log('Marking notification as read:', notificationId); // Debug log
+        await db.run(`
+          UPDATE notifications 
+          SET isRead = 1 
+          WHERE id = ?
+        `, notificationId);
+        console.log('Notification marked as read successfully'); // Debug log
+    } catch (error) {
+        console.error("Error marking notification as read: ", error);
+    }
+};
+
+// Mark all notifications as read for a user
+export const markAllNotificationsAsRead = async (userType: 'factory' | 'shop', shopId: string | null) => {
+    try {
+        const db = await getDb();
+        console.log('Marking all notifications as read for userType:', userType, 'shopId:', shopId); // Debug log
+        if (userType === 'shop' && shopId) {
+            await db.run(`
+              UPDATE notifications 
+              SET isRead = 1 
+              WHERE userType = ? AND (shopId = ? OR shopId IS NULL)
+            `, userType, shopId);
+        } else {
+            await db.run(`
+              UPDATE notifications 
+              SET isRead = 1 
+              WHERE userType = ?
+            `, userType);
+        }
+        console.log('All notifications marked as read successfully'); // Debug log
+    } catch (error) {
+        console.error("Error marking all notifications as read: ", error);
+    }
+};

@@ -1,211 +1,296 @@
-
-
 "use client";
 
+import { useEffect, useState, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrder } from "@/hooks/use-order";
-import { Eye, Download, CreditCard, Truck, CheckCircle, Loader2 } from "lucide-react";
-import type { Order, OrderStatus } from "@/lib/orders";
-import { ordersStore } from "@/lib/orders";
-import { createNotification } from "@/lib/notifications";
-import { addItemsToShopInventory } from "@/lib/shop-inventory";
-import { getShopById, type Shop } from "@/lib/shops";
-import { useEffect, useState } from "react";
-
-
-const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
-    Pending: 'default',
-    'Awaiting Payment': 'secondary',
-    Paid: 'outline',
-    Dispatched: 'outline',
-    Delivered: 'secondary',
-    Cancelled: 'destructive'
-};
-
-const generateOrderConfirmationPDF = async (order: Order, shop: Shop) => {
-    const { default: jsPDF } = await import("jspdf");
-    const { default: autoTable } = await import("jspdf-autotable");
-
-    const doc = new jsPDF();
-    const discountedPrice = order.amount;
-    const originalPrice = order.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-    const totalQuantity = order.items.reduce((acc, item) => acc + item.quantity, 0);
-
-    // Header
-    doc.setFontSize(20);
-    doc.text("Order Confirmation", 105, 20, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text(`Order ID: ${order.id}`, 14, 30);
-    doc.text(`Date: ${order.date}`, 14, 36);
-
-    // Shop Info
-    doc.text(`Shop Name: ${shop.name}`, 120, 30);
-    doc.text(`Contact Person: ${shop.contactPerson}`, 120, 36);
-    
-    const body = order.items.map(item => {
-        const itemDiscountedPrice = item.price * (1 - shop.discount);
-        return [
-            { content: item.productCode, styles: { valign: 'middle' } },
-            { content: `${item.variant.color}, ${item.variant.size}`, styles: { valign: 'middle' } },
-            { content: item.quantity.toString(), styles: { valign: 'middle', halign: 'center' } },
-            { content: `ETB ${item.price.toFixed(2)}`, styles: { valign: 'middle' } },
-            { content: `ETB ${itemDiscountedPrice.toFixed(2)}`, styles: { valign: 'middle' } },
-        ]
-    });
-    
-    // Create a new array for autotable that includes the image
-    const tableBody = order.items.map(item => ([
-        '', // Placeholder for image
-        item.productCode,
-        `${item.name}\n${item.variant.color}, ${item.variant.size}`,
-        item.quantity,
-        `ETB ${item.price.toFixed(2)}`,
-        `ETB ${(item.price * (1-shop.discount)).toFixed(2)}`,
-        `ETB ${(item.price * (1-shop.discount) * item.quantity).toFixed(2)}`,
-    ]));
-
-    autoTable(doc, {
-        startY: 45,
-        head: [['Image', 'Code', 'Product', 'Qty', 'Unit Price', 'Discounted Price', 'Subtotal']],
-        body: tableBody,
-        theme: 'grid',
-        didDrawCell: (data) => {
-            if (data.column.index === 0 && data.cell.section === 'body') {
-                const item = order.items[data.row.index];
-                if (item.imageUrl) {
-                    try {
-                        doc.addImage(item.imageUrl, 'JPEG', data.cell.x + 2, data.cell.y + 2, 15, 18);
-                    } catch (e) {
-                        console.error("Error adding image to PDF:", e);
-                        doc.text("No img", data.cell.x + 2, data.cell.y + 10)
-                    }
-                }
-            }
-        },
-        rowPageBreak: 'auto',
-        styles: {
-            valign: 'middle'
-        },
-        headStyles: {
-            fillColor: [41, 128, 185], // A nice blue
-            textColor: 255,
-            fontStyle: 'bold',
-        },
-         columnStyles: {
-            0: { cellWidth: 20 },
-        }
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY || 100;
-    
-    // Summary section
-    doc.setFontSize(12);
-    doc.text("Order Summary", 14, finalY + 15);
-    autoTable(doc, {
-        startY: finalY + 20,
-        body: [
-            ['Total Quantity:', totalQuantity.toString()],
-            ['Original Total:', `ETB ${originalPrice.toFixed(2)}`],
-            ['Discount:', `${(shop.discount * 100).toFixed(0)}%`],
-            ['Discounted Total:', `ETB ${discountedPrice.toFixed(2)}`],
-        ],
-        theme: 'plain',
-        styles: {
-            fontSize: 12,
-        }
-    });
-
-    doc.save(`order-${order.id}.pdf`);
-}
-
-
-const ShopActionButton = ({ order, shop }: { order: Order, shop: Shop | null }) => {
-    const handleStatusChange = async (order: Order, status: OrderStatus) => {
-        await ordersStore.updateOrderStatus(order.id, status);
-
-        if (status === 'Delivered') {
-            await addItemsToShopInventory(order.shopId, order.items);
-        }
-
-        // Create notification for the factory
-        createNotification({
-            userType: 'factory',
-            title: `Order Status Updated`,
-            description: `Order #${order.id} from ${order.shopName} is now '${status}'`,
-            href: '/orders',
-        });
-    }
-    
-    const handleDownload = () => {
-        if (shop) {
-            generateOrderConfirmationPDF(order, shop);
-        }
-    }
-
-
-    switch (order.status) {
-        case 'Awaiting Payment':
-            return (
-                <>
-                    <Button size="sm" onClick={() => handleStatusChange(order, 'Paid')}>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Mark as Paid
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={handleDownload}>
-                        <Download className="h-4 w-4" />
-                        <span className="sr-only">Download Invoice</span>
-                    </Button>
-                </>
-            );
-        case 'Dispatched':
-             return (
-                <>
-                    <Button size="sm" onClick={() => handleStatusChange(order, 'Delivered')}>
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Confirm Receipt
-                    </Button>
-                     <Button variant="ghost" size="icon" onClick={handleDownload}>
-                        <Download className="h-4 w-4" />
-                        <span className="sr-only">Download Invoice</span>
-                    </Button>
-                </>
-            );
-        case 'Pending':
-             return (
-                <div className="flex items-center text-sm text-muted-foreground">
-                   <Truck className="mr-2 h-4 w-4" /> Awaiting Confirmation
-                </div>
-            );
-        default:
-             return (
-                 <Button variant="ghost" size="icon" onClick={handleDownload}>
-                    <Download className="h-4 w-4" />
-                    <span className="sr-only">Download Invoice</span>
-                </Button>
-            );
-    }
-}
-
+import { useAuth } from '@/contexts/auth-context';
+import { type Shop } from "@/lib/shops";
+import { type Order, type OrderStatus } from "@/lib/orders";
+import { Loader2, Upload, X } from "lucide-react";
+import { OrderDetailDialog } from "@/components/order-detail-dialog";
+import { OrderStatusIndicator } from "@/app/(app)/orders/_components/order-status-indicator";
 
 export default function ShopOrdersPage() {
-    const { orders, isLoading, shopId } = useOrder();
+    const { orders, isLoading } = useOrder();
+    const { user } = useAuth();
     const [shop, setShop] = useState<Shop|null>(null);
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [paymentSlipFile, setPaymentSlipFile] = useState<File | null>(null);
+    const [paymentSlipPreview, setPaymentSlipPreview] = useState<string | null>(null);
+    const [showPaymentForm, setShowPaymentForm] = useState(false);
+    const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
+    const [deliveryDate, setDeliveryDate] = useState('');
+    const [feedback, setFeedback] = useState('');
+    const [isClosed, setIsClosed] = useState(false);
+    const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+    const [selectedOrderForDelivery, setSelectedOrderForDelivery] = useState<Order | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const fetchShop = async () => {
-            const shopData = await getShopById(shopId);
-            setShop(shopData);
+            // Use API with username instead of shop ID
+            try {
+                const response = await fetch(`/api/shops/${user?.username}`);
+                if (response.ok) {
+                    const shopData = await response.json();
+                    setShop(shopData);
+                }
+            } catch (error) {
+                console.error('Error fetching shop:', error);
+            }
         }
-        if (shopId) {
+        if (user?.username) {
             fetchShop();
         }
-    }, [shopId]);
+    }, [user?.username]);
+
+    const handleViewOrder = (order: Order) => {
+        setSelectedOrder(order);
+        setIsDialogOpen(true);
+    };
+
+    const handleConfirmPayment = (order: Order) => {
+        setSelectedOrderForPayment(order);
+        setPaymentSlipFile(null);
+        setPaymentSlipPreview(null);
+        setShowPaymentForm(true);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setPaymentSlipFile(file);
+            // Create preview
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPaymentSlipPreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const removePaymentSlip = () => {
+        setPaymentSlipFile(null);
+        setPaymentSlipPreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const handlePaymentSubmit = async () => {
+        if (!selectedOrderForPayment || !paymentSlipFile) return;
+
+        try {
+            // First, upload the file
+            const formData = new FormData();
+            formData.append('file', paymentSlipFile);
+            formData.append('filename', `payment-slip-${selectedOrderForPayment.id}-${Date.now()}.${paymentSlipFile.name.split('.').pop()}`);
+            
+            const uploadResponse = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!uploadResponse.ok) {
+                throw new Error('Failed to upload payment slip');
+            }
+
+            const { imageUrl } = await uploadResponse.json();
+
+            // Then, confirm payment with the image URL
+            const response = await fetch(`/api/orders/${selectedOrderForPayment.id}/payment`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ paymentSlipUrl: imageUrl }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to confirm payment');
+            }
+
+            // Refresh orders
+            window.location.reload();
+        } catch (error) {
+            console.error("Error confirming payment:", error);
+        }
+    };
+
+    const handleConfirmDelivery = (order: Order) => {
+        setSelectedOrderForDelivery(order);
+        setDeliveryDate(new Date().toISOString().split('T')[0]); // Default to today
+        setShowDeliveryForm(true);
+    };
+
+    const handleDeliverySubmit = async () => {
+        if (!selectedOrderForDelivery || !deliveryDate) return;
+
+        try {
+            const response = await fetch(`/api/orders/${selectedOrderForDelivery.id}/delivery`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ deliveryDate, isClosed, feedback }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to confirm delivery');
+            }
+
+            // Refresh orders
+            window.location.reload();
+        } catch (error) {
+            console.error("Error confirming delivery:", error);
+        }
+    };
+
+    const getShopActions = (order: Order) => {
+        switch (order.status) {
+            case 'Awaiting Payment':
+                return (
+                    <Button variant="outline" size="sm" onClick={() => handleConfirmPayment(order)}>
+                        Confirm Payment
+                    </Button>
+                );
+            case 'Dispatched':
+                return (
+                    <Button variant="outline" size="sm" onClick={() => handleConfirmDelivery(order)}>
+                        Confirm Delivery
+                    </Button>
+                );
+            default:
+                return (
+                    <Button variant="outline" size="sm" onClick={() => handleViewOrder(order)}>
+                        View
+                    </Button>
+                );
+        }
+    };
+
+    const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
+        Pending: 'default',
+        'Awaiting Payment': 'secondary',
+        Paid: 'outline',
+        Dispatched: 'outline',
+        Delivered: 'secondary',
+        Cancelled: 'destructive'
+    };
 
     return (
         <div className="flex flex-col gap-6">
+            {/* Payment Form Modal */}
+            {showPaymentForm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-lg w-full max-w-md">
+                        <h2 className="text-xl font-semibold mb-4">Confirm Payment</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Payment Slip</label>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                />
+                                {!paymentSlipPreview ? (
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        className="w-full"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <Upload className="w-4 h-4 mr-2" />
+                                        Upload Payment Slip
+                                    </Button>
+                                ) : (
+                                    <div className="relative">
+                                        <img 
+                                            src={paymentSlipPreview} 
+                                            alt="Payment slip preview" 
+                                            className="w-full h-48 object-contain border rounded"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-md"
+                                            onClick={removePaymentSlip}
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                )}
+                                {paymentSlipFile && (
+                                    <p className="text-sm text-muted-foreground mt-2">
+                                        {paymentSlipFile.name} ({(paymentSlipFile.size / 1024).toFixed(2)} KB)
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex justify-end space-x-2 mt-6">
+                            <Button variant="outline" onClick={() => setShowPaymentForm(false)}>Cancel</Button>
+                            <Button 
+                                onClick={handlePaymentSubmit}
+                                disabled={!paymentSlipFile}
+                            >
+                                Submit
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delivery Form Modal */}
+            {showDeliveryForm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-lg w-full max-w-md">
+                        <h2 className="text-xl font-semibold mb-4">Confirm Delivery</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Delivery Date</label>
+                                <input
+                                    type="date"
+                                    className="w-full border rounded p-2"
+                                    value={deliveryDate}
+                                    onChange={(e) => setDeliveryDate(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Feedback (Optional)</label>
+                                <textarea
+                                    className="w-full border rounded p-2"
+                                    value={feedback}
+                                    onChange={(e) => setFeedback(e.target.value)}
+                                    placeholder="Enter any feedback about the delivery"
+                                    rows={3}
+                                />
+                            </div>
+                            <div className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    id="isClosed"
+                                    checked={isClosed}
+                                    onChange={(e) => setIsClosed(e.target.checked)}
+                                    className="mr-2"
+                                />
+                                <label htmlFor="isClosed">Close this order</label>
+                            </div>
+                        </div>
+                        <div className="flex justify-end space-x-2 mt-6">
+                            <Button variant="outline" onClick={() => setShowDeliveryForm(false)}>Cancel</Button>
+                            <Button onClick={handleDeliverySubmit}>Submit</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">My Orders</h1>
             </div>
@@ -226,6 +311,7 @@ export default function ShopOrdersPage() {
                                     <TableHead>Order ID</TableHead>
                                     <TableHead className="hidden sm:table-cell">Date</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead className="hidden lg:table-cell">Progress</TableHead>
                                     <TableHead className="text-right">Amount</TableHead>
                                     <TableHead className="text-center">Actions</TableHead>
                                 </TableRow>
@@ -239,15 +325,18 @@ export default function ShopOrdersPage() {
                                             <TableCell>
                                                 <Badge variant={statusVariants[order.status]}>{order.status}</Badge>
                                             </TableCell>
+                                            <TableCell className="hidden lg:table-cell">
+                                                <OrderStatusIndicator status={order.status} />
+                                            </TableCell>
                                             <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                                            <TableCell className="text-center space-x-2">
-                                                <ShopActionButton order={order} shop={shop} />
+                                            <TableCell className="text-center">
+                                                {getShopActions(order)}
                                             </TableCell>
                                         </TableRow>
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                                        <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                                             You haven't placed any orders yet.
                                         </TableCell>
                                     </TableRow>
@@ -257,6 +346,14 @@ export default function ShopOrdersPage() {
                     )}
                 </CardContent>
             </Card>
+            
+            {selectedOrder && (
+                <OrderDetailDialog 
+                    order={selectedOrder} 
+                    open={isDialogOpen} 
+                    onOpenChange={setIsDialogOpen} 
+                />
+            )}
         </div>
     );
 }

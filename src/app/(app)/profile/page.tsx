@@ -1,4 +1,3 @@
-
 import {
   Card,
   CardContent,
@@ -10,8 +9,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useAuth } from '@/contexts/auth-context';
 
-// Mock data based on the XML specification for a factory profile
+// In a real implementation, this data would be fetched from the database
+// based on the authenticated factory user
 const factoryProfileData = {
   name: "Carement",
   address: "123 Industrial Zone, Addis Ababa, Ethiopia",

@@ -1,8 +1,7 @@
-
 "use client";
 
-import { useMemo } from "react";
-import { format, parseISO, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, subWeeks } from "date-fns";
+import { useMemo, useEffect, useState } from "react";
+import { format, parseISO, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, subWeeks, isWithinInterval } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import {
   Table,
@@ -13,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { TrendingUp, TrendingDown, Package, Wallet } from "lucide-react";
+import { TrendingUp, TrendingDown, Package, Wallet, Loader2 } from "lucide-react";
 import { type Product } from "@/lib/products";
 import { type Shop } from "@/lib/shops";
 import { type Order } from "@/lib/orders";
@@ -35,11 +34,59 @@ type ReportsClientPageProps = {
 }
 
 export function ReportsClientPage({ products, shops, orders }: ReportsClientPageProps) {
+    const [isLoading, setIsLoading] = useState(false);
+    const [refreshedOrders, setRefreshedOrders] = useState<Order[]>(orders);
+    const [refreshedShops, setRefreshedShops] = useState<Shop[]>(shops);
+    const [refreshedProducts, setRefreshedProducts] = useState<Product[]>(products);
+
+    // Fetch fresh data
+    useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            try {
+                // Fetch fresh orders
+                const ordersResponse = await fetch('/api/orders');
+                if (ordersResponse.ok) {
+                    const ordersData = await ordersResponse.json();
+                    setRefreshedOrders(ordersData);
+                }
+                
+                // Fetch fresh shops
+                const shopsResponse = await fetch('/api/shops');
+                if (shopsResponse.ok) {
+                    const shopsData = await shopsResponse.json();
+                    // Handle both array and paginated response formats
+                    const shopsArray = Array.isArray(shopsData) 
+                        ? shopsData 
+                        : (shopsData.shops || []);
+                    setRefreshedShops(shopsArray);
+                }
+                
+                // Fetch fresh products
+                const productsResponse = await fetch('/api/products');
+                if (productsResponse.ok) {
+                    const productsData = await productsResponse.json();
+                    setRefreshedProducts(productsData);
+                }
+            } catch (error) {
+                console.error('Error fetching fresh data:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
 
     const kpis = useMemo(() => {
+        // Use refreshed data instead of props data
+        const currentProducts = refreshedProducts;
+        const currentShops = refreshedShops;
+        const currentOrders = refreshedOrders;
+
         // Inventory KPIs
-        const totalInventoryAmount = products.reduce((acc, p) => acc + p.variants.reduce((vAcc, v) => vAcc + v.stock, 0), 0);
-        const totalInventoryValue = products.reduce((acc, p) => acc + p.variants.reduce((vAcc, v) => vAcc + (v.stock * p.price), 0), 0);
+        const totalInventoryAmount = currentProducts.reduce((acc, p) => acc + p.variants.reduce((vAcc, v) => vAcc + v.stock, 0), 0);
+        const totalInventoryValue = currentProducts.reduce((acc, p) => acc + p.variants.reduce((vAcc, v) => vAcc + (v.stock * p.price), 0), 0);
 
         // Sales comparison KPIs
         const now = new Date();
@@ -48,70 +95,108 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
         const startOfLastMonth = startOfMonth(subMonths(now, 1));
         const endOfLastMonth = endOfMonth(subMonths(now, 1));
         
-        const thisMonthSales = orders
-            .filter(o => {
-                const orderDate = parseISO(o.date);
-                return orderDate >= startOfThisMonth && orderDate <= endOfThisMonth;
-            })
-            .reduce((sum, o) => sum + o.amount, 0);
+        // Filter orders by date range
+        const thisMonthOrders = currentOrders.filter(o => {
+            const orderDate = parseISO(o.date);
+            return isWithinInterval(orderDate, { start: startOfThisMonth, end: endOfThisMonth });
+        });
+        
+        const lastMonthOrders = currentOrders.filter(o => {
+            const orderDate = parseISO(o.date);
+            return isWithinInterval(orderDate, { start: startOfLastMonth, end: endOfLastMonth });
+        });
+        
+        // Calculate sales amounts
+        const thisMonthSales = thisMonthOrders.reduce((sum, o) => sum + o.amount, 0);
+        const lastMonthSales = lastMonthOrders.reduce((sum, o) => sum + o.amount, 0);
 
-        const lastMonthSales = orders
-            .filter(o => {
-                const orderDate = parseISO(o.date);
-                return orderDate >= startOfLastMonth && orderDate <= endOfLastMonth;
-            })
-            .reduce((sum, o) => sum + o.amount, 0);
-
-        const monthOverMonthSales = lastMonthSales > 0 ? ((thisMonthSales - lastMonthSales) / lastMonthSales) * 100 : (thisMonthSales > 0 ? 100 : 0);
+        // Calculate month-over-month growth
+        let monthOverMonthSales = 0;
+        if (lastMonthSales > 0) {
+            monthOverMonthSales = ((thisMonthSales - lastMonthSales) / lastMonthSales) * 100;
+        } else if (thisMonthSales > 0) {
+            monthOverMonthSales = 100; // 100% growth from zero
+        }
         
         const startOfThisWeek = startOfWeek(now, { weekStartsOn: 1 });
         const endOfThisWeek = endOfWeek(now, { weekStartsOn: 1 });
         const startOfLastWeek = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
         const endOfLastWeek = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
         
-         const thisWeekSales = orders
-            .filter(o => {
-                const orderDate = parseISO(o.date);
-                return orderDate >= startOfThisWeek && orderDate <= endOfThisWeek;
-            })
-            .reduce((sum, o) => sum + o.amount, 0);
+        // Filter orders by week
+        const thisWeekOrders = currentOrders.filter(o => {
+            const orderDate = parseISO(o.date);
+            return isWithinInterval(orderDate, { start: startOfThisWeek, end: endOfThisWeek });
+        });
+        
+        const lastWeekOrders = currentOrders.filter(o => {
+            const orderDate = parseISO(o.date);
+            return isWithinInterval(orderDate, { start: startOfLastWeek, end: endOfLastWeek });
+        });
+        
+        // Calculate weekly sales
+        const thisWeekSales = thisWeekOrders.reduce((sum, o) => sum + o.amount, 0);
+        const lastWeekSales = lastWeekOrders.reduce((sum, o) => sum + o.amount, 0);
 
-        const lastWeekSales = orders
-            .filter(o => {
-                const orderDate = parseISO(o.date);
-                return orderDate >= startOfLastWeek && orderDate <= endOfLastWeek;
-            })
-            .reduce((sum, o) => sum + o.amount, 0);
-
-        const weekOverWeekSales = lastWeekSales > 0 ? ((thisWeekSales - lastWeekSales) / lastWeekSales) * 100 : (thisWeekSales > 0 ? 100 : 0);
+        // Calculate week-over-week growth
+        let weekOverWeekSales = 0;
+        if (lastWeekSales > 0) {
+            weekOverWeekSales = ((thisWeekSales - lastWeekSales) / lastWeekSales) * 100;
+        } else if (thisWeekSales > 0) {
+            weekOverWeekSales = 100; // 100% growth from zero
+        }
 
         // Shop performance
-        const shopPerformance: ShopPerformance[] = shops.map(shop => {
-             const shopOrders = orders.filter(o => o.shopId === shop.id);
-             const currentMonthShopOrders = shopOrders.filter(o => {
-                const orderDate = parseISO(o.date);
-                return orderDate >= startOfThisMonth && orderDate <= endOfThisMonth;
-             });
+        // Ensure currentShops is an array before using map
+        const shopPerformance: ShopPerformance[] = Array.isArray(currentShops) 
+            ? currentShops.map(shop => {
+                 const shopOrders = currentOrders.filter(o => o.shopId === shop.id);
+                 const currentMonthShopOrders = shopOrders.filter(o => {
+                    const orderDate = parseISO(o.date);
+                    return isWithinInterval(orderDate, { start: startOfThisMonth, end: endOfThisMonth });
+                 });
 
-             const totalRevenue = currentMonthShopOrders.reduce((sum, o) => sum + o.amount, 0);
-             const totalItems = currentMonthShopOrders.reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + i.quantity, 0), 0);
-             const progress = shop.monthlySalesTarget ? (totalRevenue / shop.monthlySalesTarget) * 100 : 0;
+                 const totalRevenue = currentMonthShopOrders.reduce((sum, o) => sum + o.amount, 0);
+                 const totalItems = currentMonthShopOrders.reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + i.quantity, 0), 0);
+                 const progress = shop.monthlySalesTarget ? (totalRevenue / shop.monthlySalesTarget) * 100 : 0;
 
-             return {
-                 id: shop.id,
-                 name: shop.name,
-                 totalOrders: currentMonthShopOrders.length,
-                 totalRevenue,
-                 totalItems,
-                 target: shop.monthlySalesTarget,
-                 progress: Math.min(100, progress),
-             }
-        }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+                 return {
+                     id: shop.id,
+                     name: shop.name,
+                     totalOrders: currentMonthShopOrders.length,
+                     totalRevenue,
+                     totalItems,
+                     target: shop.monthlySalesTarget,
+                     progress: Math.min(100, progress),
+                 }
+            }).sort((a, b) => b.totalRevenue - a.totalRevenue)
+            : [];
 
-        return { totalInventoryAmount, totalInventoryValue, monthOverMonthSales, weekOverWeekSales, shopPerformance };
+        return { 
+            totalInventoryAmount, 
+            totalInventoryValue, 
+            monthOverMonthSales, 
+            weekOverWeekSales, 
+            shopPerformance,
+            // For debugging
+            orderCounts: {
+                total: currentOrders.length,
+                thisMonth: thisMonthOrders.length,
+                lastMonth: lastMonthOrders.length,
+                thisWeek: thisWeekOrders.length,
+                lastWeek: lastWeekOrders.length
+            }
+        };
 
-    }, [products, orders, shops]);
+    }, [refreshedProducts, refreshedOrders, refreshedShops]);
     
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     const GrowthIndicator = ({ value }: { value: number }) => {
         const isPositive = value > 0;
@@ -131,7 +216,15 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
 
     return (
         <div className="flex flex-col gap-6">
-            <h1 className="text-2xl font-semibold">Reports & Analytics</h1>
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold">Reports & Analytics</h1>
+                <button 
+                    onClick={() => window.location.reload()} 
+                    className="text-sm text-primary hover:underline"
+                >
+                    Refresh Data
+                </button>
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card>

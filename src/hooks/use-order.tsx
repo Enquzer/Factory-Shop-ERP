@@ -1,14 +1,14 @@
-
-
 'use client';
 
 import { type Product, type ProductVariant } from "@/lib/products";
 import { createContext, useContext, useState, ReactNode, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ordersStore, type Order } from "@/lib/orders";
+import { type Order } from "@/lib/orders";
 import { useToast } from "./use-toast";
 import { createNotification } from "@/lib/notifications";
-import { getShopById, type Shop } from "@/lib/shops";
+import { getShopById, getShopByUsername, type Shop } from "@/lib/shops";
+import { useAuth } from '@/contexts/auth-context';
+import { type ShopInventoryItem } from "@/lib/shop-inventory-sqlite";
 
 export type OrderItem = { 
   productId: string;
@@ -33,57 +33,189 @@ interface OrderContextType {
   shopDiscount: number;
   shopId: string;
   shopName: string;
+  // Add shop inventory to the context
+  shopInventory: ShopInventoryItem[];
+  getAvailableStock: (variantId: string) => number;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
+// Default context values for when OrderProvider is not available
+const defaultOrderContext: OrderContextType = {
+  items: [],
+  orders: [],
+  isLoading: false,
+  addItem: () => {},
+  removeItem: () => {},
+  updateQuantity: () => {},
+  clearOrder: () => {},
+  placeOrder: () => {},
+  totalAmount: 0,
+  shopDiscount: 0,
+  shopId: "",
+  shopName: "",
+  shopInventory: [],
+  getAvailableStock: () => 0,
+};
 
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [shop, setShop] = useState<Shop | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Add state for shop inventory
+  const [shopInventory, setShopInventory] = useState<ShopInventoryItem[]>([]);
   const router = useRouter();
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  // Mocking shop-specific data. In a real app, this would come from auth context.
-  const shopId = "SHP-001";
-  
+  // Get the shop ID from the authenticated user
+  const shopId = useMemo(() => {
+    if (user && user.role === 'shop') {
+      // We'll need to get the actual shop ID from the shops table based on the username
+      return null; // Will be set in useEffect
+    }
+    return null;
+  }, [user]);
+
   useEffect(() => {
     const fetchShopData = async () => {
-        const shopData = await getShopById(shopId);
-        setShop(shopData);
-        if (shopData?.status === 'Inactive') {
+      if (!user || user.role !== 'shop') {
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        // Get shop data through API instead of direct database call
+        const response = await fetch(`/api/shops/${user.username}`);
+        if (response.ok) {
+          const shopData = await response.json();
+          if (shopData) {
+            setShop(shopData);
+            if (shopData.status === 'Inactive') {
+              toast({
+                  title: "Account Deactivated",
+                  description: "Your shop account is currently inactive. Please contact the factory for support.",
+                  variant: "destructive",
+                  duration: Infinity,
+              });
+              router.push('/shop/login');
+            }
+          } else {
             toast({
-                title: "Account Deactivated",
-                description: "Your shop account is currently inactive. Please contact the factory for support.",
+                title: "Shop Not Found",
+                description: "Your shop account could not be found. Please contact the factory for support.",
                 variant: "destructive",
                 duration: Infinity,
             });
             router.push('/shop/login');
+          }
+        } else {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch shop data');
         }
-    }
+      } catch (error) {
+        console.error("Error fetching shop data:", error);
+        toast({
+            title: "Error",
+            description: "Failed to load shop information.",
+            variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
     fetchShopData();
-  }, [shopId, router, toast])
+  }, [user, router, toast]);
+
+  // Fetch shop inventory when shop data is available
+  useEffect(() => {
+    const fetchShopInventory = async () => {
+      if (!shop || !user) return;
+      
+      try {
+        const response = await fetch(`/api/shop-inventory?username=${user.username}`);
+        if (response.ok) {
+          const inventory = await response.json();
+          setShopInventory(inventory);
+        }
+      } catch (error) {
+        console.error("Error fetching shop inventory:", error);
+      }
+    };
+    
+    fetchShopInventory();
+  }, [shop, user]);
 
   useEffect(() => {
+    // Only fetch orders if we have a valid shop
+    if (!shop) return;
+    
     setIsLoading(true);
-    const unsubscribe = ordersStore.subscribe(allOrders => {
-      const shopOrders = allOrders.filter(o => o.shopId === shopId);
-      setOrders(shopOrders);
-      setIsLoading(false);
-    });
-    return () => unsubscribe();
-  }, [shopId]);
-
+    
+    // Fetch orders from API instead of using ordersStore directly
+    const fetchOrders = async () => {
+      try {
+        const response = await fetch('/api/orders');
+        if (response.ok) {
+          const allOrders = await response.json();
+          const shopOrders = allOrders.filter((o: any) => o.shopId === shop.id);
+          setOrders(shopOrders);
+        }
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchOrders();
+    
+    // Set up polling to refresh orders periodically
+    const intervalId = setInterval(fetchOrders, 30000); // Every 30 seconds
+    
+    return () => clearInterval(intervalId);
+  }, [shop]);
 
   const addItem = (product: Product, variant: ProductVariant, quantity: number = 1) => {
+    // Check if the item is in stock
+    const availableStock = getAvailableStock(variant.id);
+    if (availableStock <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is currently out of stock.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Check if requested quantity exceeds available stock
+    if (quantity > availableStock) {
+      toast({
+        title: "Insufficient Stock",
+        description: `Only ${availableStock} items available in stock for ${product.name}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.variant.id === variant.id);
       if (existingItem) {
+        const newQuantity = existingItem.quantity + quantity;
+        // Check if the new quantity exceeds available stock
+        if (newQuantity > availableStock) {
+          toast({
+            title: "Insufficient Stock",
+            description: `Only ${availableStock} items available in stock for ${product.name}.`,
+            variant: "destructive",
+          });
+          return prevItems;
+        }
         return prevItems.map((item) =>
           item.variant.id === variant.id
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: newQuantity }
             : item
         );
       }
@@ -92,14 +224,26 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           name: product.name,
           price: product.price,
           productCode: product.productCode,
-          imageUrl: variant.imageUrl || product.imageUrl, 
+          imageUrl: variant.imageUrl || product.imageUrl || "", // Ensure it's always a string
           variant, 
           quantity 
       }];
     });
+    
+    toast({
+        title: "Item Added",
+        description: `${product.name} added to your order.`,
+    });
   };
 
   const removeItem = (variantId: string) => {
+    const itemToRemove = items.find((item) => item.variant.id === variantId);
+    if (itemToRemove) {
+      toast({
+          title: "Item Removed",
+          description: `${itemToRemove.name} removed from your order.`,
+      });
+    }
     setItems((prevItems) => prevItems.filter((item) => item.variant.id !== variantId));
   };
 
@@ -108,6 +252,26 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         removeItem(variantId);
         return;
     }
+    
+    // Check if the new quantity exceeds available stock
+    const itemToUpdate = items.find((item) => item.variant.id === variantId);
+    if (itemToUpdate) {
+      const availableStock = getAvailableStock(variantId);
+      if (quantity > availableStock) {
+        toast({
+          title: "Insufficient Stock",
+          description: `Only ${availableStock} items available in stock for ${itemToUpdate.name}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      toast({
+          title: "Quantity Updated",
+          description: `Quantity for ${itemToUpdate.name} updated to ${quantity}.`,
+      });
+    }
+    
     setItems((prevItems) =>
       prevItems.map((item) =>
         item.variant.id === variantId ? { ...item, quantity: quantity } : item
@@ -116,6 +280,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   };
 
   const clearOrder = () => {
+    if (items.length > 0) {
+      toast({
+          title: "Order Cleared",
+          description: "Your order has been cleared.",
+      });
+    }
     setItems([]);
   };
 
@@ -128,15 +298,48 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const finalAmountAfterDiscount = totalAmount * (1 - shopDiscount);
 
   const placeOrder = async () => {
-      if (items.length === 0 || !shop) return;
+      if (items.length === 0 || !shop) {
+        toast({
+            title: "Cannot Place Order",
+            description: "Your order is empty or shop information is missing.",
+            variant: "destructive",
+        });
+        return;
+      }
 
       try {
-        const newOrder = await ordersStore.addOrder({
-            shopId,
-            shopName,
+        // Show loading toast
+        const loadingToast = toast({
+            title: "Placing Order",
+            description: "Please wait while we process your order...",
+        });
+
+        console.log('Placing order for shop:', { shopId: shop.id, shopName: shop.name });
+        console.log('Order items:', items);
+        console.log('Total amount:', finalAmountAfterDiscount);
+
+        // Use API call instead of ordersStore
+        const response = await fetch('/api/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: shop.id,
+            shopName: shop.name,
             amount: finalAmountAfterDiscount,
             items: [...items],
+          }),
         });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Order API error response:', errorText);
+          throw new Error(`Failed to place order: ${response.status} ${response.statusText}`);
+        }
+
+        const newOrder = await response.json();
+        console.log('Order placed successfully:', newOrder);
         
         clearOrder();
 
@@ -146,12 +349,33 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         });
 
         // Create notification for factory
-        createNotification({
-            userType: 'factory',
-            title: `New Order: ${newOrder.id}`,
-            description: `From ${shopName} for ETB ${newOrder.amount.toFixed(2)}`,
-            href: `/orders`
-        });
+        try {
+          const notificationResponse = await fetch('/api/notifications', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userType: 'factory',
+              title: `New Order: ${newOrder.id}`,
+              description: `From ${shop.name} for ETB ${newOrder.amount.toFixed(2)}`,
+              href: `/orders`
+            }),
+          });
+          
+          if (!notificationResponse.ok) {
+            throw new Error('Failed to create notification');
+          }
+          
+          console.log('Factory notification sent for order:', newOrder.id);
+        } catch (notificationError) {
+          console.error('Failed to send factory notification:', notificationError);
+          toast({
+              title: "Notification Warning",
+              description: "Order was placed but notification to factory may have failed.",
+              variant: "destructive",
+          });
+        }
 
         router.push('/shop/orders');
       } catch (error) {
@@ -164,6 +388,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       }
   }
 
+  // Add function to get available stock for a variant
+  const getAvailableStock = (variantId: string) => {
+    const inventoryItem = shopInventory.find(item => item.productVariantId === variantId);
+    return inventoryItem ? inventoryItem.stock : 0;
+  };
+
   const value = {
     items,
     orders,
@@ -175,21 +405,21 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     placeOrder,
     totalAmount,
     shopDiscount,
-    shopId,
-    shopName,
+    shopId: shop?.id || "",
+    shopName: shop?.name || "",
+    // Include shop inventory in the context value
+    shopInventory,
+    getAvailableStock
   };
 
-  if (shop?.status === 'Inactive') {
-    return null; // Don't render the app for inactive shops
-  }
-
+  // Always provide the context, even for non-shop users
+  // This prevents the "useOrder must be used within an OrderProvider" error
   return <OrderContext.Provider value={value}>{children}</OrderContext.Provider>;
 }
 
 export function useOrder() {
   const context = useContext(OrderContext);
-  if (context === undefined) {
-    throw new Error("useOrder must be used within an OrderProvider");
-  }
-  return context;
+  // Return a default context instead of throwing an error
+  // This allows the component to work in both factory and shop contexts
+  return context || defaultOrderContext;
 }

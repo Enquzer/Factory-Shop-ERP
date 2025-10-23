@@ -1,127 +1,127 @@
-
-
-import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, writeBatch, updateDoc } from 'firebase/firestore';
-
-const mockShops = [
-    {
-        id: "SHP-001",
-        username: "bole_boutique",
-        name: "Bole Boutique",
-        contactPerson: "Abebe Bikila",
-        city: "Addis Ababa",
-        exactLocation: "Bole, next to Edna Mall",
-        discount: 0.05,
-        status: "Active",
-        monthlySalesTarget: 50000,
-    },
-    {
-        id: "SHP-002",
-        username: "hawassa_habesha",
-        name: "Hawassa Habesha",
-        contactPerson: "Tirunesh Dibaba",
-        city: "Hawassa",
-        exactLocation: "Piassa, near the lake",
-        discount: 0,
-        status: "Active",
-        monthlySalesTarget: 30000,
-    },
-    {
-        id: "SHP-003",
-        username: "merkato_style",
-        name: "Merkato Style",
-        contactPerson: "Kenenisa Bekele",
-        city: "Addis Ababa",
-        exactLocation: "Merkato, main market area",
-        discount: 0.10,
-        status: "Pending",
-        monthlySalesTarget: 75000,
-    },
-    {
-        id: "SHP-004",
-        username: "adama_modern",
-        name: "Adama Modern",
-        contactPerson: "Meseret Defar",
-        city: "Adama",
-        exactLocation: "City center, across from the post office",
-        discount: 0.05,
-        status: "Inactive",
-        monthlySalesTarget: 25000,
-    }
-];
-
-export type ShopStatus = "Active" | "Pending" | "Inactive";
+import { registerUser } from './auth';
+import { getDb } from './db';
+import { getShops as getShopsFromSQLite, getAllShops as getAllShopsFromSQLite, getShopById as getShopByIdFromSQLite, getShopByUsername as getShopByUsernameFromSQLite } from './shops-sqlite';
 
 export type Shop = {
-    id: string;
-    username: string;
-    name: string;
-    contactPerson: string;
-    contactPhone: string;
-    city: string;
-    exactLocation: string;
-    discount: number; // Stored as a decimal, e.g., 0.05 for 5%
-    status: ShopStatus;
-    monthlySalesTarget?: number;
-    tinNumber?: string;
-    tradeLicenseNumber?: string;
-    password?: string; // This is NOT secure, for demo only
+  id: string;
+  username: string;
+  name: string;
+  contactPerson: string;
+  contactPhone: string;
+  city: string;
+  exactLocation: string;
+  tradeLicenseNumber: string;
+  tinNumber: string;
+  discount: number;
+  status: 'Active' | 'Inactive' | 'Pending';
+  monthlySalesTarget: number;
 };
 
-let shopsCache: Shop[] | null = null;
-let lastFetchTime: number | null = null;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// Updated type for paginated results
+export type PaginatedShops = {
+  shops: Shop[];
+  totalCount: number;
+  currentPage: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
 
-export async function getShops(forceRefresh: boolean = false): Promise<Shop[]> {
-    const now = Date.now();
-    if (!forceRefresh && shopsCache && lastFetchTime && (now - lastFetchTime < CACHE_DURATION)) {
-        return shopsCache;
-    }
+export async function getShops(forceRefresh = false): Promise<Shop[]> {
+  // Always use the SQLite implementation directly to avoid SSR issues
+  try {
+    // Use the new getAllShops function to get all shops without pagination
+    return await getAllShopsFromSQLite();
+  } catch (error) {
+    console.error('Error fetching shops from SQLite:', error);
+    return [];
+  }
+}
 
-    try {
-        const querySnapshot = await getDocs(collection(db, "shops"));
-        if (querySnapshot.empty) {
-            console.log("No shops found in Firestore, using mock data locally.");
-            shopsCache = mockShops as Shop[];
-        } else {
-             shopsCache = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shop));
-        }
-
-        lastFetchTime = now;
-        return shopsCache;
-    } catch (error) {
-        console.error("Error fetching shops:", error);
-        return shopsCache || mockShops as Shop[];
-    }
+// New function to get paginated shops
+export async function getPaginatedShops(page: number = 1, limit: number = 10): Promise<PaginatedShops> {
+  try {
+    const offset = (page - 1) * limit;
+    const { shops, totalCount } = await getShopsFromSQLite(limit, offset);
+    
+    const totalPages = Math.ceil(totalCount / limit);
+    
+    return {
+      shops,
+      totalCount,
+      currentPage: page,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1
+    };
+  } catch (error) {
+    console.error('Error fetching paginated shops from SQLite:', error);
+    return {
+      shops: [],
+      totalCount: 0,
+      currentPage: 1,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: false
+    };
+  }
 }
 
 export async function getShopById(shopId: string): Promise<Shop | null> {
-    const allShops = await getShops();
-    return allShops.find(s => s.id === shopId) || null;
+  // Use the SQLite implementation for now
+  return await getShopByIdFromSQLite(shopId);
 }
 
-export async function addShop(shopData: Omit<Shop, 'id' | 'status'>): Promise<Shop> {
-    // In a real app, you'd likely have a more robust ID generation system
-    // and would hash the password.
-    const newShopId = `SHP-${Date.now().toString().slice(-6)}`;
-    
-    const newShop: Shop = {
-        ...shopData,
-        id: newShopId,
-        status: "Active", // Default status for new shops
-    };
-
-    const shopRef = doc(db, 'shops', newShopId);
-    await setDoc(shopRef, newShop);
-
-    // Invalidate local cache
-    shopsCache = null;
-    
-    return newShop;
+export async function getShopByUsername(username: string): Promise<Shop | null> {
+  // Use the SQLite implementation directly to avoid circular dependency
+  return await getShopByUsernameFromSQLite(username);
 }
 
-export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop, 'id' | 'username' | 'password'>>): Promise<void> {
-    const shopRef = doc(db, 'shops', shopId);
-    await updateDoc(shopRef, dataToUpdate);
-    shopsCache = null; // Invalidate cache
+export async function addShop(shopData: Omit<Shop, 'id' | 'status'> & { password: string }): Promise<Shop> {
+    try {
+        // Call the API endpoint to register the shop
+        const response = await fetch('/api/shops', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(shopData),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to register shop');
+        }
+
+        const newShop = await response.json();
+        return newShop;
+    } catch (error: any) {
+        console.error("Error registering shop:", error);
+        throw error;
+    }
+}
+
+export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop, 'id' | 'username'>>): Promise<boolean> {
+  try {
+    // Use absolute URL for server-side requests, relative for client-side
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const url = typeof window === 'undefined' 
+      ? `${baseUrl}/api/shops?id=${shopId}`
+      : `/api/shops?id=${shopId}`;
+      
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(dataToUpdate),
+    });
+    
+    return response.ok;
+  } catch (error) {
+    console.error("Error updating shop:", error);
+    return false;
+  }
 }

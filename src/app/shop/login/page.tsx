@@ -1,17 +1,47 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
+"use client";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Logo } from "@/components/logo"
+} from "@/components/ui/card";
+import { Logo } from "@/components/logo";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useAuth } from '@/contexts/auth-context';
 
 export default function ShopLoginPage() {
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
+
+  // Redirect authenticated users to the dashboard
+  useEffect(() => {
+    if (!isLoading && user && user.role === 'shop') {
+      router.replace("/shop/dashboard");
+    }
+  }, [user, isLoading, router]);
+
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is already authenticated, don't show the login page
+  if (user && user.role === 'shop') {
+    return null;
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="mx-auto w-full max-w-sm">
@@ -21,40 +51,15 @@ export default function ShopLoginPage() {
           </div>
           <CardTitle className="text-2xl text-center">Shop Login</CardTitle>
           <CardDescription className="text-center">
-            Enter your credentials to access the shop portal
+            Please log in to access the shop dashboard
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="shop_user"
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
-              </div>
-              <Input id="password" type="password" required />
-            </div>
-            <Button type="submit" className="w-full" asChild>
-                <Link href="/shop/dashboard">Login</Link>
-            </Button>
-            <div className="mt-4 text-center text-sm">
-              Not a shop user?{" "}
-              <Link href="/factory/login" className="underline">
-                Factory Login
-              </Link>
-            </div>
-          </div>
+        <CardContent className="grid gap-4">
+          <Button onClick={() => router.push("/")}>
+            Go to Home Page
+          </Button>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
-
-    

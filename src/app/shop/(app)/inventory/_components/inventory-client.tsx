@@ -1,10 +1,10 @@
-
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { type ShopInventoryItem } from '@/lib/shop-inventory';
+import Image from "next/image";
 
 const LOW_STOCK_THRESHOLD = 5;
 
@@ -29,12 +29,35 @@ export function InventoryClientPage({ inventory }: { inventory: ShopInventoryIte
                         </TableHeader>
                         <TableBody>
                             {inventory.map(item => (
-                                <TableRow key={`${item.productId}-${item.variant.id}`}>
-                                    <TableCell className="font-medium">{item.name}</TableCell>
-                                    <TableCell>{item.variant.color}, {item.variant.size}</TableCell>
+                                <TableRow key={`${item.productId}-${item.productVariantId}`}>
+                                    <TableCell className="font-medium">
+                                        <div className="flex items-center gap-2">
+                                            {item.imageUrl ? (
+                                                <div className="relative h-10 w-8 rounded overflow-hidden">
+                                                    <Image 
+                                                        src={item.imageUrl} 
+                                                        alt={item.name} 
+                                                        fill 
+                                                        className="object-cover"
+                                                        onError={(e) => {
+                                                            const target = e.target as HTMLImageElement;
+                                                            target.src = '/placeholder-product.png';
+                                                        }}
+                                                        unoptimized={true}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-muted border rounded w-8 h-10 flex items-center justify-center">
+                                                    <span className="text-xs">?</span>
+                                                </div>
+                                            )}
+                                            <span>{item.name}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>{item.color}, {item.size}</TableCell>
                                     <TableCell className="text-right">
-                                        <Badge variant={item.stock > LOW_STOCK_THRESHOLD ? 'outline' : 'destructive'}>
-                                            {item.stock}
+                                        <Badge variant={item.stock > LOW_STOCK_THRESHOLD ? 'outline' : item.stock > 0 ? 'destructive' : 'secondary'}>
+                                            {item.stock > 0 ? item.stock : 'Out of Stock'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">ETB {item.price.toFixed(2)}</TableCell>

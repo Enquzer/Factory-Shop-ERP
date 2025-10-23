@@ -8,14 +8,15 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 3
+const TOAST_REMOVE_DELAY = 5000
 
 type ToasterToast = ToastProps & {
   id: string
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  duration?: number
 }
 
 const actionTypes = {
@@ -58,9 +59,9 @@ interface State {
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
-const addToRemoveQueue = (toastId: string) => {
+const addToRemoveQueue = (toastId: string, duration: number = TOAST_REMOVE_DELAY) => {
   if (toastTimeouts.has(toastId)) {
-    return
+    clearTimeout(toastTimeouts.get(toastId))
   }
 
   const timeout = setTimeout(() => {
@@ -69,7 +70,7 @@ const addToRemoveQueue = (toastId: string) => {
       type: "REMOVE_TOAST",
       toastId: toastId,
     })
-  }, TOAST_REMOVE_DELAY)
+  }, duration)
 
   toastTimeouts.set(toastId, timeout)
 }
@@ -144,6 +145,7 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+  const duration = props.duration !== undefined ? props.duration : TOAST_REMOVE_DELAY
 
   const update = (props: ToasterToast) =>
     dispatch({
@@ -163,6 +165,9 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Add to remove queue with custom duration
+  addToRemoveQueue(id, duration)
 
   return {
     id: id,

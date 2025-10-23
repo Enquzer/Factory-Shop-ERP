@@ -1,15 +1,13 @@
-
-
 "use client";
 
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 import Link from "next/link";
 import Image from "next/image";
-import { Facebook, Instagram, Mail, MapPin, Phone, Loader2 } from "lucide-react";
-import { getProducts, type Product } from "@/lib/products";
+import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react";
+import { getProducts } from "@/lib/products";
+import { HomepageLoginForm } from "@/components/homepage-login-form";
 
 const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -24,11 +22,12 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export default function Home() {
-    const [products, setProducts] = useState<Product[]>([]);
+    const [products, setProducts] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const fetchProducts = async () => {
+            // Use API to fetch products instead of direct database access
             const productsData = await getProducts();
             setProducts(productsData);
             setIsLoading(false);
@@ -49,12 +48,16 @@ export default function Home() {
             backgroundImages.map((product, index) => (
               <div key={product.id} className="relative h-full w-full">
                 <Image
-                  src={product.imageUrl}
+                  src={product.imageUrl || '/placeholder-product.png'}
                   alt={product.name}
                   fill
+                  sizes="(max-width: 768px) 50vw, 25vw"
                   priority={index < 4}
                   className="object-cover"
-                  data-ai-hint={product.imageHint}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = '/placeholder-product.png';
+                  }}
                 />
               </div>
             ))
@@ -69,15 +72,11 @@ export default function Home() {
         </h1>
         <Card className="mx-auto max-w-sm w-full bg-card/90 backdrop-blur-sm">
           <CardHeader className="space-y-4">
-            <CardTitle className="text-2xl text-center text-card-foreground">Login Portal</CardTitle>
+            <CardTitle className="text-2xl text-center text-card-foreground">Login</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <Button asChild size="lg">
-              <Link href="/factory/login">Factory Login</Link>
-            </Button>
-            <Button asChild variant="secondary" size="lg">
-              <Link href="/shop/login">Shop Login</Link>
-            </Button>
+            {/* Show the login form directly */}
+            <HomepageLoginForm />
           </CardContent>
         </Card>
       </main>

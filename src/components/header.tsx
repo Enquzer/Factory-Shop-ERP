@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from 'next/link';
@@ -21,25 +20,112 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Bell } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { type Notification, getNotifications, markNotificationsAsRead } from '@/lib/notifications';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/contexts/auth-context';
+import { useRouter } from 'next/navigation';
+
+type Notification = {
+  id: string;
+  userType: 'factory' | 'shop';
+  shopId?: string;
+  title: string;
+  description: string;
+  href: string;
+  isRead: boolean;
+  createdAt: Date;
+};
 
 export function Header() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const { user, logout } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = getNotifications('factory', null, (newNotifications) => {
-      setNotifications(newNotifications);
-      setUnreadCount(newNotifications.filter(n => !n.isRead).length);
-    });
+    // Create a polling function to fetch notifications periodically
+    const fetchNotifications = async () => {
+      try {
+        const response = await fetch('/api/notifications?userType=factory');
+        if (response.ok) {
+          const newNotifications = await response.json();
+          setNotifications(newNotifications);
+          setUnreadCount(newNotifications.filter((n: Notification) => !n.isRead).length);
+        }
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+      }
+    };
+
+    // Fetch notifications immediately
+    fetchNotifications();
+
+    // Set up polling interval (every 30 seconds)
+    const intervalId = setInterval(fetchNotifications, 30000);
 
     // Cleanup subscription on component unmount
-    return () => unsubscribe();
+    return () => clearInterval(intervalId);
   }, []);
 
   const handleMarkAsRead = async () => {
-    await markNotificationsAsRead('factory', null);
+    try {
+      // Use the correct endpoint for marking all notifications as read with query parameters
+      const response = await fetch('/api/notifications?userType=factory&markAll=true', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        // Refresh notifications after marking as read
+        const response = await fetch('/api/notifications?userType=factory');
+        if (response.ok) {
+          const updatedNotifications = await response.json();
+          setNotifications(updatedNotifications);
+          setUnreadCount(0);
+        }
+      } else {
+        console.error("Failed to mark notifications as read:", response.statusText);
+      }
+    } catch (error) {
+      console.error("Error marking notifications as read:", error);
+    }
+  }
+
+  const handleNotificationClick = async (notificationId: string, href: string) => {
+    try {
+      // Mark the specific notification as read
+      const response = await fetch(`/api/notifications?id=${notificationId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        // Update the notifications state to reflect the read status
+        setNotifications(prev => 
+          prev.map(n => 
+            n.id === notificationId ? { ...n, isRead: true } : n
+          )
+        );
+        
+        // Update unread count
+        setUnreadCount(prev => prev - 1);
+        
+        // Navigate to the notification's href
+        router.push(href);
+      }
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      // Still navigate even if marking as read fails
+      router.push(href);
+    }
+  }
+
+  const handleLogout = () => {
+    logout();
+    router.push('/factory/login');
   }
 
   return (
@@ -68,11 +154,11 @@ export function Header() {
            </div>
            <div className="flex flex-col gap-1 max-h-80 overflow-y-auto p-1">
               {notifications.length > 0 ? (
-                notifications.map(notification => (
-                  <Link
+                notifications.map((notification: Notification) => (
+                  <button
                     key={notification.id}
-                    href={notification.href}
-                    className={`block rounded-lg p-2 hover:bg-muted ${!notification.isRead ? 'bg-blue-50' : ''}`}
+                    onClick={() => handleNotificationClick(notification.id, notification.href)}
+                    className={`block rounded-lg p-2 text-left hover:bg-muted w-full ${!notification.isRead ? 'bg-blue-50' : ''}`}
                   >
                     <div className="flex justify-between items-start">
                       <p className={`font-semibold text-sm ${!notification.isRead ? 'text-primary' : ''}`}>{notification.title}</p>
@@ -82,9 +168,9 @@ export function Header() {
                     </div>
                     <p className="text-xs text-muted-foreground">{notification.description}</p>
                     <p className="text-xs text-muted-foreground/80 mt-1">
-                        {formatDistanceToNow(notification.createdAt, { addSuffix: true })}
+                        {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                     </p>
-                  </Link>
+                  </button>
                 ))
               ) : (
                  <p className="p-4 text-center text-sm text-muted-foreground">No new notifications</p>
@@ -98,21 +184,21 @@ export function Header() {
           <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
             <Avatar className="h-9 w-9">
               <AvatarImage src="https://picsum.photos/seed/user-avatar/100/100" data-ai-hint="person portrait"/>
-              <AvatarFallback>FU</AvatarFallback>
+              <AvatarFallback>{user?.username?.charAt(0)?.toUpperCase() || 'FU'}</AvatarFallback>
             </Avatar>
             <span className="sr-only">Toggle user menu</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Factory User</DropdownMenuLabel>
+          <DropdownMenuLabel>{user?.username || 'Factory User'}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link href="/profile">Profile</Link>
           </DropdownMenuItem>
           <DropdownMenuItem>Settings</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/login">Logout</Link>
+          <DropdownMenuItem onClick={handleLogout}>
+            Logout
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
