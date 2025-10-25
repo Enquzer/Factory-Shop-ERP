@@ -6,13 +6,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
-import { Trash2 } from "lucide-react";
+import { Trash2, Factory, Store } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { useState, useEffect } from "react";
 
 
 export default function CreateOrderPage() {
     const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder, shopDiscount, getAvailableStock } = useOrder();
+    const [factoryStock, setFactoryStock] = useState<Record<string, number>>({});
     
     const handlePlaceOrder = () => {
         placeOrder();
@@ -26,6 +28,31 @@ export default function CreateOrderPage() {
             .reduce((sum, item) => sum + item.quantity, 0);
         return inventoryStock - orderedQuantity;
     };
+    
+    // Fetch factory stock for each item
+    useEffect(() => {
+        const fetchFactoryStock = async () => {
+            const stockMap: Record<string, number> = {};
+            
+            for (const item of items) {
+                try {
+                    const response = await fetch(`/api/factory-stock?variantId=${item.variant.id}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        stockMap[item.variant.id] = data.factoryStock;
+                    }
+                } catch (error) {
+                    console.error(`Error fetching factory stock for variant ${item.variant.id}:`, error);
+                }
+            }
+            
+            setFactoryStock(stockMap);
+        };
+        
+        if (items.length > 0) {
+            fetchFactoryStock();
+        }
+    }, [items]);
 
     const finalAmount = totalAmount * (1 - shopDiscount);
 
@@ -71,6 +98,7 @@ export default function CreateOrderPage() {
                             <TableRow>
                                 <TableHead className="hidden md:table-cell">Image</TableHead>
                                 <TableHead>Product</TableHead>
+                                <TableHead>Stock Levels</TableHead>
                                 <TableHead>Price</TableHead>
                                 <TableHead className="w-[120px]">Quantity</TableHead>
                                 <TableHead className="text-right">Subtotal</TableHead>
@@ -81,6 +109,8 @@ export default function CreateOrderPage() {
                             {items.map(item => {
                                 const availableStock = getRealTimeAvailableStock(item.variant.id);
                                 const isLowStock = availableStock < item.quantity;
+                                const isOutOfStock = availableStock <= 0;
+                                const factoryStockForItem = factoryStock[item.variant.id] ?? item.variant.stock;
                                 
                                 return (
                                     <TableRow key={item.variant.id}>
@@ -101,13 +131,21 @@ export default function CreateOrderPage() {
                                         <TableCell>
                                             <p className="font-medium">{item.name}</p>
                                             <p className="text-sm text-muted-foreground">{`Color: ${item.variant.color}, Size: ${item.variant.size}`}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <Badge variant={isLowStock ? "destructive" : availableStock > 0 ? "secondary" : "outline"}>
-                                                    {availableStock > 0 ? `${availableStock} in stock` : 'Out of Stock'}
-                                                </Badge>
-                                                {isLowStock && availableStock > 0 && (
-                                                    <Badge variant="destructive">Low stock!</Badge>
-                                                )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-1">
+                                                    <Store className="h-3 w-3 text-green-500" />
+                                                    <Badge variant="outline" className="text-xs">
+                                                        Your Stock: {availableStock}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Factory className="h-3 w-3 text-blue-500" />
+                                                    <Badge variant="outline" className="text-xs">
+                                                        Factory: {factoryStockForItem}
+                                                    </Badge>
+                                                </div>
                                             </div>
                                         </TableCell>
                                         <TableCell>ETB {item.price.toFixed(2)}</TableCell>
@@ -125,6 +163,7 @@ export default function CreateOrderPage() {
                                                     }
                                                 }}
                                                 className="w-24"
+                                                disabled={isOutOfStock}
                                             />
                                         </TableCell>
                                         <TableCell className="text-right font-medium">ETB {(item.price * item.quantity).toFixed(2)}</TableCell>

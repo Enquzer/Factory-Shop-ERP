@@ -2,11 +2,14 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authenticateUser } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
+import { getUserById } from '@/lib/auth-sqlite';
 
 type User = {
   id: number;
   username: string;
   role: 'factory' | 'shop';
+  profilePictureUrl?: string;
   createdAt: Date;
 };
 
@@ -24,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false); // New state
+  const router = useRouter();
 
   useEffect(() => {
     // Check if user is already logged in (from localStorage or session)
@@ -45,8 +49,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await authenticateUser(username, password);
       
       if (result.success && result.user) {
-        setUser(result.user);
-        localStorage.setItem('user', JSON.stringify(result.user));
+        // Fetch the complete user data including profile picture
+        const fullUser = await getUserById(result.user.id);
+        if (fullUser) {
+          setUser(fullUser);
+          localStorage.setItem('user', JSON.stringify(fullUser));
+        } else {
+          setUser(result.user);
+          localStorage.setItem('user', JSON.stringify(result.user));
+        }
         return { success: true };
       } else {
         return { success: false, message: result.message };
@@ -61,6 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    // Redirect to homepage as per user preference
+    router.push('/');
   };
 
   return (

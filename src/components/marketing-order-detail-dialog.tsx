@@ -17,9 +17,12 @@ import {
   Scissors, 
   Factory, 
   Package, 
-  Truck 
+  Truck,
+  Calendar,
+  Flag
 } from "lucide-react";
 import Image from "next/image";
+import { DailyProductionForm } from "@/components/daily-production-form";
 
 interface MarketingOrderDetailDialogProps {
   order: MarketingOrder;
@@ -63,6 +66,12 @@ export function MarketingOrderDetailDialog({
     }
   };
 
+  const handleStatusUpdate = () => {
+    // Refresh the order data when status is updated
+    onOpenChange(false);
+    setTimeout(() => onOpenChange(true), 100);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -85,6 +94,17 @@ export function MarketingOrderDetailDialog({
                 </div>
               ))}
             </div>
+            
+            {/* Daily Production Status Form */}
+            {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && (
+              <div className="mt-6">
+                <DailyProductionForm 
+                  orderId={order.id} 
+                  items={order.items} 
+                  onStatusUpdate={handleStatusUpdate} 
+                />
+              </div>
+            )}
           </div>
           
           <div>
@@ -127,6 +147,59 @@ export function MarketingOrderDetailDialog({
                 <span className="text-muted-foreground">Created At:</span>
                 <span>{new Date(order.createdAt).toLocaleDateString()}</span>
               </div>
+              
+              {/* New date fields */}
+              {order.orderPlacementDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground flex items-center">
+                    <Calendar className="mr-1 h-4 w-4" />
+                    Placement Date:
+                  </span>
+                  <span>{new Date(order.orderPlacementDate).toLocaleDateString()}</span>
+                </div>
+              )}
+              
+              {order.plannedDeliveryDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground flex items-center">
+                    <Calendar className="mr-1 h-4 w-4" />
+                    Delivery Date:
+                  </span>
+                  <span>{new Date(order.plannedDeliveryDate).toLocaleDateString()}</span>
+                </div>
+              )}
+              
+              {/* Sample status tracking fields */}
+              {order.sizeSetSampleApproved && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground flex items-center">
+                    <Flag className="mr-1 h-4 w-4" />
+                    Sample Approved:
+                  </span>
+                  <span>{new Date(order.sizeSetSampleApproved).toLocaleDateString()}</span>
+                </div>
+              )}
+              
+              {order.productionStartDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground flex items-center">
+                    <Factory className="mr-1 h-4 w-4" />
+                    Production Start:
+                  </span>
+                  <span>{new Date(order.productionStartDate).toLocaleDateString()}</span>
+                </div>
+              )}
+              
+              {order.productionFinishedDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground flex items-center">
+                    <CheckCircle className="mr-1 h-4 w-4" />
+                    Production Finish:
+                  </span>
+                  <span>{new Date(order.productionFinishedDate).toLocaleDateString()}</span>
+                </div>
+              )}
+              
               {order.completedDate && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Completed At:</span>
@@ -188,23 +261,23 @@ export function MarketingOrderDetailDialog({
           </Button>
           {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && (
             <>
-              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Cutting')}>
+              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Cutting' as MarketingOrderStatus)}>
                 <Scissors className="mr-2 h-4 w-4" />
                 Cutting
               </Button>
-              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Production')}>
+              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Production' as MarketingOrderStatus)}>
                 <Factory className="mr-2 h-4 w-4" />
                 Production
               </Button>
-              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Packing')}>
+              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Packing' as MarketingOrderStatus)}>
                 <Package className="mr-2 h-4 w-4" />
                 Packing
               </Button>
-              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Delivery')}>
+              <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Delivery' as MarketingOrderStatus)}>
                 <Truck className="mr-2 h-4 w-4" />
                 Delivery
               </Button>
-              <Button onClick={() => onUpdateStatus(order.id, 'Completed')}>
+              <Button onClick={() => onUpdateStatus(order.id, 'Completed' as MarketingOrderStatus)}>
                 <CheckCircle className="mr-2 h-4 w-4" />
                 Complete
               </Button>

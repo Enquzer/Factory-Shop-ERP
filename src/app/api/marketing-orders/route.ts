@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getMarketingOrdersFromDB, createMarketingOrderInDB, deleteMarketingOrderFromDB } from '@/lib/marketing-orders';
+import { getMarketingOrdersFromDB, createMarketingOrderInDB, deleteMarketingOrderFromDB, getDailyProductionStatus, updateDailyProductionStatus } from '@/lib/marketing-orders';
 import { getDb } from '@/lib/db';
 import { createProduct } from '@/lib/products-sqlite';
 
@@ -28,6 +28,27 @@ export async function GET() {
 // POST /api/marketing-orders - Create a new marketing order
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
+    
+    // Check if this is a daily status update request
+    if (url.pathname.endsWith('/daily-status')) {
+      const statusData = await request.json();
+      
+      // Validate required fields
+      if (!statusData.orderId || !statusData.date || !statusData.size || !statusData.color) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+      
+      const success = await updateDailyProductionStatus(statusData);
+      
+      if (success) {
+        return NextResponse.json({ message: 'Daily production status updated successfully' });
+      } else {
+        return NextResponse.json({ error: 'Failed to update daily production status' }, { status: 500 });
+      }
+    }
+    
+    // Default to creating a new marketing order
     const orderData = await request.json();
     
     // Generate order number if not provided
@@ -48,6 +69,9 @@ export async function POST(request: Request) {
       orderNumber = `CM-${year}-${nextNumber.toString().padStart(4, '0')}`;
     }
     
+    // Set order placement date to current date if not provided
+    const orderPlacementDate = orderData.orderPlacementDate || new Date().toISOString().split('T')[0];
+    
     // Validate required fields
     if (!orderData.productName || !orderData.productCode || !orderData.quantity || !orderData.items) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -56,7 +80,8 @@ export async function POST(request: Request) {
     // Create the marketing order
     const newOrder = await createMarketingOrderInDB({
       ...orderData,
-      orderNumber
+      orderNumber,
+      orderPlacementDate
     });
     
     // If this is a new product, register it in the product database

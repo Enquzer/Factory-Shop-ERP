@@ -1,11 +1,11 @@
 "use client";
 
+import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarInset } from "@/components/ui/sidebar";
 import { ShopHeader } from '@/components/shop-header';
 import { Logo } from '@/components/logo';
 import { ShopNav } from '@/components/shop-nav';
 import { AiChatWidget } from '@/components/ai-chat-widget';
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -53,25 +53,23 @@ export function ShopAppProvider({ children }: { children: React.ReactNode }) {
         <OrderProvider>
             <SidebarProvider>
                 <TooltipProvider>
-                    <div className="flex flex-col min-h-screen">
-                        <div className="fixed top-0 left-0 right-0 z-50">
+                    <Sidebar collapsible="icon">
+                        <SidebarHeader className="border-b border-sidebar-border p-3">
+                            <Logo />
+                        </SidebarHeader>
+                        <SidebarContent className="p-2">
+                            <ShopNav />
+                        </SidebarContent>
+                    </Sidebar>
+                    <SidebarInset>
+                        <div className="flex flex-col h-full">
                             <ShopHeader />
-                        </div>
-                        <div className="flex flex-1 overflow-hidden pt-14">
-                            <div className="hidden md:block w-64 border-r border-gray-200 bg-white flex flex-col fixed top-14 left-0 h-[calc(100vh-3.5rem)]">
-                                <div className="p-4">
-                                    <Logo />
-                                </div>
-                                <div className="flex-1 overflow-y-auto">
-                                    <ShopNav />
-                                </div>
-                            </div>
-                            <main className="flex-1 overflow-y-auto p-4 lg:p-6 ml-0 md:ml-64 mt-14">
+                            <main className="p-4 lg:p-6 flex-1 overflow-auto">
                                 {children}
                             </main>
                         </div>
-                        <AiChatWidget />
-                    </div>
+                    </SidebarInset>
+                    <AiChatWidget />
                 </TooltipProvider>
             </SidebarProvider>
         </OrderProvider>

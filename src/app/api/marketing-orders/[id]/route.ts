@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getMarketingOrderByIdFromDB, updateMarketingOrderInDB, deleteMarketingOrderFromDB } from '@/lib/marketing-orders';
+import { getMarketingOrderByIdFromDB, updateMarketingOrderInDB, deleteMarketingOrderFromDB, getDailyProductionStatus } from '@/lib/marketing-orders';
 import { getDb } from '@/lib/db';
+import { createNotification } from '@/lib/notifications';
 
 // GET /api/marketing-orders/:id - Get a specific marketing order by ID
 export async function GET(request: Request, { params }: { params: { id: string } }) {
@@ -13,9 +14,18 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Marketing order not found' }, { status: 404 });
     }
     
-    console.log('Marketing order fetched from database:', order);
+    // Get daily production status for this order
+    const dailyStatus = await getDailyProductionStatus(params.id);
     
-    const response = NextResponse.json(order);
+    // Add daily status to the response
+    const orderWithStatus = {
+      ...order,
+      dailyProductionStatus: dailyStatus
+    };
+    
+    console.log('Marketing order fetched from database:', orderWithStatus);
+    
+    const response = NextResponse.json(orderWithStatus);
     
     // Add cache control headers to prevent caching
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -71,31 +81,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
               SELECT size, color, quantity FROM marketing_order_items WHERE orderId = ?
             `, order.id);
             
-            // Update factory inventory for each item in the order
-            for (const item of orderItems) {
-              // Find the corresponding product variant
-              const variant = await db.get(`
-                SELECT pv.id, pv.stock
-                FROM product_variants pv
-                JOIN products p ON pv.productId = p.id
-                WHERE p.productCode = ? AND pv.size = ? AND pv.color = ?
-              `, order.productCode, item.size, item.color);
-              
-              if (variant) {
-                // Update the factory inventory by adding the produced quantity
-                const newStock = variant.stock + item.quantity;
-                await db.run(`
-                  UPDATE product_variants 
-                  SET stock = ? 
-                  WHERE id = ?
-                `, newStock, variant.id);
-                
-                console.log(`Updated factory inventory for variant ${variant.id}: ${variant.stock} -> ${newStock}`);
-              } else {
-                console.log(`Variant not found for product ${order.productCode}, size ${item.size}, color ${item.color}`);
-              }
-            }
-            
             // Get the product details
             const product = await db.get(`
               SELECT id, productCode, name, price, imageUrl 
@@ -104,7 +89,44 @@ export async function PUT(request: Request, { params }: { params: { id: string }
             `, order.productCode);
             
             if (product) {
-              // Get all product variants
+              // Update factory inventory for each item in the order
+              for (const item of orderItems) {
+                // Find the corresponding product variant
+                const variant = await db.get(`
+                  SELECT pv.id, pv.stock
+                  FROM product_variants pv
+                  JOIN products p ON pv.productId = p.id
+                  WHERE p.productCode = ? AND pv.size = ? AND pv.color = ?
+                `, order.productCode, item.size, item.color);
+                
+                if (variant) {
+                  // Update the factory inventory by adding the produced quantity
+                  const newStock = variant.stock + item.quantity;
+                  await db.run(`
+                    UPDATE product_variants 
+                    SET stock = ? 
+                    WHERE id = ?
+                  `, newStock, variant.id);
+                  
+                  console.log(`Updated factory inventory for variant ${variant.id}: ${variant.stock} -> ${newStock}`);
+                } else {
+                  // Variant doesn't exist, create a new one
+                  console.log(`Variant not found for product ${order.productCode}, size ${item.size}, color ${item.color}. Creating new variant.`);
+                  
+                  // Generate a new variant ID
+                  const newVariantId = `VAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                  
+                  // Insert the new variant
+                  await db.run(`
+                    INSERT INTO product_variants (id, productId, color, size, stock)
+                    VALUES (?, ?, ?, ?, ?)
+                  `, newVariantId, product.id, item.color, item.size, item.quantity);
+                  
+                  console.log(`Created new variant ${newVariantId} for product ${product.id}`);
+                }
+              }
+              
+              // Get all product variants (including newly created ones)
               const variants = await db.all(`
                 SELECT id, color, size, stock, imageUrl 
                 FROM product_variants 
@@ -144,6 +166,18 @@ export async function PUT(request: Request, { params }: { params: { id: string }
                     console.log(`Added variant ${variant.id} to shop ${shop.id} inventory`);
                   }
                 }
+              }
+              
+              // Create notification for shops about the new product/variants
+              try {
+                await createNotification({
+                  userType: 'shop',
+                  title: 'New Product Variant Available',
+                  description: `New variant(s) of product "${product.name}" are now available for ordering.`,
+                  href: '/shop/products',
+                });
+              } catch (notificationError) {
+                console.error('Failed to create shop notification:', notificationError);
               }
             }
           }

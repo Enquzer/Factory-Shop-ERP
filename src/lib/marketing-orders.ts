@@ -16,6 +16,16 @@ export type MarketingOrderItem = {
   quantity: number;
 };
 
+export type DailyProductionStatus = {
+  id?: number;
+  orderId: string;
+  date: string;
+  size: string;
+  color: string;
+  quantity: number;
+  status: string;
+};
+
 export type MarketingOrder = {
   id: string;
   orderNumber: string;
@@ -37,6 +47,11 @@ export type MarketingOrder = {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  orderPlacementDate?: string;
+  plannedDeliveryDate?: string;
+  sizeSetSampleApproved?: string;
+  productionStartDate?: string;
+  productionFinishedDate?: string;
   items: MarketingOrderItem[];
 };
 
@@ -201,6 +216,11 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           createdBy: order.createdBy,
           createdAt: new Date(order.createdAt),
           updatedAt: new Date(order.updatedAt),
+          orderPlacementDate: order.orderPlacementDate,
+          plannedDeliveryDate: order.plannedDeliveryDate,
+          sizeSetSampleApproved: order.sizeSetSampleApproved,
+          productionStartDate: order.productionStartDate,
+          productionFinishedDate: order.productionFinishedDate,
           items: items.map((item: any) => ({
             id: item.id,
             orderId: item.orderId,
@@ -259,6 +279,11 @@ export async function getMarketingOrderByIdFromDB(id: string): Promise<Marketing
       createdBy: order.createdBy,
       createdAt: new Date(order.createdAt),
       updatedAt: new Date(order.updatedAt),
+      orderPlacementDate: order.orderPlacementDate,
+      plannedDeliveryDate: order.plannedDeliveryDate,
+      sizeSetSampleApproved: order.sizeSetSampleApproved,
+      productionStartDate: order.productionStartDate,
+      productionFinishedDate: order.productionFinishedDate,
       items: items.map((item: any) => ({
         id: item.id,
         orderId: item.orderId,
@@ -298,14 +323,18 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
       orderNumber = `CM-${year}-${nextNumber.toString().padStart(4, '0')}`;
     }
     
+    // Set order placement date to current date if not provided
+    const orderPlacementDate = order.orderPlacementDate || new Date().toISOString().split('T')[0];
+    
     // Insert order into database
     await db.run(`
       INSERT INTO marketing_orders (
         id, orderNumber, productName, productCode, description, quantity, status, 
         cuttingStatus, productionStatus, packingStatus, deliveryStatus, assignedTo, 
-        dueDate, completedDate, pdfUrl, imageUrl, isCompleted, createdBy, createdAt, updatedAt
+        dueDate, completedDate, pdfUrl, imageUrl, isCompleted, createdBy, createdAt, updatedAt,
+        orderPlacementDate, plannedDeliveryDate, sizeSetSampleApproved, productionStartDate, productionFinishedDate
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?)
     `,
       orderId,
       orderNumber,
@@ -324,7 +353,12 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
       order.pdfUrl,
       order.imageUrl,
       order.isCompleted ? 1 : 0,
-      order.createdBy
+      order.createdBy,
+      orderPlacementDate,
+      order.plannedDeliveryDate,
+      order.sizeSetSampleApproved,
+      order.productionStartDate,
+      order.productionFinishedDate
     );
     
     // Insert items into database
@@ -347,6 +381,7 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
       orderNumber,
       createdAt: new Date(),
       updatedAt: new Date(),
+      orderPlacementDate,
       items: itemsWithOrderId.map((item, index) => ({
         ...item,
         id: index + 1 // Temporary ID, would be replaced with real ID from DB in a real implementation
@@ -431,6 +466,26 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
       fields.push('isCompleted = ?');
       values.push(order.isCompleted ? 1 : 0);
     }
+    if (order.orderPlacementDate !== undefined) {
+      fields.push('orderPlacementDate = ?');
+      values.push(order.orderPlacementDate);
+    }
+    if (order.plannedDeliveryDate !== undefined) {
+      fields.push('plannedDeliveryDate = ?');
+      values.push(order.plannedDeliveryDate);
+    }
+    if (order.sizeSetSampleApproved !== undefined) {
+      fields.push('sizeSetSampleApproved = ?');
+      values.push(order.sizeSetSampleApproved);
+    }
+    if (order.productionStartDate !== undefined) {
+      fields.push('productionStartDate = ?');
+      values.push(order.productionStartDate);
+    }
+    if (order.productionFinishedDate !== undefined) {
+      fields.push('productionFinishedDate = ?');
+      values.push(order.productionFinishedDate);
+    }
     
     // Always update the updatedAt field
     fields.push('updatedAt = datetime("now")');
@@ -459,6 +514,64 @@ export async function deleteMarketingOrderFromDB(id: string): Promise<boolean> {
     return (result.changes || 0) > 0;
   } catch (error) {
     console.error('Error deleting marketing order:', error);
+    return false;
+  }
+}
+
+// Server-side function to get daily production status for an order
+export async function getDailyProductionStatus(orderId: string): Promise<DailyProductionStatus[]> {
+  try {
+    const db = await getDb();
+    const statuses = await db.all(`
+      SELECT * FROM daily_production_status 
+      WHERE orderId = ?
+      ORDER BY date DESC
+    `, orderId);
+    
+    return statuses.map((status: any) => ({
+      id: status.id,
+      orderId: status.orderId,
+      date: status.date,
+      size: status.size,
+      color: status.color,
+      quantity: status.quantity,
+      status: status.status
+    }));
+  } catch (error) {
+    console.error('Error fetching daily production status:', error);
+    return [];
+  }
+}
+
+// Server-side function to add/update daily production status
+export async function updateDailyProductionStatus(status: Omit<DailyProductionStatus, 'id'>): Promise<boolean> {
+  try {
+    const db = await getDb();
+    
+    // Check if status entry already exists for this order/date/size/color combination
+    const existingStatus = await db.get(`
+      SELECT id FROM daily_production_status 
+      WHERE orderId = ? AND date = ? AND size = ? AND color = ?
+    `, status.orderId, status.date, status.size, status.color);
+    
+    if (existingStatus) {
+      // Update existing entry
+      await db.run(`
+        UPDATE daily_production_status 
+        SET quantity = ?, status = ?
+        WHERE id = ?
+      `, status.quantity, status.status, existingStatus.id);
+    } else {
+      // Insert new entry
+      await db.run(`
+        INSERT INTO daily_production_status (orderId, date, size, color, quantity, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, status.orderId, status.date, status.size, status.color, status.quantity, status.status);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating daily production status:', error);
     return false;
   }
 }

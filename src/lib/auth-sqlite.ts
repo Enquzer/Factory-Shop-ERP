@@ -5,6 +5,7 @@ export type User = {
   id: number;
   username: string;
   role: 'factory' | 'shop';
+  profilePictureUrl?: string;
   createdAt: Date;
 };
 
@@ -94,6 +95,7 @@ export const authenticateUser = async (
         id: user.id,
         username: user.username,
         role: user.role as 'factory' | 'shop',
+        profilePictureUrl: user.profilePictureUrl,
         createdAt: new Date(user.created_at)
       }
     };
@@ -123,6 +125,7 @@ export const getUserById = async (id: number): Promise<User | undefined> => {
       id: user.id,
       username: user.username,
       role: user.role as 'factory' | 'shop',
+      profilePictureUrl: user.profilePictureUrl,
       createdAt: new Date(user.created_at)
     };
   } catch (error) {
@@ -148,9 +151,31 @@ export const getUserByUsername = async (username: string): Promise<User | undefi
       id: user.id,
       username: user.username,
       role: user.role as 'factory' | 'shop',
+      profilePictureUrl: user.profilePictureUrl,
       createdAt: new Date(user.created_at)
     };
   } catch (error) {
     return undefined;
+  }
+};
+
+// Update user profile picture
+export const updateUserProfilePicture = async (
+  userId: number,
+  profilePictureUrl: string
+): Promise<boolean> => {
+  try {
+    // Get database connection
+    const db = await getDb();
+    
+    // Update the user's profile picture URL
+    await db.run(`
+      UPDATE users SET profilePictureUrl = ? WHERE id = ?
+    `, profilePictureUrl, userId);
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating user profile picture:', error);
+    return false;
   }
 };

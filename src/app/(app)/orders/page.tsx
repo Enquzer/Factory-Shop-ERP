@@ -2,6 +2,7 @@ import { OrdersClientPage } from "./_components/orders-client";
 import { getOrdersFromDB } from "@/lib/orders";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { OrdersDashboard } from "./_components/orders-dashboard";
 
 export default async function OrdersPage() {
   const initialOrders = await getOrdersFromDB();
@@ -14,6 +15,7 @@ export default async function OrdersPage() {
           <Link href="/orders/tracking">View Order Tracking</Link>
         </Button>
       </div>
+      <OrdersDashboard orders={initialOrders} />
       <OrdersClientPage initialOrders={initialOrders} />
     </div>
   );

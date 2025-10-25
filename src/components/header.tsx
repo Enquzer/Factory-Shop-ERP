@@ -125,7 +125,7 @@ export function Header() {
 
   const handleLogout = () => {
     logout();
-    router.push('/factory/login');
+    // The logout function now handles the redirect
   }
 
   return (
@@ -183,7 +183,7 @@ export function Header() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
             <Avatar className="h-9 w-9">
-              <AvatarImage src="https://picsum.photos/seed/user-avatar/100/100" data-ai-hint="person portrait"/>
+              <AvatarImage src={user?.profilePictureUrl || undefined} />
               <AvatarFallback>{user?.username?.charAt(0)?.toUpperCase() || 'FU'}</AvatarFallback>
             </Avatar>
             <span className="sr-only">Toggle user menu</span>

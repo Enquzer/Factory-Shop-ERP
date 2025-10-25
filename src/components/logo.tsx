@@ -9,11 +9,11 @@ export function Logo({ className }: { className?: string }) {
          <Image 
            src="/logo.png" 
            alt="Carement Logo" 
-           width={220} 
-           height={53} 
+           width={180} 
+           height={40} 
            priority
            style={{
-             width: 'auto',
+             maxWidth: '100%',
              height: 'auto'
            }}
            onError={(e) => {

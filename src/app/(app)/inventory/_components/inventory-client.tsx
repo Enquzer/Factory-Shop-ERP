@@ -1,128 +1,181 @@
-import { useState, useEffect } from 'react';
 "use client";
 
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from "@/components/ui/accordion"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { type Product } from "@/lib/products";
-import Image from "next/image";
+import { useState, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { Product } from "@/lib/products";
+import { InventoryDashboard } from "./inventory-dashboard";
+import { InventoryFilters } from "./inventory-filters";
+import { InventoryTable } from "./inventory-table";
+import { ProductViewDialog } from "./product-view-dialog";
+import { FileText } from "lucide-react";
 
-const DEFAULT_LOW_STOCK_THRESHOLD = 10;
+interface FilterOptions {
+  searchTerm: string;
+  category: string;
+  minStock: string;
+  maxStock: string;
+}
 
-export function InventoryClientPage({ products }: { products: Product[] }) {
-    
-    const getTotalStock = (variants: { stock: number }[]) => {
-        return variants.reduce((total, variant) => total + variant.stock, 0);
-    }
+export function InventoryClientPage({ products: initialProducts }: { products: Product[] }) {
+  const [products] = useState<Product[]>(initialProducts);
+  const [filters, setFilters] = useState<FilterOptions>({
+    searchTerm: "",
+    category: "all",
+    minStock: "",
+    maxStock: ""
+  });
+  const [viewProduct, setViewProduct] = useState<Product | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const { toast } = useToast();
 
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Product Inventory</CardTitle>
-                <CardDescription>An overview of the stock levels for each product and its variants.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {products.length > 0 ? (
-                    <Accordion type="single" collapsible className="w-full">
-                        {products.map(product => {
-                            const totalStock = getTotalStock(product.variants);
-                            const minStockLevel = product.minimumStockLevel ?? (DEFAULT_LOW_STOCK_THRESHOLD * product.variants.length);
-                            const isLowStock = totalStock > 0 && totalStock < minStockLevel;
-
-                            return (
-                                <AccordionItem value={product.id} key={product.id}>
-                                    <AccordionTrigger>
-                                        <div className="flex items-center gap-4 w-full">
-                                            <div className="relative h-16 w-12 flex-shrink-0 rounded-md overflow-hidden bg-muted">
-                                                <Image 
-                                                    src={product.imageUrl || '/placeholder-product.png'} 
-                                                    alt={product.name} 
-                                                    fill 
-                                                    className="object-cover"
-                                                    onError={(e) => {
-                                                        const target = e.target as HTMLImageElement;
-                                                        target.src = '/placeholder-product.png';
-                                                    }}
-                                                    unoptimized={true}
-                                                    loading="eager"
-                                                />
-                                            </div>
-                                            <div className="flex-1 text-left">
-                                                <span className="font-medium">{product.name}</span>
-                                            </div>
-                                            <Badge variant={isLowStock ? 'destructive' : 'secondary'} className="ml-auto">
-                                                Total Stock: {totalStock}
-                                            </Badge>
-                                        </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent>
-                                        {/* Variant Images Gallery */}
-                                        {product.variants.some(v => v.imageUrl) && (
-                                            <div className="mb-4">
-                                                <h4 className="font-medium mb-2">Variant Images</h4>
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                                    {product.variants.map(variant => (
-                                                        variant.imageUrl && (
-                                                            <div key={variant.id} className="relative aspect-square rounded-md overflow-hidden border">
-                                                                <Image 
-                                                                    src={variant.imageUrl} 
-                                                                    alt={`${product.name} - ${variant.color}, ${variant.size}`} 
-                                                                    fill 
-                                                                    style={{objectFit: 'cover'}} 
-                                                                    onError={(e) => {
-                                                                        const target = e.target as HTMLImageElement;
-                                                                        target.src = '/placeholder-product.png';
-                                                                    }}
-                                                                    unoptimized={true}
-                                                                    loading="eager"
-                                                                />
-                                                                <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 text-center">
-                                                                    {variant.color}, {variant.size}
-                                                                </div>
-                                                            </div>
-                                                        )
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Color</TableHead>
-                                                    <TableHead>Size</TableHead>
-                                                    <TableHead className="text-right">Stock Quantity</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {product.variants.map(variant => (
-                                                    <TableRow key={variant.id}>
-                                                        <TableCell>{variant.color}</TableCell>
-                                                        <TableCell>{variant.size}</TableCell>
-                                                        <TableCell className={`text-right font-medium ${variant.stock < (product.minimumStockLevel ?? DEFAULT_LOW_STOCK_THRESHOLD) ? 'text-destructive' : ''}`}>
-                                                            {variant.stock}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            )
-                        })}
-                    </Accordion>
-                ) : (
-                     <div className="text-center py-12 text-muted-foreground">
-                        <p>No products found in inventory.</p>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
+  // Calculate dashboard metrics
+  const dashboardMetrics = useMemo(() => {
+    const totalProducts = products.length;
+    const totalVariants = products.reduce((sum, product) => sum + product.variants.length, 0);
+    const totalValue = products.reduce(
+      (sum, product) => 
+        sum + (product.price * product.variants.reduce((variantSum, variant) => variantSum + variant.stock, 0)),
+      0
     );
+    
+    return {
+      totalProducts,
+      totalVariants,
+      totalValue
+    };
+  }, [products]);
+
+  // Get unique categories for filter dropdown
+  const categories = useMemo(() => {
+    const uniqueCategories = new Set(products.map(product => product.category));
+    return Array.from(uniqueCategories);
+  }, [products]);
+
+  // Filter products based on filter criteria
+  const filteredProducts = useMemo(() => {
+    return products.filter(product => {
+      // Search term filter
+      if (filters.searchTerm) {
+        const term = filters.searchTerm.toLowerCase();
+        if (!product.name.toLowerCase().includes(term) && 
+            !product.productCode.toLowerCase().includes(term) &&
+            !product.category.toLowerCase().includes(term)) {
+          return false;
+        }
+      }
+      
+      // Category filter
+      if (filters.category !== "all" && product.category !== filters.category) {
+        return false;
+      }
+      
+      // Stock filters
+      const totalStock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
+      
+      if (filters.minStock && totalStock < parseInt(filters.minStock)) {
+        return false;
+      }
+      
+      if (filters.maxStock && totalStock > parseInt(filters.maxStock)) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [products, filters]);
+
+  const handleFilterChange = (newFilters: FilterOptions) => {
+    setFilters(newFilters);
+  };
+
+  const handleEditProduct = (product: Product) => {
+    toast({
+      title: "Edit Product",
+      description: `Editing product: ${product.name}`
+    });
+    // In a real implementation, this would open an edit dialog
+  };
+
+  const handleDeleteProduct = (productId: string) => {
+    toast({
+      title: "Delete Product",
+      description: `Deleting product with ID: ${productId}`
+    });
+    // In a real implementation, this would show a confirmation and delete the product
+  };
+
+  const handleViewProduct = (product: Product) => {
+    setViewProduct(product);
+    setIsViewDialogOpen(true);
+  };
+
+  const handleExportToPDF = async () => {
+    try {
+      // Build query string with current filters
+      const params = new URLSearchParams();
+      if (filters.searchTerm) params.append('searchTerm', filters.searchTerm);
+      if (filters.category && filters.category !== 'all') params.append('category', filters.category);
+      if (filters.minStock) params.append('minStock', filters.minStock);
+      if (filters.maxStock) params.append('maxStock', filters.maxStock);
+      
+      const queryString = params.toString();
+      const url = `/api/inventory/export${queryString ? `?${queryString}` : ''}`;
+      
+      // Create a temporary link to download the PDF
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'inventory-report.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Success",
+        description: "Inventory report generated and downloaded successfully.",
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <InventoryDashboard 
+        totalProducts={dashboardMetrics.totalProducts}
+        totalVariants={dashboardMetrics.totalVariants}
+        totalValue={dashboardMetrics.totalValue}
+      />
+      
+      <InventoryFilters 
+        onFilterChange={handleFilterChange}
+        categories={categories}
+      />
+      
+      <div className="flex justify-end mb-4">
+        <Button onClick={handleExportToPDF}>
+          <FileText className="mr-2 h-4 w-4" />
+          Export to PDF
+        </Button>
+      </div>
+      
+      <InventoryTable
+        products={filteredProducts}
+        onEdit={handleEditProduct}
+        onDelete={handleDeleteProduct}
+        onView={handleViewProduct}
+      />
+      
+      <ProductViewDialog 
+        product={viewProduct} 
+        open={isViewDialogOpen} 
+        onClose={() => setIsViewDialogOpen(false)} 
+      />
+    </div>
+  );
 }

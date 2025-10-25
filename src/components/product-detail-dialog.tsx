@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import { useOrder } from "@/hooks/use-order";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, MinusCircle, ShoppingCart, Package } from "lucide-react";
+import { PlusCircle, MinusCircle, ShoppingCart, Package, Factory, Store } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -211,6 +211,33 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
              </div>
            )}
            
+           {/* Stock information for shop users */}
+           {user?.role === 'shop' && (
+             <div className="mb-4 p-4 border rounded-lg bg-muted">
+               <div className="flex items-center justify-between">
+                 <span className="font-medium">Stock Information</span>
+               </div>
+               <div className="grid grid-cols-2 gap-2 mt-2">
+                 <div className="flex items-center">
+                   <Factory className="h-4 w-4 mr-2 text-blue-500" />
+                   <span className="text-sm">Factory Stock: {product.variants.reduce((total, variant) => total + variant.stock, 0)} units</span>
+                 </div>
+                 <div className="flex items-center">
+                   <Store className="h-4 w-4 mr-2 text-green-500" />
+                   <span className="text-sm">Your Stock: {
+                     product.variants.reduce((total, variant) => {
+                       const availableStock = getRealTimeAvailableStock(variant.id);
+                       return total + availableStock;
+                     }, 0)
+                   } units</span>
+                 </div>
+               </div>
+               <p className="text-xs text-muted-foreground mt-2">
+                 Factory stock represents total available inventory. Your stock is what's available in your shop.
+               </p>
+             </div>
+           )}
+           
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
                     <Card key={color} className="overflow-hidden">
@@ -238,9 +265,28 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                                         <div key={variant.id} className="grid grid-cols-3 items-center gap-2">
                                             <div className="space-y-1">
                                                 <p className="font-medium">{variant.size}</p>
-                                                <Badge variant={availableStock > 0 ? "secondary" : "destructive"}>
-                                                    {availableStock > 0 ? `${availableStock} in stock` : 'Out of Stock'}
-                                                </Badge>
+                                                {user?.role === 'shop' ? (
+                                                    // For shops, show both factory and shop stock
+                                                    <>
+                                                        <div className="flex items-center gap-1">
+                                                            <Factory className="h-3 w-3 text-blue-500" />
+                                                            <Badge variant="outline" className="text-xs">
+                                                                Factory: {variant.stock}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <Store className="h-3 w-3 text-green-500" />
+                                                            <Badge variant={availableStock > 0 ? "secondary" : "destructive"} className="text-xs">
+                                                                Your Stock: {availableStock}
+                                                            </Badge>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    // For factory, show only factory stock
+                                                    <Badge variant={variant.stock > 0 ? "secondary" : "destructive"}>
+                                                        {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
+                                                    </Badge>
+                                                )}
                                                 {totalInOrder > 0 && (
                                                     <p className="text-xs text-muted-foreground">
                                                         {totalInOrder} already in order
@@ -254,7 +300,7 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                                                     variant="outline" 
                                                     className="h-8 w-8" 
                                                     onClick={() => handleQuantityChange(variant.id, -1)} 
-                                                    disabled={orderedQuantity === 0 || availableStock === 0}
+                                                    disabled={orderedQuantity === 0 || (user?.role === 'shop' ? availableStock === 0 : variant.stock === 0)}
                                                 >
                                                     <MinusCircle className="h-4 w-4" />
                                                 </Button>
@@ -264,7 +310,7 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                                                     value={orderedQuantity}
                                                     onChange={(e) => {
                                                         const value = parseInt(e.target.value) || 0;
-                                                        const maxAllowed = availableStock + (quantities[variant.id] || 0);
+                                                        const maxAllowed = user?.role === 'shop' ? availableStock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
                                                         if (value <= maxAllowed) {
                                                             setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
                                                         } else {
@@ -276,15 +322,15 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                                                         }
                                                     }}
                                                     min="0"
-                                                    max={availableStock + (quantities[variant.id] || 0)}
-                                                    disabled={availableStock === 0}
+                                                    max={user?.role === 'shop' ? availableStock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
+                                                    disabled={user?.role === 'shop' ? availableStock === 0 : variant.stock === 0}
                                                 />
                                                 <Button 
                                                     size="icon" 
                                                     variant="outline" 
                                                     className="h-8 w-8" 
                                                     onClick={() => handleQuantityChange(variant.id, 1)} 
-                                                    disabled={orderedQuantity >= availableStock || availableStock === 0}
+                                                    disabled={user?.role === 'shop' ? orderedQuantity >= availableStock : orderedQuantity >= variant.stock}
                                                 >
                                                     <PlusCircle className="h-4 w-4" />
                                                 </Button>

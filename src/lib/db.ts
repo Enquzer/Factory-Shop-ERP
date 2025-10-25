@@ -59,9 +59,20 @@ export const initializeDatabase = async (database: any) => {
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL,
+      profilePictureUrl TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Add profilePictureUrl column to existing users table if it doesn't exist
+  try {
+    await database.exec(`
+      ALTER TABLE users ADD COLUMN profilePictureUrl TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('profilePictureUrl column already exists or was added successfully');
+  }
 
   // Create products table
   await database.exec(`
@@ -365,7 +376,12 @@ export const initializeDatabase = async (database: any) => {
       isCompleted INTEGER DEFAULT 0,
       createdBy TEXT NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      orderPlacementDate TEXT,
+      plannedDeliveryDate TEXT,
+      sizeSetSampleApproved TEXT,
+      productionStartDate TEXT,
+      productionFinishedDate TEXT
     )
   `);
 
@@ -377,6 +393,66 @@ export const initializeDatabase = async (database: any) => {
       size TEXT NOT NULL,
       color TEXT NOT NULL,
       quantity INTEGER NOT NULL,
+      FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
+    )
+  `);
+
+  // Add new columns to existing marketing_orders table if they don't exist
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN orderPlacementDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('orderPlacementDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN plannedDeliveryDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('plannedDeliveryDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN sizeSetSampleApproved TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('sizeSetSampleApproved column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN productionStartDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('productionStartDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN productionFinishedDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('productionFinishedDate column already exists or was added successfully');
+  }
+
+  // Create daily production status tracking table
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS daily_production_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId TEXT NOT NULL,
+      date TEXT NOT NULL,
+      size TEXT NOT NULL,
+      color TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      status TEXT NOT NULL,
       FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
     )
   `);

@@ -63,7 +63,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         <TooltipProvider>
             <SidebarProvider>
                 <Sidebar collapsible="icon">
-                    <SidebarHeader className="border-b border-sidebar-border p-3">
+                    <SidebarHeader className="border-b border-sidebar-border p-2">
                         <Logo />
                     </SidebarHeader>
                     <SidebarContent className="p-2">

@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MarketingOrder, MarketingOrderItem, updateMarketingOrder } from "@/lib/marketing-orders";
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Trash2 } from "lucide-react";
+import { Trash2, Calendar, Flag, Factory, CheckCircle } from "lucide-react";
 
 interface EditMarketingOrderDialogProps {
   order: MarketingOrder | null;
@@ -33,6 +33,11 @@ export function EditMarketingOrderDialog({
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState(0);
   const [items, setItems] = useState<MarketingOrderItem[]>([]);
+  const [orderPlacementDate, setOrderPlacementDate] = useState<string>("");
+  const [plannedDeliveryDate, setPlannedDeliveryDate] = useState<string>("");
+  const [sizeSetSampleApproved, setSizeSetSampleApproved] = useState<string>("");
+  const [productionStartDate, setProductionStartDate] = useState<string>("");
+  const [productionFinishedDate, setProductionFinishedDate] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -41,6 +46,11 @@ export function EditMarketingOrderDialog({
       setProductCode(order.productCode);
       setDescription(order.description || "");
       setItems(order.items.map(item => ({ ...item })));
+      setOrderPlacementDate(order.orderPlacementDate || "");
+      setPlannedDeliveryDate(order.plannedDeliveryDate || "");
+      setSizeSetSampleApproved(order.sizeSetSampleApproved || "");
+      setProductionStartDate(order.productionStartDate || "");
+      setProductionFinishedDate(order.productionFinishedDate || "");
     }
   }, [order]);
 
@@ -63,6 +73,11 @@ export function EditMarketingOrderDialog({
         productCode,
         description,
         quantity: totalQuantity,
+        orderPlacementDate: orderPlacementDate || undefined,
+        plannedDeliveryDate: plannedDeliveryDate || undefined,
+        sizeSetSampleApproved: sizeSetSampleApproved || undefined,
+        productionStartDate: productionStartDate || undefined,
+        productionFinishedDate: productionFinishedDate || undefined,
       };
 
       const success = await updateMarketingOrder(order.id, updatedData);
@@ -171,6 +186,77 @@ export function EditMarketingOrderDialog({
                   readOnly
                   className="bg-gray-100"
                 />
+              </div>
+              
+              {/* Date Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="orderPlacementDate" className="flex items-center">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Order Placement Date
+                  </Label>
+                  <Input
+                    id="orderPlacementDate"
+                    type="date"
+                    value={orderPlacementDate}
+                    onChange={(e) => setOrderPlacementDate(e.target.value)}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="plannedDeliveryDate" className="flex items-center">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Planned Delivery Date
+                  </Label>
+                  <Input
+                    id="plannedDeliveryDate"
+                    type="date"
+                    value={plannedDeliveryDate}
+                    onChange={(e) => setPlannedDeliveryDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              {/* Sample Status Tracking Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="sizeSetSampleApproved" className="flex items-center">
+                    <Flag className="mr-2 h-4 w-4" />
+                    Sample Approved Date
+                  </Label>
+                  <Input
+                    id="sizeSetSampleApproved"
+                    type="date"
+                    value={sizeSetSampleApproved}
+                    onChange={(e) => setSizeSetSampleApproved(e.target.value)}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="productionStartDate" className="flex items-center">
+                    <Factory className="mr-2 h-4 w-4" />
+                    Production Start Date
+                  </Label>
+                  <Input
+                    id="productionStartDate"
+                    type="date"
+                    value={productionStartDate}
+                    onChange={(e) => setProductionStartDate(e.target.value)}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="productionFinishedDate" className="flex items-center">
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Production Finish Date
+                  </Label>
+                  <Input
+                    id="productionFinishedDate"
+                    type="date"
+                    value={productionFinishedDate}
+                    onChange={(e) => setProductionFinishedDate(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </div>

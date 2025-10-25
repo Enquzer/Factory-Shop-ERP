@@ -15,7 +15,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Bell, ShoppingCart } from 'lucide-react';
@@ -158,7 +157,6 @@ export function ShopHeader() {
 
   return (
     <header className="flex h-14 items-center gap-4 border-b bg-card px-4 sm:px-6">
-      <SidebarTrigger />
       <div className="w-full flex-1">
         {/* Future breadcrumbs can go here */}
       </div>
@@ -221,7 +219,7 @@ export function ShopHeader() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
             <Avatar className="h-9 w-9">
-              <AvatarImage src="https://picsum.photos/seed/shop-user/100/100" data-ai-hint="person portrait"/>
+              <AvatarImage src={user?.profilePictureUrl || undefined} />
               <AvatarFallback>SU</AvatarFallback>
             </Avatar>
             <span className="sr-only">Toggle user menu</span>
@@ -236,7 +234,7 @@ export function ShopHeader() {
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => {
             logout();
-            router.push('/'); // Redirect to homepage instead of login page
+            // The logout function now handles the redirect
           }}>
             Logout
           </DropdownMenuItem>

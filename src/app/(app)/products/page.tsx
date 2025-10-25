@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, PlusCircle, Loader2 } from "lucide-react";
+import { Search, PlusCircle, Loader2, FileText } from "lucide-react";
 import Link from "next/link";
 import { Product, getProducts } from '@/lib/products';
 import { ProductList } from './_components/product-list';
+import { ProductsDashboard } from './_components/products-dashboard';
+import { useToast } from "@/hooks/use-toast";
 
 export default function ProductsPage({
     searchParams
@@ -18,6 +20,7 @@ export default function ProductsPage({
     const searchTerm = searchParams?.query || "";
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const { toast } = useToast();
     
     useEffect(() => {
         const fetchProducts = async () => {
@@ -34,6 +37,30 @@ export default function ProductsPage({
         
         fetchProducts();
     }, []);
+    
+    const handleExportToPDF = async () => {
+        try {
+            // Create a temporary link to download the PDF
+            const link = document.createElement('a');
+            link.href = '/api/products/export';
+            link.download = 'products-report.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            toast({
+                title: "Success",
+                description: "Products report generated and downloaded successfully.",
+            });
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            toast({
+                title: "Error",
+                description: "Failed to generate PDF. Please try again.",
+                variant: "destructive",
+            });
+        }
+    };
     
     if (loading) {
         return (
@@ -61,6 +88,10 @@ export default function ProductsPage({
                             defaultValue={searchTerm}
                         />
                     </form>
+                    <Button onClick={handleExportToPDF} variant="outline">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Export PDF
+                    </Button>
                     <Button asChild>
                         <Link href="/products/new">
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -69,6 +100,8 @@ export default function ProductsPage({
                     </Button>
                 </div>
             </div>
+
+            <ProductsDashboard products={products} />
 
             <Suspense fallback={
                 <div className="flex justify-center items-center h-64">

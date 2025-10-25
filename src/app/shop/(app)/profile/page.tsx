@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from '@/contexts/auth-context';
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type ShopProfileData = {
   id: string;
@@ -38,6 +39,9 @@ export default function ShopProfilePage() {
   const [shopProfileData, setShopProfileData] = useState<ShopProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [profilePicture, setProfilePicture] = useState<string | null>(user?.profilePictureUrl || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     const fetchShopProfile = async () => {
@@ -82,6 +86,46 @@ export default function ShopProfilePage() {
 
     setIsSaving(true);
     try {
+      // First, upload the profile picture if a new one was selected
+      if (selectedFile && user) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('userId', user.id.toString());
+        
+        const response = await fetch('/api/user-profile', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          // Update the user in localStorage with the new profile picture
+          const updatedUser = { ...user, profilePictureUrl: result.profilePictureUrl };
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          setProfilePicture(result.profilePictureUrl);
+          // Clear the file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          setSelectedFile(null);
+          
+          // Show success message for profile picture upload
+          toast({
+            title: "Success",
+            description: "Profile picture updated successfully"
+          });
+        } else {
+          console.error('Failed to upload profile picture:', result.error);
+          toast({
+            title: "Error",
+            description: "Failed to upload profile picture",
+            variant: "destructive"
+          });
+          // Continue with other updates even if picture upload fails
+        }
+      }
+      
       // Prepare data for update (only include fields that can be updated)
       const updateData: any = {
         name: shopProfileData.name,
@@ -127,6 +171,25 @@ export default function ShopProfilePage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setProfilePicture(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setSelectedFile(null);
+      setProfilePicture(user?.profilePictureUrl || null);
+    }
+  };
+
+  const handleBrowseFiles = () => {
+    fileInputRef.current?.click();
   };
 
   if (isLoading) {
@@ -190,86 +253,128 @@ export default function ShopProfilePage() {
           )}
         </Button>
       </div>
+      
       <Card>
         <CardHeader>
-          <CardTitle>Shop Details</CardTitle>
+          <CardTitle>Profile Picture</CardTitle>
           <CardDescription>
-            Update your shop's information. Your username cannot be changed.
+            Upload a profile picture for your account.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form className="grid gap-6" onSubmit={handleSaveChanges}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Column 1 */}
-                <div className="space-y-4">
-                     <div className="grid gap-2">
+        <CardContent className="grid gap-6">
+          <div className="flex items-center gap-6">
+            <Avatar className="h-24 w-24">
+              <AvatarImage src={profilePicture || undefined} />
+              <AvatarFallback className="text-2xl">
+                {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+              </AvatarFallback>
+            </Avatar>
+            <div className="grid gap-2">
+              <Input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleProfilePictureChange}
+                accept="image/*"
+                className="hidden"
+              />
+              <Button 
+                onClick={handleBrowseFiles}
+                variant="outline"
+                className="w-fit"
+              >
+                Browse Files
+              </Button>
+              {selectedFile && (
+                <div className="text-sm text-muted-foreground">
+                  Selected: {selectedFile.name}
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      <form onSubmit={handleSaveChanges}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Shop Details</CardTitle>
+            <CardDescription>
+              Update your shop's information. Your username cannot be changed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Column 1 */}
+                  <div className="space-y-4">
+                      <div className="grid gap-2">
                         <Label htmlFor="username">Username</Label>
                         <Input 
                           id="username" 
                           value={shopProfileData.username} 
                           disabled 
                         />
-                    </div>
-                     <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="shop-name">Shop Name</Label>
                         <Input 
                           id="shop-name" 
                           value={shopProfileData.name} 
                           onChange={(e) => setShopProfileData({...shopProfileData, name: e.target.value})}
                         />
-                    </div>
-                     <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="contact-person">Contact Person</Label>
                         <Input 
                           id="contact-person" 
                           value={shopProfileData.contactPerson} 
                           onChange={(e) => setShopProfileData({...shopProfileData, contactPerson: e.target.value})}
                         />
-                    </div>
-                    <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="contact-phone">Contact Phone</Label>
                         <Input 
                           id="contact-phone" 
                           value={shopProfileData.contactPhone} 
                           onChange={(e) => setShopProfileData({...shopProfileData, contactPhone: e.target.value})}
                         />
-                    </div>
-                     <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="city">City</Label>
                         <Input 
                           id="city" 
                           value={shopProfileData.city} 
                           onChange={(e) => setShopProfileData({...shopProfileData, city: e.target.value})}
                         />
-                    </div>
-                </div>
-                {/* Column 2 */}
-                <div className="space-y-4">
-                    <div className="grid gap-2">
+                      </div>
+                  </div>
+                  {/* Column 2 */}
+                  <div className="space-y-4">
+                      <div className="grid gap-2">
                         <Label htmlFor="exact-location">Exact Location</Label>
                         <Textarea 
                           id="exact-location" 
                           value={shopProfileData.exactLocation} 
                           onChange={(e) => setShopProfileData({...shopProfileData, exactLocation: e.target.value})}
                         />
-                    </div>
-                    <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="trade-license">Trade License Number</Label>
                         <Input 
                           id="trade-license" 
                           value={shopProfileData.tradeLicenseNumber} 
                           onChange={(e) => setShopProfileData({...shopProfileData, tradeLicenseNumber: e.target.value})}
                         />
-                    </div>
-                    <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="tin-number">TIN Number</Label>
                         <Input 
                           id="tin-number" 
                           value={shopProfileData.tinNumber} 
                           onChange={(e) => setShopProfileData({...shopProfileData, tinNumber: e.target.value})}
                         />
-                    </div>
-                    <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="discount">Discount (%)</Label>
                         <Input 
                           id="discount" 
@@ -283,8 +388,8 @@ export default function ShopProfilePage() {
                             Only factory users can edit discount percentage
                           </p>
                         )}
-                    </div>
-                    <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="monthly-target">Monthly Sales Target (ETB)</Label>
                         <Input 
                           id="monthly-target" 
@@ -292,36 +397,37 @@ export default function ShopProfilePage() {
                           value={shopProfileData.monthlySalesTarget} 
                           onChange={(e) => setShopProfileData({...shopProfileData, monthlySalesTarget: parseFloat(e.target.value) || 0})}
                         />
-                    </div>
-                </div>
-            </div>
+                      </div>
+                  </div>
+              </div>
 
-            <Separator className="my-4" />
+              <Separator className="my-4" />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                     <h3 className="text-lg font-medium">Update Password</h3>
-                     <div className="grid gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                      <h3 className="text-lg font-medium">Update Password</h3>
+                      <div className="grid gap-2">
                         <Label htmlFor="new-password">New Password</Label>
                         <Input id="new-password" type="password" />
-                    </div>
-                    <div className="grid gap-2">
+                      </div>
+                      <div className="grid gap-2">
                         <Label htmlFor="confirm-password">Confirm New Password</Label>
                         <Input id="confirm-password" type="password" />
-                    </div>
-                </div>
-                 <div className="space-y-4">
-                     <h3 className="text-lg font-medium">Shop Pictures</h3>
-                     <div className="grid gap-2">
+                      </div>
+                  </div>
+                  <div className="space-y-4">
+                      <h3 className="text-lg font-medium">Shop Pictures</h3>
+                      <div className="grid gap-2">
                         <Label htmlFor="shop-pictures">Upload Images</Label>
                         <Input id="shop-pictures" type="file" multiple />
-                         <p className="text-xs text-muted-foreground">You can upload multiple images for your shop.</p>
-                    </div>
-                </div>
+                        <p className="text-xs text-muted-foreground">You can upload multiple images for your shop.</p>
+                      </div>
+                  </div>
+              </div>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </form>
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { PlusCircle, MoreHorizontal, MapPin, Loader2, Edit, Eye, ToggleLeft, ToggleRight, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { PlusCircle, MoreHorizontal, MapPin, Loader2, Edit, Eye, ToggleLeft, ToggleRight, Trash2, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { RegisterShopDialog } from "@/components/register-shop-dialog";
 import {
   Table,
@@ -120,16 +120,46 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
         }
     };
 
+    const handleExportToPDF = async () => {
+        try {
+            // Create a temporary link to download the PDF
+            const link = document.createElement('a');
+            link.href = '/api/shops/export';
+            link.download = 'shops-report.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            toast({
+                title: "Success",
+                description: "Shops report generated and downloaded successfully.",
+            });
+        } catch (error) {
+            console.error("Error exporting shops:", error);
+            toast({
+                title: "Error",
+                description: "Failed to export shops. Please try again.",
+                variant: "destructive",
+            });
+        }
+    };
+
     return (
         <>
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div></div> {/* Spacer */}
-                <RegisterShopDialog onShopRegistered={onShopRegistered} userRole={user?.role}>
-                    <Button className="w-full sm:w-auto">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Register Shop
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleExportToPDF}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Export PDF
                     </Button>
-                </RegisterShopDialog>
+                    <RegisterShopDialog onShopRegistered={onShopRegistered} userRole={user?.role}>
+                        <Button className="w-full sm:w-auto">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Register Shop
+                        </Button>
+                    </RegisterShopDialog>
+                </div>
             </div>
             
             {isLoading ? (
