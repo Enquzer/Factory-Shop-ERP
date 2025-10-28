@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
 import { useState, useEffect } from 'react';
 import { Badge } from './ui/badge';
+import { useResponsive } from '@/contexts/responsive-context';
 
 const factoryLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,6 +31,7 @@ export function Nav() {
   const pathname = usePathname();
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const { isMobile, isTablet } = useResponsive();
 
   // Only show navigation for factory users
   if (user?.role !== 'factory') {
@@ -68,7 +70,7 @@ export function Nav() {
           <SidebarMenuButton
             asChild
             isActive={pathname === link.href}
-            tooltip={link.label}
+            tooltip={isMobile || isTablet ? link.label : undefined}
             className="justify-start"
           >
             <Link href={link.href}>
@@ -90,7 +92,7 @@ export function Nav() {
         <SidebarMenuButton
           asChild
           isActive={pathname === '/notifications'}
-          tooltip="Notifications"
+          tooltip={isMobile || isTablet ? "Notifications" : undefined}
           className="justify-start"
         >
           <Link href="/orders">

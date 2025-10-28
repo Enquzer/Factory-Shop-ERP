@@ -499,11 +499,10 @@ export function OwnerDashboardClientPage({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Categories</SelectItem>
-                        {categories.map(category => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="Ladies">Ladies</SelectItem>
+                        <SelectItem value="Men">Men</SelectItem>
+                        <SelectItem value="Kids">Kids</SelectItem>
+                        <SelectItem value="Unisex">Unisex</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -595,7 +594,7 @@ export function OwnerDashboardClientPage({
               <Package className="h-5 w-5" />
               Category Performance
             </CardTitle>
-            <CardDescription>Inventory value by product category</CardDescription>
+            <CardDescription>Inventory value by product category (Ladies, Men, Kids, Unisex)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

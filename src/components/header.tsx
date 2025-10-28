@@ -23,6 +23,7 @@ import { Badge } from './ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
+import { useResponsive } from '@/contexts/responsive-context';
 
 type Notification = {
   id: string;
@@ -40,6 +41,7 @@ export function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { user, logout } = useAuth();
   const router = useRouter();
+  const { isMobile, isTablet } = useResponsive();
 
   useEffect(() => {
     // Create a polling function to fetch notifications periodically
@@ -129,7 +131,7 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-card px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 sm:py-4">
+    <header className={`sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card px-2 ${isMobile ? 'sm:px-4' : 'px-4'} sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 sm:py-4`}>
       <SidebarTrigger />
       <div className="w-full flex-1">
         {/* Future breadcrumbs can go here */}
@@ -137,15 +139,15 @@ export function Header() {
 
       <Popover>
         <PopoverTrigger asChild>
-           <Button variant="ghost" size="icon" className="relative rounded-full h-9 w-9">
-              <Bell className="h-5 w-5" />
+           <Button variant="ghost" size={isMobile ? "icon" : "default"} className={`relative rounded-full ${isMobile ? 'h-8 w-8' : 'h-9 w-9'}`}>
+              <Bell className={` ${isMobile ? 'h-4 w-4' : 'h-5 w-5'}`} />
               {unreadCount > 0 && (
-                <Badge className="absolute top-1 right-1 h-5 w-5 justify-center p-0">{unreadCount}</Badge>
+                <Badge className={`absolute top-0 right-0 h-4 w-4 justify-center p-0 text-[8px] ${isMobile ? 'h-3 w-3' : 'h-5 w-5'}`}>{unreadCount}</Badge>
               )}
               <span className="sr-only">Toggle notifications</span>
             </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 p-0">
+        <PopoverContent align="end" className={`w-72 p-0 ${isMobile ? 'w-64' : 'w-80'}`}>
            <div className="flex items-center justify-between p-2 border-b">
               <h3 className="font-semibold text-sm px-2">Notifications</h3>
               {unreadCount > 0 && (
@@ -181,8 +183,8 @@ export function Header() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
-            <Avatar className="h-9 w-9">
+          <Button variant="ghost" size={isMobile ? "icon" : "default"} className={`rounded-full ${isMobile ? 'h-8 w-8' : 'h-9 w-9'}`}>
+            <Avatar className={` ${isMobile ? 'h-7 w-7' : 'h-9 w-9'}`}>
               <AvatarImage src={user?.profilePictureUrl || undefined} />
               <AvatarFallback>{user?.username?.charAt(0)?.toUpperCase() || 'FU'}</AvatarFallback>
             </Avatar>

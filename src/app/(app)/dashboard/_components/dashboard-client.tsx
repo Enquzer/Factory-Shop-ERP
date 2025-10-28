@@ -56,6 +56,8 @@ import { Order } from "@/lib/orders";
 import { Product } from "@/lib/products";
 import { Shop } from "@/lib/shops";
 import { LoadingBar } from "@/components/loading-bar";
+import { useResponsive } from '@/contexts/responsive-context';
+import { ResponsiveGrid, ResponsiveGridItem } from '@/components/responsive-grid';
 
 const PIE_CHART_COLORS = [
   "hsl(var(--chart-1))",
@@ -99,6 +101,7 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
     to: new Date(),
   });
   const [isLoading, setIsLoading] = useState(false);
+  const { isMobile, isTablet, isDesktop } = useResponsive();
 
   const refreshData = async () => {
     setIsLoading(true);
@@ -227,12 +230,12 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
   return (
     <div className="space-y-6">
       <LoadingBar isLoading={isLoading} message="Refreshing dashboard data..." />
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <div className={`flex flex-col ${isMobile ? 'gap-2' : 'sm:flex-row'} items-center justify-between gap-4`}>
+        <h1 className={`text-2xl font-semibold ${isMobile ? 'text-xl' : ''}`}>Dashboard</h1>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size={isMobile ? "sm" : "default"}
             onClick={refreshData}
             disabled={isLoading}
           >
@@ -244,8 +247,9 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
               <Button
                 id="date"
                 variant={"outline"}
+                size={isMobile ? "sm" : "default"}
                 className={cn(
-                  "w-full sm:w-[300px] justify-start text-left font-normal",
+                  `${isMobile ? 'w-full' : 'w-full sm:w-[200px]'} justify-start text-left font-normal`,
                   !date && "text-muted-foreground"
                 )}
               >
@@ -271,7 +275,7 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
                 defaultMonth={date?.from}
                 selected={date}
                 onSelect={setDate}
-                numberOfMonths={2}
+                numberOfMonths={isMobile ? 1 : 2}
               />
             </PopoverContent>
           </Popover>
@@ -279,195 +283,231 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
       </div>
       
       {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.totalProducts}</div>
-          </CardContent>
-        </Card>
+      <ResponsiveGrid 
+        mobileCols={1} 
+        tabletCols={2} 
+        desktopCols={4} 
+        gap={4}
+      >
+        <ResponsiveGridItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.totalProducts}</div>
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
         
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Registered Shops</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.registeredShops}</div>
-          </CardContent>
-        </Card>
+        <ResponsiveGridItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Registered Shops</CardTitle>
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.registeredShops}</div>
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
         
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Orders</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.activeOrders}</div>
-          </CardContent>
-        </Card>
+        <ResponsiveGridItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Orders</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.activeOrders}</div>
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
         
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{lowStockItems.length}</div>
-          </CardContent>
-        </Card>
-      </div>
+        <ResponsiveGridItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{lowStockItems.length}</div>
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
+      </ResponsiveGrid>
       
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="flex flex-col">
-          <CardHeader>
-            <CardTitle>Sales Overview</CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1">
-            {salesData.length > 0 ? (
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <BarChart data={salesData} width={653} height={300}>
-                  <XAxis
-                    dataKey="date"
-                    tickLine={false}
-                    tickMargin={10}
-                    axisLine={false}
-                    tickFormatter={(value) => format(new Date(value), "MMM dd")}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    tickMargin={10}
-                    axisLine={false}
-                  />
-                  <Tooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                No sales data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <ResponsiveGrid 
+        mobileCols={1} 
+        tabletCols={1} 
+        desktopCols={2} 
+        gap={4}
+      >
+        <ResponsiveGridItem>
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Sales Overview</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1">
+              {salesData.length > 0 ? (
+                <ChartContainer config={chartConfig} className={`${isMobile ? 'h-[200px]' : 'h-[300px]'} w-full`}>
+                  <BarChart data={salesData} width={isMobile ? 300 : 653} height={isMobile ? 200 : 300}>
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      tickMargin={10}
+                      axisLine={false}
+                      tickFormatter={(value) => format(new Date(value), isMobile ? "MM/dd" : "MMM dd")}
+                      fontSize={isMobile ? 10 : 12}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      tickMargin={10}
+                      axisLine={false}
+                      fontSize={isMobile ? 10 : 12}
+                    />
+                    <Tooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              ) : (
+                <div className={`flex items-center justify-center ${isMobile ? 'h-[200px]' : 'h-[300px]'} text-muted-foreground`}>
+                  No sales data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
         
-        <Card className="flex flex-col">
-          <CardHeader>
-            <CardTitle>Top Selling Products</CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1">
-            {bestSelling.length > 0 ? (
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <PieChart width={653} height={300}>
-                  <Tooltip content={<ChartTooltipContent hideLabel />} />
-                  <Pie
-                    data={bestSelling}
-                    dataKey="quantity"
-                    nameKey="name"
-                    innerRadius={60}
-                    strokeWidth={5}
-                  >
-                    {bestSelling.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ChartContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                No product sales data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        <ResponsiveGridItem>
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Top Selling Products</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1">
+              {bestSelling.length > 0 ? (
+                <ChartContainer config={chartConfig} className={`${isMobile ? 'h-[200px]' : 'h-[300px]'} w-full`}>
+                  <PieChart width={isMobile ? 300 : 653} height={isMobile ? 200 : 300}>
+                    <Tooltip content={<ChartTooltipContent hideLabel />} />
+                    <Pie
+                      data={bestSelling}
+                      dataKey="quantity"
+                      nameKey="name"
+                      innerRadius={isMobile ? 30 : 60}
+                      strokeWidth={isMobile ? 3 : 5}
+                    >
+                      {bestSelling.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ChartContainer>
+              ) : (
+                <div className={`flex items-center justify-center ${isMobile ? 'h-[200px]' : 'h-[300px]'} text-muted-foreground`}>
+                  No product sales data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
+      </ResponsiveGrid>
       
       {/* Recent Orders and Low Stock Items */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Orders</CardTitle>
-            <CardDescription>Latest orders from your shops</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Shop</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {metrics.recentOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.shopName}</TableCell>
-                    <TableCell>{format(parseISO(order.date), "MMM dd, yyyy")}</TableCell>
-                    <TableCell className="text-right">ETB {order.amount.toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge variant={
-                        order.status === 'Pending' ? 'default' : 
-                        order.status === 'Dispatched' ? 'secondary' : 
-                        order.status === 'Delivered' ? 'outline' : 'destructive'
-                      }>
-                        {order.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {metrics.recentOrders.length === 0 && (
+      <ResponsiveGrid 
+        mobileCols={1} 
+        tabletCols={1} 
+        desktopCols={2} 
+        gap={4}
+      >
+        <ResponsiveGridItem>
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Orders</CardTitle>
+              <CardDescription>Latest orders from your shops</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No recent orders
-                    </TableCell>
+                    <TableHead className={isMobile ? 'text-xs' : ''}>Shop</TableHead>
+                    <TableHead className={isMobile ? 'text-xs' : ''}>Date</TableHead>
+                    <TableHead className={`text-right ${isMobile ? 'text-xs' : ''}`}>Amount</TableHead>
+                    <TableHead className={isMobile ? 'text-xs' : ''}>Status</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {metrics.recentOrders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell className={`font-medium ${isMobile ? 'text-sm' : ''}`}>{order.shopName}</TableCell>
+                      <TableCell className={isMobile ? 'text-xs' : ''}>{format(parseISO(order.date), "MMM dd, yyyy")}</TableCell>
+                      <TableCell className={`text-right ${isMobile ? 'text-sm' : ''}`}>ETB {order.amount.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={
+                            order.status === 'Pending' ? 'default' : 
+                            order.status === 'Dispatched' ? 'secondary' : 
+                            order.status === 'Delivered' ? 'outline' : 'destructive'
+                          }
+                          className={isMobile ? 'text-xs' : ''}
+                        >
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {metrics.recentOrders.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">
+                        No recent orders
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
         
-        <Card>
-          <CardHeader>
-            <CardTitle>Low Stock Items</CardTitle>
-            <CardDescription>Products that need restocking</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lowStockItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{item.category}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="destructive">{item.stock}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {lowStockItems.length === 0 && (
+        <ResponsiveGridItem>
+          <Card>
+            <CardHeader>
+              <CardTitle>Low Stock Items</CardTitle>
+              <CardDescription>Products that need restocking</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground">
-                      No low stock items
-                    </TableCell>
+                    <TableHead className={isMobile ? 'text-xs' : ''}>Product</TableHead>
+                    <TableHead className={isMobile ? 'text-xs' : ''}>Category</TableHead>
+                    <TableHead className={`text-right ${isMobile ? 'text-xs' : ''}`}>Stock</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+                </TableHeader>
+                <TableBody>
+                  {lowStockItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className={`font-medium ${isMobile ? 'text-sm' : ''}`}>{item.name}</TableCell>
+                      <TableCell className={isMobile ? 'text-xs' : ''}>{item.category}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="destructive" className={isMobile ? 'text-xs' : ''}>{item.stock}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {lowStockItems.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground">
+                        No low stock items
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </ResponsiveGridItem>
+      </ResponsiveGrid>
     </div>
   );
 }

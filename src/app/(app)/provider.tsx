@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { LoadingBar } from '@/components/loading-bar';
+import { ResponsiveProvider } from '@/contexts/responsive-context';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
     const { user, isLoading, isLoggingIn } = useAuth();
@@ -61,25 +62,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <TooltipProvider>
-            <SidebarProvider>
-                <Sidebar collapsible="icon">
-                    <SidebarHeader className="border-b border-sidebar-border p-2">
-                        <Logo />
-                    </SidebarHeader>
-                    <SidebarContent className="p-2">
-                        <Nav />
-                    </SidebarContent>
-                </Sidebar>
-                <SidebarInset>
-                    <div className="flex flex-col h-full">
-                        <Header />
-                        <main className="p-4 lg:p-6 flex-1 overflow-auto">
-                            {children}
-                        </main>
-                    </div>
-                </SidebarInset>
-                <AiChatWidget />
-            </SidebarProvider>
+            <ResponsiveProvider>
+                <SidebarProvider>
+                    <Sidebar collapsible="icon">
+                        <SidebarHeader className="border-b border-sidebar-border p-2">
+                            <Logo />
+                        </SidebarHeader>
+                        <SidebarContent className="p-2">
+                            <Nav />
+                        </SidebarContent>
+                    </Sidebar>
+                    <SidebarInset>
+                        <div className="flex flex-col h-full">
+                            <Header />
+                            <main className="p-4 lg:p-6 flex-1 overflow-auto">
+                                {children}
+                            </main>
+                        </div>
+                    </SidebarInset>
+                    <AiChatWidget />
+                </SidebarProvider>
+            </ResponsiveProvider>
         </TooltipProvider>
     )
 }

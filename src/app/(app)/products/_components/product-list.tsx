@@ -112,6 +112,9 @@ export function ProductList({
         // Apply date range filter
         if (dateRange?.from || dateRange?.to) {
             result = result.filter(product => {
+                // Handle case where created_at might be undefined
+                if (!product.created_at) return true;
+                
                 const productDate = new Date(product.created_at);
                 
                 // If from date is set, product must be created on or after that date
@@ -230,7 +233,7 @@ export function ProductList({
 
     return (
         <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
                 {filteredProducts.map((product, index) => {
                     const stockInfo = getStockDisplay(product);
                     return (
@@ -241,7 +244,7 @@ export function ProductList({
                                     alt={product.name} 
                                     width={200} 
                                     height={250} 
-                                    className="w-full h-48 object-cover rounded-t-lg"
+                                    className="w-full h-40 sm:h-48 object-cover rounded-t-lg"
                                     onError={(e) => {
                                         const target = e.target as HTMLImageElement;
                                         target.src = '/placeholder-product.png';
@@ -289,16 +292,16 @@ export function ProductList({
                                     </div>
                                 )}
                             </div>
-                            <CardHeader>
-                                <CardTitle className="text-lg">{product.name}</CardTitle>
-                                <CardDescription>{product.productCode}</CardDescription>
+                            <CardHeader className="p-3 sm:p-6">
+                                <CardTitle className="text-base sm:text-lg">{product.name}</CardTitle>
+                                <CardDescription className="text-xs sm:text-sm">{product.productCode}</CardDescription>
                             </CardHeader>
-                            <CardContent className="flex items-center justify-between">
+                            <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <div className="space-y-1">
-                                    <p className="text-lg font-semibold">ETB {product.price.toFixed(2)}</p>
+                                    <p className="text-base sm:text-lg font-semibold">ETB {product.price.toFixed(2)}</p>
                                     <div className="flex items-center text-sm">
                                         <Package className="h-4 w-4 mr-1" />
-                                        <Badge variant={stockInfo.variant}>{stockInfo.text}</Badge>
+                                        <Badge variant={stockInfo.variant} className="text-xs">{stockInfo.text}</Badge>
                                     </div>
                                     {/* Factory controls for readyToDeliver */}
                                     {user?.role === 'factory' && (
@@ -315,7 +318,7 @@ export function ProductList({
                                         </div>
                                     )}
                                 </div>
-                                <Button size="sm" onClick={() => setSelectedProduct(product)}>View Options</Button>
+                                <Button size="sm" className="text-xs sm:text-sm h-8" onClick={() => setSelectedProduct(product)}>View Options</Button>
                             </CardContent>
                         </Card>
                     );
