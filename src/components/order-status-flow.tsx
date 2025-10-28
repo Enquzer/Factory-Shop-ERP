@@ -4,6 +4,7 @@ import type { Order, OrderStatus } from "@/lib/orders";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Check, Circle, Clock, X } from "lucide-react";
+import { useMemo } from "react";
 
 interface StatusStep {
   status: OrderStatus;
@@ -21,11 +22,9 @@ const ORDER_STATUS_FLOW: StatusStep[] = [
 ];
 
 export function OrderStatusFlow({ order }: { order: Order }) {
-  const getCurrentStepIndex = () => {
+  const currentStepIndex = useMemo(() => {
     return ORDER_STATUS_FLOW.findIndex(step => step.status === order.status);
-  };
-
-  const currentStepIndex = getCurrentStepIndex();
+  }, [order.status]);
 
   return (
     <Card className="w-full">

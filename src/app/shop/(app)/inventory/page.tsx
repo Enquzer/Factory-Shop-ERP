@@ -16,48 +16,47 @@ export default function ShopInventoryPage() {
     const [totalInventoryValue, setTotalInventoryValue] = useState(0);
     const [totalInventoryAmount, setTotalInventoryAmount] = useState(0);
 
+    const fetchInventory = async () => {
+        if (!user || user.role !== 'shop') {
+            return;
+        }
+
+        try {
+            setLoading(true);
+            setError(null);
+            
+            // Fetch shop data
+            const shopResponse = await fetch(`/api/shops/${user.username}`);
+            if (!shopResponse.ok) {
+                throw new Error('Failed to fetch shop data');
+            }
+            
+            const shop = await shopResponse.json();
+            
+            // Fetch inventory data
+            const inventoryResponse = await fetch(`/api/shop-inventory?username=${user.username}`);
+            if (!inventoryResponse.ok) {
+                throw new Error('Failed to fetch inventory data');
+            }
+            
+            const inventoryData = await inventoryResponse.json();
+            setInventory(inventoryData);
+            
+            // Calculate totals
+            const value = inventoryData.reduce((sum: number, item: ShopInventoryItem) => sum + (item.price * item.stock), 0);
+            const amount = inventoryData.reduce((sum: number, item: ShopInventoryItem) => sum + item.stock, 0);
+            
+            setTotalInventoryValue(value);
+            setTotalInventoryAmount(amount);
+        } catch (err) {
+            console.error('Error fetching inventory:', err);
+            setError('Failed to load inventory data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchInventory = async () => {
-            if (!user || user.role !== 'shop') {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                setLoading(true);
-                setError(null);
-                
-                // Fetch shop data
-                const shopResponse = await fetch(`/api/shops/${user.username}`);
-                if (!shopResponse.ok) {
-                    throw new Error('Failed to fetch shop data');
-                }
-                
-                const shop = await shopResponse.json();
-                
-                // Fetch inventory data
-                const inventoryResponse = await fetch(`/api/shop-inventory?username=${user.username}`);
-                if (!inventoryResponse.ok) {
-                    throw new Error('Failed to fetch inventory data');
-                }
-                
-                const inventoryData = await inventoryResponse.json();
-                setInventory(inventoryData);
-                
-                // Calculate totals
-                const value = inventoryData.reduce((sum: number, item: ShopInventoryItem) => sum + (item.price * item.stock), 0);
-                const amount = inventoryData.reduce((sum: number, item: ShopInventoryItem) => sum + item.stock, 0);
-                
-                setTotalInventoryValue(value);
-                setTotalInventoryAmount(amount);
-            } catch (err) {
-                console.error('Error fetching inventory:', err);
-                setError('Failed to load inventory data');
-            } finally {
-                setLoading(false);
-            }
-        };
-
         if (user && !authLoading) {
             fetchInventory();
         } else if (!authLoading) {
@@ -117,7 +116,7 @@ export default function ShopInventoryPage() {
                 </Card>
             </div>
             
-            <InventoryClientPage inventory={inventory} />
+            <InventoryClientPage inventory={inventory} onInventoryUpdate={fetchInventory} />
         </div>
     );
 }

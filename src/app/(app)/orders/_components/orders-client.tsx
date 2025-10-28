@@ -15,6 +15,7 @@ import { OrderStatusFlow } from "./order-status-flow";
 import { OrderStatusIndicator } from "./order-status-indicator";
 import { FileText, Search, Edit, Trash2, CheckCircle, XCircle, Truck, Package, Eye } from "lucide-react";
 import Image from "next/image";
+import { DispatchDialog } from "@/components/dispatch-dialog";
 
 export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
@@ -25,6 +26,7 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [isClosing, setIsClosing] = useState(false);
   const { toast } = useToast();
@@ -173,6 +175,68 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
     return statusFlow[currentStatus] || [];
   };
 
+  const handleDispatch = async (dispatchInfo: any) => {
+    if (!selectedOrder) return;
+    
+    try {
+      const response = await fetch(`/api/orders/${selectedOrder.id}/dispatch`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ dispatchInfo }),
+      });
+
+      if (response.ok) {
+        // Update the order status to 'Dispatched' in the local state
+        setOrders(orders.map(order => 
+          order.id === selectedOrder.id 
+            ? { ...order, status: 'Dispatched', dispatchInfo } 
+            : order
+        ));
+        
+        toast({
+          title: "Success",
+          description: "Order dispatched successfully.",
+        });
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to dispatch order");
+      }
+    } catch (error: any) {
+      console.error("Error dispatching order:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to dispatch order. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExportOrderToPDF = async (orderId: string) => {
+    try {
+      // Create a temporary link to download the PDF
+      const link = document.createElement('a');
+      link.href = `/api/orders/${orderId}/pdf`;
+      link.download = `shop-order-${orderId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Success",
+        description: "Order PDF generated and downloaded successfully.",
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleExportToPDF = async () => {
     try {
       // Create a temporary link to download the PDF
@@ -304,6 +368,26 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+                    {/* Add Dispatch button for Paid orders */}
+                    {order.status === 'Paid' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedOrder(order);
+                          setIsDispatchDialogOpen(true);
+                        }}
+                      >
+                        <Truck className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExportOrderToPDF(order.id)}
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -396,6 +480,14 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dispatch Dialog */}
+      <DispatchDialog 
+        order={selectedOrder}
+        open={isDispatchDialogOpen}
+        onOpenChange={setIsDispatchDialogOpen}
+        onDispatch={handleDispatch}
+      />
 
       {/* Feedback Dialog */}
       <Dialog open={isFeedbackDialogOpen} onOpenChange={setIsFeedbackDialogOpen}>

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
 import { updateUserProfilePicture } from '@/lib/auth-sqlite';
+import { writeFile, mkdir, unlink } from 'fs/promises';
+import { join } from 'path';
+import { stat } from 'fs/promises';
 
 export async function POST(request: Request) {
   try {
@@ -26,18 +28,19 @@ export async function POST(request: Request) {
     const filename = `profile_${userId}_${timestamp}.${fileExtension}`;
     
     // Save file to public/uploads directory
-    const fs = require('fs');
-    const path = require('path');
+    const uploadsDir = join(process.cwd(), 'public', 'uploads');
     
     // Ensure uploads directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    try {
+      await stat(uploadsDir);
+    } catch {
+      // Directory doesn't exist, create it
+      await mkdir(uploadsDir, { recursive: true });
     }
     
     // Write file to disk
-    const filepath = path.join(uploadsDir, filename);
-    fs.writeFileSync(filepath, buffer);
+    const filepath = join(uploadsDir, filename);
+    await writeFile(filepath, buffer);
     
     // Create URL for the uploaded file
     const fileUrl = `/uploads/${filename}`;
@@ -47,7 +50,11 @@ export async function POST(request: Request) {
     
     if (!success) {
       // Delete the file if database update failed
-      fs.unlinkSync(filepath);
+      try {
+        await unlink(filepath);
+      } catch (err) {
+        console.error('Error deleting file:', err);
+      }
       return NextResponse.json(
         { error: 'Failed to update profile picture' },
         { status: 500 }

@@ -7,22 +7,65 @@ import {
 import { Order } from "@/lib/orders";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { FileText } from "lucide-react";
 import Image from "next/image";
 import { OrderStatusFlow } from "@/components/order-status-flow";
 
 interface OrderDetailDialogProps {
-  order: Order;
+  order?: Order; // Make order optional
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDialogProps) {
+  const handleDownloadPDF = () => {
+    if (!order) return;
+    
+    try {
+      // Create a temporary link to download the PDF
+      const link = document.createElement('a');
+      link.href = `/api/orders/${order.id}/pdf`;
+      link.download = `shop-order-${order.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      // In a real implementation, you would show a toast notification
+      alert("Failed to generate PDF. Please try again.");
+    }
+  };
+
+  // Handle case where order is undefined
+  if (!order) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>No Order Selected</DialogTitle>
+          </DialogHeader>
+          <div className="py-8 text-center text-muted-foreground">
+            No order data available.
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Order Details - {order.id}</DialogTitle>
         </DialogHeader>
+        
+        <div className="flex justify-end pr-6">
+          <Button onClick={handleDownloadPDF} variant="outline" size="sm">
+            <FileText className="mr-2 h-4 w-4" />
+            Download PDF
+          </Button>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pr-6">
           <div className="md:col-span-2">
@@ -39,9 +82,12 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
                         style={{objectFit: 'cover'}} 
                         onError={(e) => {
                             const target = e.target as HTMLImageElement;
-                            target.src = '/placeholder-product.png';
+                            if (target.src !== `${window.location.origin}/placeholder-product.png`) {
+                                target.src = '/placeholder-product.png';
+                            }
                         }}
                         unoptimized={true}
+                        priority={false} // Set to false for non-critical images
                       />
                     </div>
                   ) : (
@@ -88,6 +134,25 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
                 </Badge>
               </div>
               <Separator className="my-2" />
+              {/* Enhanced Order Summary */}
+              <div className="pt-2">
+                <h4 className="font-medium text-sm mb-1">Order Details:</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Unique Designs:</span>
+                    <span className="font-medium">{new Set(order.items.map(item => item.productId)).size}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Items:</span>
+                    <span className="font-medium">{order.items.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Value:</span>
+                    <span className="font-medium">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+              <Separator className="my-2" />
               <div className="flex justify-between font-semibold">
                 <span>Total:</span>
                 <span>ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -118,9 +183,12 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
                     className="w-full h-auto object-contain"
                     onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = '/placeholder-payment.png';
+                        if (target.src !== `${window.location.origin}/placeholder-payment.png`) {
+                            target.src = '/placeholder-payment.png';
+                        }
                     }}
                     unoptimized={true}
+                    priority={false} // Set to false for non-critical images
                   />
                 </div>
               </div>
@@ -153,6 +221,19 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
                 <div>
                   <h4 className="font-medium">Driver Name</h4>
                   <p className="text-muted-foreground">{order.dispatchInfo.driverName}</p>
+                </div>
+              )}
+              {/* Display attachments if any */}
+              {order.dispatchInfo.attachments && order.dispatchInfo.attachments.length > 0 && (
+                <div className="md:col-span-2">
+                  <h4 className="font-medium">Attachments</h4>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {order.dispatchInfo.attachments.map((attachment: string, index: number) => (
+                      <div key={index} className="bg-muted px-3 py-1 rounded-full text-sm">
+                        {attachment}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -198,6 +279,39 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
                 <div className="md:col-span-2">
                   <h4 className="font-medium">Feedback</h4>
                   <p className="text-muted-foreground">{order.feedback}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* Delivery Performance Metrics */}
+        {(order.requestedDeliveryDate || order.expectedReceiptDate || order.actualDispatchDate || order.confirmationDate) && (
+          <div className="mt-6 pr-6">
+            <h3 className="font-semibold text-lg mb-2">Delivery Performance</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {order.requestedDeliveryDate && (
+                <div>
+                  <h4 className="font-medium">Requested Delivery Date</h4>
+                  <p className="text-muted-foreground">{order.requestedDeliveryDate}</p>
+                </div>
+              )}
+              {order.expectedReceiptDate && (
+                <div>
+                  <h4 className="font-medium">Expected Receipt Date</h4>
+                  <p className="text-muted-foreground">{order.expectedReceiptDate}</p>
+                </div>
+              )}
+              {order.actualDispatchDate && (
+                <div>
+                  <h4 className="font-medium">Actual Dispatch Date</h4>
+                  <p className="text-muted-foreground">{order.actualDispatchDate}</p>
+                </div>
+              )}
+              {order.confirmationDate && (
+                <div>
+                  <h4 className="font-medium">Confirmation Date</h4>
+                  <p className="text-muted-foreground">{order.confirmationDate}</p>
                 </div>
               )}
             </div>

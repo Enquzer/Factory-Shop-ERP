@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authenticateUser } from '@/lib/auth';
+import { authenticateUser as authUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { getUserById } from '@/lib/auth-sqlite';
 
@@ -11,6 +11,13 @@ type User = {
   role: 'factory' | 'shop';
   profilePictureUrl?: string;
   createdAt: Date;
+};
+
+type AuthResult = {
+  success: boolean;
+  user?: User;
+  message?: string;
+  token?: string;
 };
 
 type AuthContextType = {
@@ -46,9 +53,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string) => {
     setIsLoggingIn(true); // Set login loading state
     try {
-      const result = await authenticateUser(username, password);
+      const result: AuthResult = await authUser(username, password);
       
       if (result.success && result.user) {
+        // Store the token if it exists
+        if (result.token) {
+          localStorage.setItem('authToken', result.token);
+        }
+        
         // Fetch the complete user data including profile picture
         const fullUser = await getUserById(result.user.id);
         if (fullUser) {
@@ -72,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('authToken');
     // Redirect to homepage as per user preference
     router.push('/');
   };

@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getProducts, getProductById, updateProduct, deleteProduct, productCodeExists, createProduct } from '@/lib/products-sqlite';
 import { Product } from '@/lib/products';
-import { getDb } from '@/lib/db'; // Import getDb function
+import { getDb } from '@/lib/db';
+import { withAuth, withRoleAuth, AuthenticatedUser } from '@/lib/auth-middleware';
+import { NextRequest } from 'next/server';
+import { productSchema, sanitizeInput } from '@/lib/validation';
+import { handleErrorResponse, ValidationError, ConflictError } from '@/lib/error-handler';
+import { logAuditEntry } from '@/lib/audit-logger'; // Import audit logger
 
 // GET /api/products - Get all products
 export async function GET(request: Request) {
@@ -31,146 +36,180 @@ export async function GET(request: Request) {
     console.log('Products API response sent');
     return response;
   } catch (error) {
-    console.error('Error fetching products:', error);
-    return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
+    return handleErrorResponse(error);
   }
 }
 
-// POST /api/products - Create a new product
-export async function POST(request: Request) {
-  try {
-    // For file uploads, we need to use a different approach
-    // This is a simplified version - in a real implementation, you would use a proper file upload handler
-    const productData = await request.json() as any;
-    
-    // Check if product code already exists
-    const exists = await productCodeExists(productData.productCode);
-    if (exists) {
-      return NextResponse.json({ error: `Product with code "${productData.productCode}" already exists` }, { status: 409 });
-    }
-    
-    // For now, we'll pass the data as-is to the createProduct function
-    // In a real implementation, you would process file uploads here
-    const newProduct = await createProduct(productData);
-    
-    // If the product is ready to deliver, add it to all active shops' inventories
-    if (newProduct.readyToDeliver === 1) {
+// POST /api/products - Create a new product (protected - factory only)
+export async function POST(request: NextRequest) {
+  return withRoleAuth(async (req, user) => {
+    try {
+      // Parse the request body
+      let productData;
       try {
-        const db = await getDb();
-        
-        // Get all active shops
-        const shops = await db.all(`
-          SELECT id FROM shops WHERE status = 'Active'
-        `);
-        
-        // Add product variants to each shop's inventory with 0 stock initially
-        for (const shop of shops) {
-          for (const variant of newProduct.variants) {
-            await db.run(`
-              INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `,
-              shop.id,
-              newProduct.id,
-              variant.id,
-              newProduct.name,
-              newProduct.price,
-              variant.color,
-              variant.size,
-              0, // Start with 0 stock
-              variant.imageUrl || newProduct.imageUrl || null
-            );
-            console.log(`Added variant ${variant.id} to shop ${shop.id} inventory`);
-          }
-        }
-      } catch (inventoryError) {
-        console.error('Error populating shop inventory:', inventoryError);
-        // Don't fail the product creation if inventory population fails
+        productData = await req.json();
+      } catch (parseError) {
+        console.error('Error parsing request body:', parseError);
+        throw new ValidationError('Invalid request body. Expected JSON data.');
       }
+      
+      // Sanitize input data
+      const sanitizedData = sanitizeInput(productData);
+      
+      // Validate input data
+      try {
+        productSchema.parse(sanitizedData);
+      } catch (validationError: any) {
+        throw new ValidationError('Invalid input data', validationError.errors);
+      }
+      
+      // Check if product code already exists
+      const exists = await productCodeExists(sanitizedData.productCode);
+      if (exists) {
+        throw new ConflictError(`Product with code "${sanitizedData.productCode}" already exists`);
+      }
+      
+      // For now, we'll pass the data as-is to the createProduct function
+      // In a real implementation, you would process file uploads here
+      const newProduct = await createProduct(sanitizedData);
+      
+      // Log audit entry
+      await logAuditEntry({
+        userId: user.id,
+        username: user.username,
+        action: 'CREATE',
+        resourceType: 'PRODUCT',
+        resourceId: newProduct.id,
+        details: `Created product "${newProduct.name}" with code "${newProduct.productCode}"`
+      });
+      
+      // Remove the automatic population of shop inventories
+      // Shops will only get inventory when they actually order products
+      
+      return NextResponse.json(newProduct, { status: 201 });
+    } catch (error) {
+      console.error('Error in POST /api/products:', error);
+      return handleErrorResponse(error);
     }
-    
-    return NextResponse.json(newProduct, { status: 201 });
-  } catch (error: any) {
-    console.error('Error creating product:', error);
-    
-    // Handle specific error cases
-    if (error.message && error.message.includes('already exists')) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
-    }
-    
-    return NextResponse.json({ error: 'Failed to create product' }, { status: 500 });
-  }
+  }, 'factory'); // Only factory users can create products
 }
 
-// PUT /api/products/:id - Update a product
-export async function PUT(request: Request) {
-  try {
-    console.log('PUT /api/products called');
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    
-    console.log('Product ID from query params:', id);
-    
-    if (!id) {
-      console.error('Product ID is missing');
-      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+// PUT /api/products/:id - Update a product (protected - factory only)
+export async function PUT(request: NextRequest) {
+  return withRoleAuth(async (req, user) => {
+    try {
+      console.log('PUT /api/products called');
+      const { searchParams } = new URL(req.url);
+      const id = searchParams.get('id');
+      
+      console.log('Product ID from query params:', id);
+      
+      if (!id) {
+        throw new ValidationError('Product ID is required');
+      }
+      
+      let productData;
+      try {
+        productData = await req.json();
+      } catch (parseError) {
+        console.error('Error parsing request body:', parseError);
+        throw new ValidationError('Invalid request body. Expected JSON data.');
+      }
+      
+      // Sanitize input data
+      const sanitizedData = sanitizeInput(productData);
+      
+      // Validate input data (only validate provided fields)
+      if (Object.keys(sanitizedData).length > 0) {
+        try {
+          // Create a partial schema for validation
+          const partialSchema = productSchema.partial();
+          partialSchema.parse(sanitizedData);
+        } catch (validationError: any) {
+          throw new ValidationError('Invalid input data', validationError.errors);
+        }
+      }
+      
+      console.log('Product data received:', sanitizedData);
+      
+      // Validate that we have at least one field to update
+      const hasProductData = Object.keys(sanitizedData).length > 0;
+      const hasVariants = sanitizedData.variants && sanitizedData.variants.length > 0;
+      const hasAgePricing = sanitizedData.agePricing && sanitizedData.agePricing.length >= 0; // Allow empty array to clear pricing
+      
+      if (!hasProductData && !hasVariants && !hasAgePricing) {
+        throw new ValidationError('No data provided for update');
+      }
+      
+      // Get current product for audit logging
+      const currentProduct = await getProductById(id);
+      
+      const success = await updateProduct(id, sanitizedData);
+      
+      console.log('Update product result:', success);
+      
+      if (success) {
+        console.log('Product updated successfully');
+        
+        // Log audit entry
+        if (currentProduct) {
+          await logAuditEntry({
+            userId: user.id,
+            username: user.username,
+            action: 'UPDATE',
+            resourceType: 'PRODUCT',
+            resourceId: id,
+            details: `Updated product "${currentProduct.name}" with code "${currentProduct.productCode}"`
+          });
+        }
+        
+        return NextResponse.json({ message: 'Product updated successfully' });
+      } else {
+        throw new Error('Failed to update product');
+      }
+    } catch (error) {
+      console.error('Error in PUT /api/products:', error);
+      return handleErrorResponse(error);
     }
-    
-    const productData = await request.json() as Partial<Product>;
-    console.log('Product data received:', productData);
-    
-    // Validate that we have at least one field to update
-    const hasProductData = Object.keys(productData).length > 0;
-    const hasVariants = productData.variants && productData.variants.length > 0;
-    const hasAgePricing = productData.agePricing && productData.agePricing.length >= 0; // Allow empty array to clear pricing
-    
-    if (!hasProductData && !hasVariants && !hasAgePricing) {
-      console.warn('No data provided for update');
-      return NextResponse.json({ error: 'No data provided for update' }, { status: 400 });
-    }
-    
-    const success = await updateProduct(id, productData);
-    
-    console.log('Update product result:', success);
-    
-    if (success) {
-      console.log('Product updated successfully');
-      return NextResponse.json({ message: 'Product updated successfully' });
-    } else {
-      console.error('Failed to update product - updateProduct returned false');
-      return NextResponse.json({ error: 'Failed to update product' }, { status: 500 });
-    }
-  } catch (error: any) {
-    console.error('Error updating product:', error);
-    console.error('Error stack:', error.stack);
-    // Return more detailed error information
-    return NextResponse.json({ 
-      error: 'Failed to update product', 
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    }, { status: 500 });
-  }
+  }, 'factory'); // Only factory users can update products
 }
 
-// DELETE /api/products/:id - Delete a product
-export async function DELETE(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    
-    if (!id) {
-      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+// DELETE /api/products/:id - Delete a product (protected - factory only)
+export async function DELETE(request: NextRequest) {
+  return withRoleAuth(async (req, user) => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const id = searchParams.get('id');
+      
+      if (!id) {
+        throw new ValidationError('Product ID is required');
+      }
+      
+      // Get current product for audit logging
+      const currentProduct = await getProductById(id);
+      
+      const success = await deleteProduct(id);
+      
+      if (success) {
+        // Log audit entry
+        if (currentProduct) {
+          await logAuditEntry({
+            userId: user.id,
+            username: user.username,
+            action: 'DELETE',
+            resourceType: 'PRODUCT',
+            resourceId: id,
+            details: `Deleted product "${currentProduct.name}" with code "${currentProduct.productCode}"`
+          });
+        }
+        
+        return NextResponse.json({ message: 'Product deleted successfully' });
+      } else {
+        throw new Error('Failed to delete product');
+      }
+    } catch (error) {
+      console.error('Error in DELETE /api/products:', error);
+      return handleErrorResponse(error);
     }
-    
-    const success = await deleteProduct(id);
-    
-    if (success) {
-      return NextResponse.json({ message: 'Product deleted successfully' });
-    } else {
-      return NextResponse.json({ error: 'Failed to delete product' }, { status: 500 });
-    }
-  } catch (error) {
-    console.error('Error deleting product:', error);
-    return NextResponse.json({ error: 'Failed to delete product' }, { status: 500 });
-  }
+  }, 'factory'); // Only factory users can delete products
 }

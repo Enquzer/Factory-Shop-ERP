@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory } from 'lucide-react';
+import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3 } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -22,6 +22,7 @@ const factoryLinks = [
   { href: '/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
   { href: '/reports', label: 'Reports', icon: FileText },
+  { href: '/dashboard/owner', label: 'Owner KPIs', icon: BarChart3 },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 

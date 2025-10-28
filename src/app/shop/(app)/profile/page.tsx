@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { createAuthHeaders } from '@/lib/auth-helpers';
 
 type ShopProfileData = {
   id: string;
@@ -91,14 +92,14 @@ export default function ShopProfilePage() {
         const formData = new FormData();
         formData.append('file', selectedFile);
         formData.append('userId', user.id.toString());
-        
+      
         const response = await fetch('/api/user-profile', {
           method: 'POST',
           body: formData,
         });
-        
+      
         const result = await response.json();
-        
+      
         if (result.success) {
           // Update the user in localStorage with the new profile picture
           const updatedUser = { ...user, profilePictureUrl: result.profilePictureUrl };
@@ -109,7 +110,7 @@ export default function ShopProfilePage() {
             fileInputRef.current.value = '';
           }
           setSelectedFile(null);
-          
+        
           // Show success message for profile picture upload
           toast({
             title: "Success",
@@ -122,10 +123,10 @@ export default function ShopProfilePage() {
             description: "Failed to upload profile picture",
             variant: "destructive"
           });
-          // Continue with other updates even if picture upload fails
+        // Continue with other updates even if picture upload fails
         }
       }
-      
+    
       // Prepare data for update (only include fields that can be updated)
       const updateData: any = {
         name: shopProfileData.name,
@@ -141,10 +142,14 @@ export default function ShopProfilePage() {
         updateData.discount = shopProfileData.discount;
       }
 
+      // Create authenticated fetch options
+      const authHeaders = createAuthHeaders();
+
       const response = await fetch(`/api/shops?id=${shopProfileData.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders
         },
         body: JSON.stringify(updateData),
       });
@@ -155,9 +160,10 @@ export default function ShopProfilePage() {
           description: "Shop profile updated successfully"
         });
       } else {
+        const errorData = await response.json();
         toast({
           title: "Error",
-          description: "Failed to update shop profile",
+          description: errorData.error || "Failed to update shop profile",
           variant: "destructive"
         });
       }

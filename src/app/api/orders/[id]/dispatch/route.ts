@@ -17,14 +17,15 @@ export async function PUT(
       return NextResponse.json({ error: 'All required dispatch information fields are required' }, { status: 400 });
     }
 
-    // Update order with dispatch information
+    // Update order with dispatch information and actual dispatch date
     const db = await getDb();
     await db.run(`
       UPDATE orders 
       SET status = ?, 
-          dispatchInfo = ?
+          dispatchInfo = ?,
+          actualDispatchDate = ?
       WHERE id = ?
-    `, 'Dispatched', JSON.stringify(dispatchInfo), id);
+    `, 'Dispatched', JSON.stringify(dispatchInfo), dispatchInfo.dispatchDate, id);
 
     // Get the updated order
     const order = await db.get(`
@@ -37,7 +38,7 @@ export async function PUT(
         userType: 'shop' as 'shop',
         shopId: order.shopId,
         title: `Order Dispatched`,
-        description: `Your order #${id} has been dispatched. Transport: ${dispatchInfo.transportLicensePlate}`,
+        description: `Your order #${id} has been dispatched. Driver: ${dispatchInfo.driverName || 'N/A'}, Transport: ${dispatchInfo.transportLicensePlate}`,
         href: `/shop/orders`,
       };
       
@@ -48,7 +49,7 @@ export async function PUT(
       const factoryNotification = {
         userType: 'factory' as 'factory',
         title: `Order Dispatched`,
-        description: `Order #${id} for ${order.shopName} has been dispatched`,
+        description: `Order #${id} for ${order.shopName} has been dispatched. Driver: ${dispatchInfo.driverName || 'N/A'}`,
         href: `/orders`,
       };
       

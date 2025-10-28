@@ -3,14 +3,12 @@ import { getShops, getPaginatedShops, getShopByUsername, updateShop, type Shop }
 import { registerUser } from '@/lib/auth-sqlite';
 import { createShop, getShopById } from '@/lib/shops-sqlite';
 import { getUserById } from '@/lib/auth-sqlite';
-
-// Helper function to get user from request headers (if we had authentication)
-// For now, we'll rely on the frontend to prevent unauthorized updates
-async function getUserFromRequest(request: Request) {
-  // In a real implementation, we would extract user info from JWT token or session
-  // For this project, we'll return null and rely on frontend validation
-  return null;
-}
+import { withAuth, withRoleAuth, AuthenticatedUser } from '@/lib/auth-middleware';
+import { NextRequest } from 'next/server';
+import { shopSchema, sanitizeInput } from '@/lib/validation';
+import { handleErrorResponse, ValidationError, ConflictError, AuthorizationError } from '@/lib/error-handler'; // Import AuthorizationError
+import { logAuditEntry } from '@/lib/audit-logger'; // Import audit logger
+import { getDb } from '@/lib/db'; // Import getDb function
 
 // GET /api/shops - Get all shops with optional pagination or a specific shop by ID
 export async function GET(request: Request) {
@@ -118,142 +116,203 @@ export async function GET(request: Request) {
     
     return response;
   } catch (error) {
-    console.error('Error fetching shops:', error);
-    return NextResponse.json({ error: 'Failed to fetch shops' }, { status: 500 });
+    return handleErrorResponse(error);
   }
 }
 
-// POST /api/shops - Create a new shop
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    
-    // Validate required fields
-    if (!body.username || !body.password || !body.name || !body.contactPerson || !body.city || !body.exactLocation) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+// POST /api/shops - Create a new shop (protected - factory only)
+export async function POST(request: NextRequest) {
+  return withRoleAuth(async (req, user) => {
+    try {
+      const body = await req.json();
+      
+      // Sanitize input data
+      const sanitizedData = sanitizeInput(body);
+      
+      // Validate input data
+      try {
+        shopSchema.parse(sanitizedData);
+      } catch (validationError: any) {
+        throw new ValidationError('Invalid input data', validationError.errors);
+      }
+      
+      // Validate required fields
+      if (!sanitizedData.username || !sanitizedData.password || !sanitizedData.name || !sanitizedData.contactPerson || !sanitizedData.city || !sanitizedData.exactLocation) {
+        throw new ValidationError('Missing required fields');
+      }
+      
+      // Check if username already exists
+      const existingShop = await getShopByUsername(sanitizedData.username);
+      if (existingShop) {
+        throw new ConflictError('Username already exists');
+      }
+      
+      // Register user for authentication
+      const userResult = await registerUser(sanitizedData.username, sanitizedData.password, 'shop');
+      
+      if (!userResult.success) {
+        throw new Error(userResult.message || 'Failed to register user');
+      }
+      
+      // Create shop record
+      const shopData = {
+        username: sanitizedData.username,
+        name: sanitizedData.name,
+        contactPerson: sanitizedData.contactPerson,
+        contactPhone: sanitizedData.contactPhone || "",
+        city: sanitizedData.city,
+        exactLocation: sanitizedData.exactLocation,
+        tradeLicenseNumber: sanitizedData.tradeLicenseNumber || "",
+        tinNumber: sanitizedData.tinNumber || "",
+        discount: sanitizedData.discount || 0,
+        status: 'Pending' as const,
+        monthlySalesTarget: sanitizedData.monthlySalesTarget || 0
+      };
+      
+      const newShop = await createShop(shopData);
+      
+      // Log audit entry
+      await logAuditEntry({
+        userId: user.id,
+        username: user.username,
+        action: 'CREATE',
+        resourceType: 'SHOP',
+        resourceId: newShop.id,
+        details: `Created shop "${newShop.name}" with username "${newShop.username}"`
+      });
+      
+      // Return the created shop (excluding sensitive information)
+      const cleanShop = {
+        id: newShop.id,
+        username: newShop.username,
+        name: newShop.name,
+        contactPerson: newShop.contactPerson,
+        contactPhone: newShop.contactPhone,
+        city: newShop.city,
+        exactLocation: newShop.exactLocation,
+        tradeLicenseNumber: newShop.tradeLicenseNumber,
+        tinNumber: newShop.tinNumber,
+        discount: newShop.discount,
+        status: newShop.status,
+        monthlySalesTarget: newShop.monthlySalesTarget
+      };
+      
+      return NextResponse.json(cleanShop, { status: 201 });
+    } catch (error) {
+      return handleErrorResponse(error);
     }
-    
-    // Check if username already exists
-    const existingShop = await getShopByUsername(body.username);
-    if (existingShop) {
-      return NextResponse.json({ error: 'Username already exists' }, { status: 400 });
-    }
-    
-    // Register user for authentication
-    const userResult = await registerUser(body.username, body.password, 'shop');
-    
-    if (!userResult.success) {
-      return NextResponse.json({ error: userResult.message }, { status: 500 });
-    }
-    
-    // Create shop record
-    const shopData = {
-      username: body.username,
-      name: body.name,
-      contactPerson: body.contactPerson,
-      contactPhone: body.contactPhone || "",
-      city: body.city,
-      exactLocation: body.exactLocation,
-      tradeLicenseNumber: body.tradeLicenseNumber || "",
-      tinNumber: body.tinNumber || "",
-      discount: body.discount || 0,
-      status: 'Pending' as const,
-      monthlySalesTarget: body.monthlySalesTarget || 0
-    };
-    
-    const newShop = await createShop(shopData);
-    
-    // Return the created shop (excluding sensitive information)
-    const cleanShop = {
-      id: newShop.id,
-      username: newShop.username,
-      name: newShop.name,
-      contactPerson: newShop.contactPerson,
-      contactPhone: newShop.contactPhone,
-      city: newShop.city,
-      exactLocation: newShop.exactLocation,
-      tradeLicenseNumber: newShop.tradeLicenseNumber,
-      tinNumber: newShop.tinNumber,
-      discount: newShop.discount,
-      status: newShop.status,
-      monthlySalesTarget: newShop.monthlySalesTarget
-    };
-    
-    return NextResponse.json(cleanShop, { status: 201 });
-  } catch (error) {
-    console.error('Error creating shop:', error);
-    return NextResponse.json({ error: 'Failed to create shop' }, { status: 500 });
-  }
+  }, 'factory'); // Only factory users can create shops
 }
 
-// PUT /api/shops - Update a shop
-export async function PUT(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const shopId = searchParams.get('id');
-    
-    if (!shopId) {
-      return NextResponse.json({ error: 'Shop ID is required' }, { status: 400 });
+// PUT /api/shops - Update a shop (protected - factory only for discount changes, shops can update their own info)
+export async function PUT(request: NextRequest) {
+  return withAuth(async (req, user) => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const shopId = searchParams.get('id');
+      
+      if (!shopId) {
+        throw new ValidationError('Shop ID is required');
+      }
+      
+      const body = await req.json();
+      
+      // Sanitize input data
+      const sanitizedData = sanitizeInput(body);
+      
+      // Validate input data (only validate provided fields)
+      if (Object.keys(sanitizedData).length > 0) {
+        try {
+          // Create a partial schema for validation
+          const partialSchema = shopSchema.partial();
+          partialSchema.parse(sanitizedData);
+        } catch (validationError: any) {
+          throw new ValidationError('Invalid input data', validationError.errors);
+        }
+      }
+      
+      // Check if discount is being modified and user is not factory
+      if (sanitizedData.discount !== undefined && user.role !== 'factory') {
+        throw new AuthorizationError('Only factory users can modify discount');
+      }
+      
+      // If user is a shop, ensure they can only update their own profile
+      if (user.role === 'shop') {
+        const shop = await getShopById(shopId);
+        if (!shop || shop.username !== user.username) {
+          throw new AuthorizationError('Shops can only update their own profile');
+        }
+      }
+      
+      // Get current shop for audit logging
+      const currentShop = await getShopById(shopId);
+      
+      // Update shop record
+      const updated = await updateShop(shopId, sanitizedData);
+      
+      if (!updated) {
+        throw new Error('Failed to update shop');
+      }
+      
+      // Log audit entry
+      if (currentShop) {
+        await logAuditEntry({
+          userId: user.id,
+          username: user.username,
+          action: 'UPDATE',
+          resourceType: 'SHOP',
+          resourceId: shopId,
+          details: `Updated shop "${currentShop.name}" with username "${currentShop.username}"`
+        });
+      }
+      
+      return NextResponse.json({ message: 'Shop updated successfully' });
+    } catch (error) {
+      return handleErrorResponse(error);
     }
-    
-    const body = await request.json();
-    
-    // Get the shop being updated to check if discount is being modified
-    // In a real implementation, we would verify the user's role through authentication
-    // For now, we'll add a comment that this should be implemented in a production environment
-    
-    // Security note: In a production environment, you should implement proper authentication
-    // and authorization to verify that only factory users can update the discount field.
-    // This could be done by:
-    // 1. Including a JWT token in the request headers
-    // 2. Verifying the token and extracting the user's role
-    // 3. Checking if the user has permission to update the discount field
-    
-    // For now, we're relying on the frontend to prevent unauthorized updates
-    
-    // Update shop record
-    const updated = await updateShop(shopId, body);
-    
-    if (!updated) {
-      return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
-    }
-    
-    return NextResponse.json({ message: 'Shop updated successfully' });
-  } catch (error) {
-    console.error('Error updating shop:', error);
-    return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
-  }
+  }); // Allow both factory and shop users
 }
 
-// DELETE /api/shops - Delete a shop
-export async function DELETE(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const shopId = searchParams.get('id');
-    
-    if (!shopId) {
-      return NextResponse.json({ error: 'Shop ID is required' }, { status: 400 });
+// DELETE /api/shops - Delete a shop (protected - factory only)
+export async function DELETE(request: NextRequest) {
+  return withRoleAuth(async (req, user) => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const shopId = searchParams.get('id');
+      
+      if (!shopId) {
+        throw new ValidationError('Shop ID is required');
+      }
+      
+      // Get current shop for audit logging
+      const currentShop = await getShopById(shopId);
+      
+      // Delete shop record
+      // Note: We should also delete the associated user, but for now we'll just delete the shop
+      const db = await getDb();
+      const result = await db.run(`DELETE FROM shops WHERE id = ?`, shopId);
+      const deleted = (result.changes || 0) > 0;
+      
+      if (!deleted) {
+        throw new Error('Failed to delete shop');
+      }
+      
+      // Log audit entry
+      if (currentShop) {
+        await logAuditEntry({
+          userId: user.id,
+          username: user.username,
+          action: 'DELETE',
+          resourceType: 'SHOP',
+          resourceId: shopId,
+          details: `Deleted shop "${currentShop.name}" with username "${currentShop.username}"`
+        });
+      }
+      
+      return NextResponse.json({ message: 'Shop deleted successfully' });
+    } catch (error) {
+      return handleErrorResponse(error);
     }
-    
-    // Delete shop record
-    // Note: We should also delete the associated user, but for now we'll just delete the shop
-    const db = await getDb();
-    const result = await db.run(`DELETE FROM shops WHERE id = ?`, shopId);
-    const deleted = (result.changes || 0) > 0;
-    
-    if (!deleted) {
-      return NextResponse.json({ error: 'Failed to delete shop' }, { status: 500 });
-    }
-    
-    return NextResponse.json({ message: 'Shop deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting shop:', error);
-    return NextResponse.json({ error: 'Failed to delete shop' }, { status: 500 });
-  }
+  }, 'factory'); // Only factory users can delete shops
 }
 
-// Helper function to get database connection
-async function getDb() {
-  const { getDb } = await import('@/lib/db');
-  return await getDb();
-}

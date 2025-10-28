@@ -88,6 +88,14 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
         const totalInventoryAmount = currentProducts.reduce((acc, p) => acc + p.variants.reduce((vAcc, v) => vAcc + v.stock, 0), 0);
         const totalInventoryValue = currentProducts.reduce((acc, p) => acc + p.variants.reduce((vAcc, v) => vAcc + (v.stock * p.price), 0), 0);
 
+        // Enhanced order statistics
+        const totalOrders = currentOrders.length;
+        const totalUniqueDesigns = new Set(currentOrders.flatMap(order => order.items.map(item => item.productId))).size;
+        const totalItemsOrdered = currentOrders.reduce((sum, order) => 
+          sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0
+        );
+        const totalRevenue = currentOrders.reduce((sum, order) => sum + order.amount, 0);
+
         // Sales comparison KPIs
         const now = new Date();
         const startOfThisMonth = startOfMonth(now);
@@ -178,6 +186,11 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
             monthOverMonthSales, 
             weekOverWeekSales, 
             shopPerformance,
+            // Enhanced order statistics
+            totalOrders: currentOrders.length,
+            totalUniqueDesigns,
+            totalItemsOrdered,
+            totalRevenue,
             // For debugging
             orderCounts: {
                 total: currentOrders.length,
@@ -265,6 +278,37 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
                     <CardContent>
                         <div className="text-2xl font-bold">ETB {kpis.totalInventoryValue.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
                         <p className="text-xs text-muted-foreground">Total value of stock</p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Enhanced Order Statistics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Order Volume</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{kpis.totalOrders}</div>
+                        <p className="text-sm text-muted-foreground">Total orders placed</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Product Designs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{kpis.totalUniqueDesigns}</div>
+                        <p className="text-sm text-muted-foreground">Unique product designs ordered</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Items Ordered</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{kpis.totalItemsOrdered}</div>
+                        <p className="text-sm text-muted-foreground">Total items ordered</p>
                     </CardContent>
                 </Card>
             </div>

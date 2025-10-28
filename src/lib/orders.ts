@@ -35,10 +35,16 @@ export type Order = {
         contactPerson: string;
         dispatchDate: string;
         driverName?: string; // Added driver name field
+        attachments?: string[]; // Added attachments field
     };
     deliveryDate?: string;
     isClosed?: boolean;
     feedback?: string;
+    // Delivery performance tracking fields
+    requestedDeliveryDate?: string; // Shop's requested delivery date
+    expectedReceiptDate?: string;   // Shop's expected receipt date
+    actualDispatchDate?: string;    // Factory's actual dispatch date
+    confirmationDate?: string;      // Shop's confirmation date
 }
 
 // Client-side function to fetch orders from API
@@ -85,6 +91,10 @@ export async function getOrdersFromDB(): Promise<Order[]> {
             deliveryDate: order.deliveryDate,
             isClosed: order.isClosed === 1,
             feedback: order.feedback,
+            requestedDeliveryDate: order.requestedDeliveryDate,
+            expectedReceiptDate: order.expectedReceiptDate,
+            actualDispatchDate: order.actualDispatchDate,
+            confirmationDate: order.confirmationDate,
             createdAt: new Date(order.created_at)
         }));
     } catch (error) {
@@ -116,6 +126,10 @@ export async function getOrdersForShop(shopId: string): Promise<Order[]> {
             deliveryDate: order.deliveryDate,
             isClosed: order.isClosed === 1,
             feedback: order.feedback,
+            requestedDeliveryDate: order.requestedDeliveryDate,
+            expectedReceiptDate: order.expectedReceiptDate,
+            actualDispatchDate: order.actualDispatchDate,
+            confirmationDate: order.confirmationDate,
             createdAt: new Date(order.created_at)
         }));
     } catch (error) {
@@ -238,7 +252,44 @@ class OrdersManager {
             console.error(`Failed to update status for order ${orderId}:`, error);
         }
     }
+    
+    // Server-side function to delete an order from database
+    async deleteOrderFromDB(orderId: string): Promise<boolean> {
+        try {
+            const db = await getDb();
+            const result = await db.run(`
+                DELETE FROM orders WHERE id = ?
+            `, orderId);
+            
+            // Update local cache
+            const orderIndex = this.orders.findIndex(order => order.id === orderId);
+            if (orderIndex !== -1) {
+                this.orders.splice(orderIndex, 1);
+                this.notifySubscribers();
+            }
+            
+            return (result.changes || 0) > 0;
+        } catch (error) {
+            console.error(`Failed to delete order ${orderId}:`, error);
+            return false;
+        }
+    }
 }
 
 // Only export the ordersStore instance on the server side
 export const ordersStore = typeof window === 'undefined' ? new OrdersManager() : null;
+
+// Server-side function to delete an order from database
+export async function deleteOrderFromDB(id: string): Promise<boolean> {
+    try {
+        const db = await getDb();
+        const result = await db.run(`
+            DELETE FROM orders WHERE id = ?
+        `, id);
+        
+        return (result.changes || 0) > 0;
+    } catch (error) {
+        console.error('Error deleting order:', error);
+        return false;
+    }
+}

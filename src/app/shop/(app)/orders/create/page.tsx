@@ -6,17 +6,94 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
-import { Trash2, Factory, Store } from "lucide-react";
+import { Trash2, Factory, Store, Plus, Minus } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 
 export default function CreateOrderPage() {
     const { items, updateQuantity, removeItem, clearOrder, totalAmount, placeOrder, shopDiscount, getAvailableStock } = useOrder();
     const [factoryStock, setFactoryStock] = useState<Record<string, number>>({});
+    const [shopStock, setShopStock] = useState<Record<string, number>>({});
+    const [visualFactoryStock, setVisualFactoryStock] = useState<Record<string, number>>({});
+    const [visualShopStock, setVisualShopStock] = useState<Record<string, number>>({});
+    const [mode, setMode] = useState<"adjust" | "add">("adjust"); // Toggle between adjust and add modes
+    const { toast } = useToast();
+    
+    // Fetch factory stock for each item
+    const fetchFactoryStock = async () => {
+        const stockMap: Record<string, number> = {};
+        
+        for (const item of items) {
+            try {
+                const response = await fetch(`/api/factory-stock?variantId=${item.variant.id}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    stockMap[item.variant.id] = data.factoryStock;
+                } else if (response.status === 404) {
+                    // Variant not found in factory stock, set to 0
+                    stockMap[item.variant.id] = 0;
+                }
+                // For other errors, we'll just not update the stockMap, keeping it as undefined
+            } catch (error) {
+                console.error(`Error fetching factory stock for variant ${item.variant.id}:`, error);
+            }
+        }
+        
+        setFactoryStock(stockMap);
+        setVisualFactoryStock(stockMap);
+    };
+    
+    // Fetch shop stock for each item
+    const fetchShopStock = () => {
+        const stockMap: Record<string, number> = {};
+        
+        for (const item of items) {
+            const availableStock = getAvailableStock(item.variant.id);
+            stockMap[item.variant.id] = availableStock;
+        }
+        
+        setShopStock(stockMap);
+        setVisualShopStock(stockMap);
+    };
     
     const handlePlaceOrder = () => {
+        // Check if any items have 0 factory stock before placing order
+        const outOfStockItems = items.filter(item => {
+            const factoryStockForItem = visualFactoryStock[item.variant.id] !== undefined 
+                ? visualFactoryStock[item.variant.id] 
+                : 0;
+            return factoryStockForItem <= 0;
+        });
+        
+        if (outOfStockItems.length > 0) {
+            toast({
+                title: "Order Contains Out of Stock Items",
+                description: "Some items in your order are out of stock at the factory. Please remove them or reduce quantities.",
+                variant: "destructive",
+            });
+            return;
+        }
+        
+        // Check if any items exceed factory stock
+        const insufficientStockItems = items.filter(item => {
+            const factoryStockForItem = visualFactoryStock[item.variant.id] !== undefined 
+                ? visualFactoryStock[item.variant.id] 
+                : 0;
+            return item.quantity > factoryStockForItem;
+        });
+        
+        if (insufficientStockItems.length > 0) {
+            toast({
+                title: "Insufficient Factory Stock",
+                description: "Some items in your order exceed available factory stock. Please reduce quantities.",
+                variant: "destructive",
+            });
+            return;
+        }
+        
         placeOrder();
     }
 
@@ -29,30 +106,60 @@ export default function CreateOrderPage() {
         return inventoryStock - orderedQuantity;
     };
     
+    // Update visual stock when quantity changes
+    const handleQuantityChange = (variantId: string, newQuantity: number) => {
+        // Get current item quantity
+        const currentItem = items.find((item) => item.variant.id === variantId);
+        const currentOrderQuantity = currentItem ? currentItem.quantity : 0;
+        const quantityChange = newQuantity - currentOrderQuantity;
+        
+        // Update visual factory stock
+        setVisualFactoryStock(prev => ({
+            ...prev,
+            [variantId]: (prev[variantId] || factoryStock[variantId] || 0) - quantityChange
+        }));
+        
+        // Update visual shop stock
+        setVisualShopStock(prev => ({
+            ...prev,
+            [variantId]: (prev[variantId] || shopStock[variantId] || 0) + quantityChange
+        }));
+        
+        // Update the actual order quantity
+        updateQuantity(variantId, newQuantity);
+    };
+    
+    // Increase quantity by 1
+    const increaseQuantity = (variantId: string) => {
+        const currentItem = items.find((item) => item.variant.id === variantId);
+        if (currentItem) {
+            handleQuantityChange(variantId, currentItem.quantity + 1);
+        }
+    };
+    
+    // Decrease quantity by 1
+    const decreaseQuantity = (variantId: string) => {
+        const currentItem = items.find((item) => item.variant.id === variantId);
+        if (currentItem && currentItem.quantity > 1) {
+            handleQuantityChange(variantId, currentItem.quantity - 1);
+        } else if (currentItem && currentItem.quantity === 1) {
+            removeItem(variantId);
+        }
+    };
+    
     // Fetch factory stock for each item
     useEffect(() => {
-        const fetchFactoryStock = async () => {
-            const stockMap: Record<string, number> = {};
-            
-            for (const item of items) {
-                try {
-                    const response = await fetch(`/api/factory-stock?variantId=${item.variant.id}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        stockMap[item.variant.id] = data.factoryStock;
-                    }
-                } catch (error) {
-                    console.error(`Error fetching factory stock for variant ${item.variant.id}:`, error);
-                }
-            }
-            
-            setFactoryStock(stockMap);
-        };
-        
         if (items.length > 0) {
             fetchFactoryStock();
         }
     }, [items]);
+
+    // Fetch shop stock for each item
+    useEffect(() => {
+        if (items.length > 0) {
+            fetchShopStock();
+        }
+    }, [items, getAvailableStock]);
 
     const finalAmount = totalAmount * (1 - shopDiscount);
 
@@ -85,8 +192,41 @@ export default function CreateOrderPage() {
         <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">Create New Order</h1>
-                 <Button variant="outline" onClick={clearOrder}>Clear Order</Button>
+                <div className="flex items-center gap-2">
+                    <div className="flex rounded-md shadow-sm" role="group">
+                        <Button
+                            variant={mode === "adjust" ? "default" : "outline"}
+                            onClick={() => setMode("adjust")}
+                            className="rounded-r-none border-r-0"
+                        >
+                            Adjust Quantities
+                        </Button>
+                        <Button
+                            variant={mode === "add" ? "default" : "outline"}
+                            onClick={() => setMode("add")}
+                            className="rounded-l-none"
+                        >
+                            Add Products
+                        </Button>
+                    </div>
+                    <Button variant="outline" onClick={clearOrder}>Clear Order</Button>
+                </div>
             </div>
+            
+            {mode === "add" && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Add Products</CardTitle>
+                        <CardDescription>Click on a product to add it to your order</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button asChild className="w-full">
+                            <Link href="/shop/products">Browse Products to Add</Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
+            
             <Card>
                 <CardHeader>
                     <CardTitle>Order Summary</CardTitle>
@@ -110,7 +250,12 @@ export default function CreateOrderPage() {
                                 const availableStock = getRealTimeAvailableStock(item.variant.id);
                                 const isLowStock = availableStock < item.quantity;
                                 const isOutOfStock = availableStock <= 0;
-                                const factoryStockForItem = factoryStock[item.variant.id] ?? item.variant.stock;
+                                const factoryStockForItem = visualFactoryStock[item.variant.id] !== undefined 
+                                    ? visualFactoryStock[item.variant.id] 
+                                    : 'Not available';
+                                const shopStockForItem = visualShopStock[item.variant.id] !== undefined
+                                    ? visualShopStock[item.variant.id]
+                                    : 'Not available';
                                 
                                 return (
                                     <TableRow key={item.variant.id}>
@@ -137,7 +282,7 @@ export default function CreateOrderPage() {
                                                 <div className="flex items-center gap-1">
                                                     <Store className="h-3 w-3 text-green-500" />
                                                     <Badge variant="outline" className="text-xs">
-                                                        Your Stock: {availableStock}
+                                                        Your Stock: {shopStockForItem}
                                                     </Badge>
                                                 </div>
                                                 <div className="flex items-center gap-1">
@@ -150,21 +295,45 @@ export default function CreateOrderPage() {
                                         </TableCell>
                                         <TableCell>ETB {item.price.toFixed(2)}</TableCell>
                                         <TableCell>
-                                            <Input 
-                                                type="number" 
-                                                min="1"
-                                                max={availableStock + item.quantity}
-                                                value={item.quantity} 
-                                                onChange={(e) => {
-                                                    const value = parseInt(e.target.value) || 0;
-                                                    const maxAllowed = availableStock + item.quantity;
-                                                    if (value <= maxAllowed) {
-                                                        updateQuantity(item.variant.id, value);
-                                                    }
-                                                }}
-                                                className="w-24"
-                                                disabled={isOutOfStock}
-                                            />
+                                            {mode === "adjust" ? (
+                                                <div className="flex items-center gap-2">
+                                                    <Button 
+                                                        size="icon" 
+                                                        variant="outline" 
+                                                        onClick={() => decreaseQuantity(item.variant.id)}
+                                                        disabled={isOutOfStock}
+                                                    >
+                                                        <Minus className="h-4 w-4" />
+                                                    </Button>
+                                                    <Input 
+                                                        type="number" 
+                                                        min="1"
+                                                        max={factoryStockForItem !== 'Not available' ? factoryStockForItem : item.quantity}
+                                                        value={item.quantity} 
+                                                        onChange={(e) => {
+                                                            const value = parseInt(e.target.value) || 0;
+                                                            const maxAllowed = factoryStockForItem !== 'Not available' ? factoryStockForItem : item.quantity;
+                                                            if (value <= maxAllowed) {
+                                                                handleQuantityChange(item.variant.id, value);
+                                                            }
+                                                        }}
+                                                        className="w-20 text-center"
+                                                        disabled={isOutOfStock}
+                                                    />
+                                                    <Button 
+                                                        size="icon" 
+                                                        variant="outline" 
+                                                        onClick={() => increaseQuantity(item.variant.id)}
+                                                        disabled={isOutOfStock}
+                                                    >
+                                                        <Plus className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="text-center font-medium">
+                                                    {item.quantity}
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-right font-medium">ETB {(item.price * item.quantity).toFixed(2)}</TableCell>
                                         <TableCell className="text-right">

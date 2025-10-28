@@ -17,10 +17,25 @@ import { badgeVariants } from "@/components/ui/badge";
 import { getProducts, updateProduct } from "@/lib/products";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { DateRange } from "react-day-picker";
 
 type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
 
-export function ProductList({ products, query }: { products: Product[], query: string }) {
+export function ProductList({ 
+  products, 
+  query,
+  selectedCategory,
+  selectedStatus,
+  stockFilter,
+  dateRange
+}: { 
+  products: Product[], 
+  query: string,
+  selectedCategory?: string | null,
+  selectedStatus?: string | null,
+  stockFilter?: string | null,
+  dateRange?: DateRange
+}) {
     const { user } = useAuth();
     const { toast } = useToast();
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -34,16 +49,87 @@ export function ProductList({ products, query }: { products: Product[], query: s
         setProductsState(products);
     }, [products]);
 
-    const filteredProducts = useMemo(() => {
-        const lowercasedTerm = query.toLowerCase();
-        if (!lowercasedTerm) return productsState;
+    // Calculate total stock for a product
+    const calculateTotalStock = (product: Product) => {
+        return product.variants.reduce((total, variant) => total + variant.stock, 0);
+    };
 
-        return productsState.filter(product =>
-            product.name.toLowerCase().includes(lowercasedTerm) ||
-            product.category.toLowerCase().includes(lowercasedTerm) ||
-            product.productCode.toLowerCase().includes(lowercasedTerm)
-        );
-    }, [productsState, query]);
+    // Get stock display text and variant
+    const getStockDisplay = (product: Product) => {
+        const totalStock = calculateTotalStock(product);
+        if (totalStock <= 0) {
+            return { text: "Out of Stock", variant: "destructive" as BadgeVariant };
+        }
+        return { text: `${totalStock} in stock`, variant: "secondary" as BadgeVariant };
+    };
+
+    const filteredProducts = useMemo(() => {
+        let result = [...productsState];
+        
+        // Apply search filter
+        const lowercasedTerm = query.toLowerCase();
+        if (lowercasedTerm) {
+            result = result.filter(product =>
+                product.name.toLowerCase().includes(lowercasedTerm) ||
+                product.category.toLowerCase().includes(lowercasedTerm) ||
+                product.productCode.toLowerCase().includes(lowercasedTerm)
+            );
+        }
+        
+        // Apply category filter
+        if (selectedCategory && selectedCategory !== "all") {
+            result = result.filter(product => product.category === selectedCategory);
+        }
+        
+        // Apply status filter
+        if (selectedStatus && selectedStatus !== "all") {
+            if (selectedStatus === "available") {
+                result = result.filter(product => product.readyToDeliver === 1);
+            } else if (selectedStatus === "unavailable") {
+                result = result.filter(product => product.readyToDeliver === 0);
+            }
+        }
+        
+        // Apply stock filter
+        if (stockFilter && stockFilter !== "all") {
+            result = result.filter(product => {
+                const totalStock = calculateTotalStock(product);
+                const minStockLevel = product.minimumStockLevel || 10;
+                
+                switch (stockFilter) {
+                    case "in-stock":
+                        return totalStock > minStockLevel;
+                    case "low-stock":
+                        return totalStock > 0 && totalStock <= minStockLevel;
+                    case "out-of-stock":
+                        return totalStock <= 0;
+                    default:
+                        return true;
+                }
+            });
+        }
+        
+        // Apply date range filter
+        if (dateRange?.from || dateRange?.to) {
+            result = result.filter(product => {
+                const productDate = new Date(product.created_at);
+                
+                // If from date is set, product must be created on or after that date
+                if (dateRange.from && productDate < dateRange.from) {
+                    return false;
+                }
+                
+                // If to date is set, product must be created on or before that date
+                if (dateRange.to && productDate > dateRange.to) {
+                    return false;
+                }
+                
+                return true;
+            });
+        }
+        
+        return result;
+    }, [productsState, query, selectedCategory, selectedStatus, stockFilter, dateRange]);
 
     const handleDeleteProduct = async (product: Product) => {
         if (!confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
@@ -133,25 +219,11 @@ export function ProductList({ products, query }: { products: Product[], query: s
         }
     };
 
-    // Calculate total stock for a product
-    const calculateTotalStock = (product: Product) => {
-        return product.variants.reduce((total, variant) => total + variant.stock, 0);
-    };
-
-    // Get stock display text and variant
-    const getStockDisplay = (product: Product) => {
-        const totalStock = calculateTotalStock(product);
-        if (totalStock <= 0) {
-            return { text: "Out of Stock", variant: "destructive" as BadgeVariant };
-        }
-        return { text: `${totalStock} in stock`, variant: "secondary" as BadgeVariant };
-    };
-
     if (filteredProducts.length === 0) {
         return (
             <div className="text-center py-12 text-muted-foreground">
-                <p className="text-lg">No products found for "{query}"</p>
-                <p className="text-sm">Try searching for something else.</p>
+                <p className="text-lg">No products found</p>
+                <p className="text-sm">Try adjusting your filters or search term.</p>
             </div>
         );
     }

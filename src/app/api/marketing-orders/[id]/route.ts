@@ -133,40 +133,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
                 WHERE productId = ?
               `, product.id);
               
-              // Get all active shops
-              const shops = await db.all(`
-                SELECT id FROM shops WHERE status = 'Active'
-              `);
-              
-              // Add product variants to each shop's inventory with 0 stock initially
-              for (const shop of shops) {
-                for (const variant of variants) {
-                  // Check if this variant is already in the shop's inventory
-                  const existingItem = await db.get(`
-                    SELECT id FROM shop_inventory 
-                    WHERE shopId = ? AND productVariantId = ?
-                  `, shop.id, variant.id);
-                  
-                  // If not, add it with 0 stock
-                  if (!existingItem) {
-                    await db.run(`
-                      INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `,
-                      shop.id,
-                      product.id,
-                      variant.id,
-                      product.name,
-                      product.price,
-                      variant.color,
-                      variant.size,
-                      0, // Start with 0 stock
-                      variant.imageUrl || product.imageUrl || null
-                    );
-                    console.log(`Added variant ${variant.id} to shop ${shop.id} inventory`);
-                  }
-                }
-              }
+              // Remove the automatic population of shop inventories
+              // Shops will only get inventory when they actually order products
               
               // Create notification for shops about the new product/variants
               try {

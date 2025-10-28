@@ -89,12 +89,25 @@ export async function addShop(shopData: Omit<Shop, 'id' | 'status'> & { password
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to register shop');
+            // Try to parse error response as JSON, but handle cases where it's not JSON
+            let errorMessage = 'Failed to register shop';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (jsonError) {
+                // If JSON parsing fails, use the status text or a generic message
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
         }
 
-        const newShop = await response.json();
-        return newShop;
+        // Try to parse the successful response as JSON
+        try {
+            const newShop = await response.json();
+            return newShop;
+        } catch (jsonError) {
+            throw new Error('Failed to parse response from server');
+        }
     } catch (error: any) {
         console.error("Error registering shop:", error);
         throw error;

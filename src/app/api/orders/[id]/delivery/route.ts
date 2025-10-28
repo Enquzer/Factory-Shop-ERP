@@ -29,7 +29,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // Update order with delivery information
+    // Update order with delivery information and confirmation date
+    const confirmationDate = new Date().toISOString().split('T')[0];
+    
     if (isClosed) {
       // If order is closed, update status to Delivered
       await db.run(`
@@ -37,17 +39,19 @@ export async function PUT(
         SET status = ?, 
             deliveryDate = ?,
             isClosed = ?,
-            feedback = ?
+            feedback = ?,
+            confirmationDate = ?
         WHERE id = ?
-      `, 'Delivered', deliveryDate, isClosed, feedback || null, id);
+      `, 'Delivered', deliveryDate, isClosed, feedback || null, confirmationDate, id);
     } else {
-      // If order is not closed, just update delivery date
+      // If order is not closed, just update delivery date and confirmation date
       await db.run(`
         UPDATE orders 
         SET deliveryDate = ?,
-            feedback = ?
+            feedback = ?,
+            confirmationDate = ?
         WHERE id = ?
-      `, deliveryDate, feedback || null, id);
+      `, deliveryDate, feedback || null, confirmationDate, id);
     }
 
     // Get the updated order

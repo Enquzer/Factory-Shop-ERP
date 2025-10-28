@@ -27,6 +27,7 @@ export type Product = {
   imageUrl?: string;
   description?: string;
   readyToDeliver?: number; // Add this field to match server-side implementation
+  created_at?: string; // Add created_at field
 };
 
 // Client-side functions that call the API
@@ -114,33 +115,41 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
       body: JSON.stringify(product),
     });
     
+    // Check if the response is OK before trying to parse JSON
     if (!response.ok) {
       // Try to get the error message from the response
+      let errorMessage = 'Failed to create product';
       try {
         const errorData = await response.json();
         if (errorData.error) {
-          throw new Error(errorData.error);
+          errorMessage = errorData.error;
         } else {
           // If there's no error message in the response, create one based on status
           if (response.status === 409) {
-            throw new Error(`Product with code "${product.productCode}" already exists`);
-          } else {
-            throw new Error('Failed to create product');
+            errorMessage = `Product with code "${product.productCode}" already exists`;
           }
         }
       } catch (e) {
         // If we can't parse the error response, create one based on status
         if (response.status === 409) {
-          throw new Error(`Product with code "${product.productCode}" already exists`);
-        } else if (e instanceof Error) {
-          throw e;
+          errorMessage = `Product with code "${product.productCode}" already exists`;
         } else {
-          throw new Error('Failed to create product');
+          errorMessage = `Failed to create product. Server responded with status ${response.status}`;
         }
       }
+      throw new Error(errorMessage);
     }
     
-    return await response.json();
+    // Try to parse the JSON response
+    let result;
+    try {
+      result = await response.json();
+    } catch (parseError) {
+      console.error('Error parsing JSON response:', parseError);
+      throw new Error('Invalid response from server');
+    }
+    
+    return result;
   } catch (error) {
     // Re-throw any errors that occurred
     throw error;

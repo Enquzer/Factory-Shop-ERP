@@ -8,30 +8,33 @@ import { AiChatWidget } from '@/components/ai-chat-widget';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { LoadingBar } from '@/components/loading-bar';
 import { OrderProvider } from '@/hooks/use-order';
 
 export function ShopAppProvider({ children }: { children: React.ReactNode }) {
     const { user, isLoading, isLoggingIn } = useAuth();
     const router = useRouter();
+    const [redirecting, setRedirecting] = useState(false);
 
     useEffect(() => {
         // If user is not authenticated and not loading, redirect to shop login
         if (!isLoading && !user) {
+            setRedirecting(true);
             router.push('/shop/login');
         }
         // If user is authenticated but not a shop user, redirect to appropriate dashboard
         else if (!isLoading && user && user.role !== 'shop') {
+            setRedirecting(true);
             router.push('/dashboard');
         }
     }, [user, isLoading, router]);
 
     // Show loading state while checking auth
-    if (isLoading || isLoggingIn) {
+    if (isLoading || isLoggingIn || redirecting) {
         return (
             <div className="flex items-center justify-center h-screen">
-                <LoadingBar isLoading={true} message={isLoading ? "Checking authentication..." : "Logging in..."} />
+                <LoadingBar isLoading={true} message={isLoading ? "Checking authentication..." : "Redirecting..."} />
                 <div className="ml-4">Loading...</div>
             </div>
         );
@@ -39,13 +42,11 @@ export function ShopAppProvider({ children }: { children: React.ReactNode }) {
 
     // If user is not authenticated, redirect to login
     if (!user) {
-        router.push('/shop/login');
         return null;
     }
 
     // If user is not a shop user, redirect to factory dashboard
     if (user.role !== 'shop') {
-        router.push('/dashboard');
         return null;
     }
 

@@ -221,38 +221,9 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
       // Don't throw here, we want the product creation to succeed even if notification fails
     }
     
-    // If the product is ready to deliver (which is the default), add it to all active shops' inventories
-    try {
-      // Get all active shops
-      const shops = await db.all(`
-        SELECT id FROM shops WHERE status = 'Active'
-      `);
-      
-      // Add product variants to each shop's inventory with 0 stock initially
-      for (const shop of shops) {
-        for (const variant of variants) {
-          await db.run(`
-            INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-            shop.id,
-            productId,
-            variant.id,
-            product.name,
-            product.price,
-            variant.color,
-            variant.size,
-            0, // Start with 0 stock
-            variant.imageUrl || product.imageUrl || null
-          );
-          console.log(`Added variant ${variant.id} to shop ${shop.id} inventory`);
-        }
-      }
-    } catch (inventoryError) {
-      console.error('Error populating shop inventory:', inventoryError);
-      // Don't fail the product creation if inventory population fails
-    }
-
+    // Remove the automatic population of shop inventories
+    // Shops will only get inventory when they actually order products
+    
     return {
       id: productId,
       productCode: product.productCode.toUpperCase(),

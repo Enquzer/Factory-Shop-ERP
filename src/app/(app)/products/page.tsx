@@ -1,14 +1,31 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, PlusCircle, Loader2, FileText } from "lucide-react";
+import { Search, PlusCircle, Loader2, FileText, Filter, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { Product, getProducts } from '@/lib/products';
 import { ProductList } from './_components/product-list';
 import { ProductsDashboard } from './_components/products-dashboard';
 import { useToast } from "@/hooks/use-toast";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { subDays } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
+import { CalendarIcon } from "lucide-react";
 
 export default function ProductsPage({
     searchParams
@@ -21,6 +38,18 @@ export default function ProductsPage({
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const { toast } = useToast();
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+    const [stockFilter, setStockFilter] = useState<string | null>(null);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: undefined,
+        to: undefined
+    });
+    
+    // Get unique categories for filter
+    const categories = useMemo(() => {
+        return [...new Set(products.map(product => product.category))];
+    }, [products]);
     
     useEffect(() => {
         const fetchProducts = async () => {
@@ -88,6 +117,117 @@ export default function ProductsPage({
                             defaultValue={searchTerm}
                         />
                     </form>
+                    
+                    {/* Date Range Filter */}
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button
+                                id="date"
+                                variant={"outline"}
+                                className={cn(
+                                    "w-full md:w-[200px] justify-start text-left font-normal",
+                                    !dateRange && "text-muted-foreground"
+                                )}
+                            >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {dateRange?.from ? (
+                                    dateRange.to ? (
+                                        <>
+                                            {dateRange.from.toLocaleDateString()} -{" "}
+                                            {dateRange.to.toLocaleDateString()}
+                                        </>
+                                    ) : (
+                                        dateRange.from.toLocaleDateString()
+                                    )
+                                ) : (
+                                    <span>Recently Added</span>
+                                )}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                            <Calendar
+                                initialFocus
+                                mode="range"
+                                defaultMonth={dateRange?.from}
+                                selected={dateRange}
+                                onSelect={setDateRange}
+                                numberOfMonths={2}
+                            />
+                        </PopoverContent>
+                    </Popover>
+                    
+                    {/* Filter Dropdowns */}
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm">
+                                <Filter className="h-4 w-4 mr-2" />
+                                Filters
+                                <ChevronDown className="h-4 w-4 ml-2" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-4" align="end">
+                            <div className="space-y-4">
+                                <h4 className="font-medium leading-none">Filter Options</h4>
+                                <div className="grid gap-2">
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <label htmlFor="category">Category</label>
+                                        <Select value={selectedCategory || "all"} onValueChange={(value) => setSelectedCategory(value === "all" ? null : value)}>
+                                            <SelectTrigger className="col-span-2">
+                                                <SelectValue placeholder="All Categories" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Categories</SelectItem>
+                                                {categories.map(category => (
+                                                    <SelectItem key={category} value={category}>
+                                                        {category}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <label htmlFor="status">Status</label>
+                                        <Select value={selectedStatus || "all"} onValueChange={(value) => setSelectedStatus(value === "all" ? null : value)}>
+                                            <SelectTrigger className="col-span-2">
+                                                <SelectValue placeholder="All Statuses" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Statuses</SelectItem>
+                                                <SelectItem value="available">Available</SelectItem>
+                                                <SelectItem value="unavailable">Unavailable</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <label htmlFor="stock">Stock</label>
+                                        <Select value={stockFilter || "all"} onValueChange={(value) => setStockFilter(value === "all" ? null : value)}>
+                                            <SelectTrigger className="col-span-2">
+                                                <SelectValue placeholder="All Stock Levels" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Stock Levels</SelectItem>
+                                                <SelectItem value="in-stock">In Stock</SelectItem>
+                                                <SelectItem value="low-stock">Low Stock</SelectItem>
+                                                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end">
+                                    <Button 
+                                        size="sm" 
+                                        onClick={() => {
+                                            // Refresh the product list with new filters
+                                            window.location.reload();
+                                        }}
+                                    >
+                                        Apply Filters
+                                    </Button>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                    
                     <Button onClick={handleExportToPDF} variant="outline">
                         <FileText className="mr-2 h-4 w-4" />
                         Export PDF
@@ -108,7 +248,14 @@ export default function ProductsPage({
                     <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 </div>
             }>
-                <ProductList products={products} query={searchTerm} />
+                <ProductList 
+                    products={products} 
+                    query={searchTerm} 
+                    selectedCategory={selectedCategory}
+                    selectedStatus={selectedStatus}
+                    stockFilter={stockFilter}
+                    dateRange={dateRange}
+                />
             </Suspense>
         </div>
     );

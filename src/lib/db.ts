@@ -325,6 +325,43 @@ export const initializeDatabase = async (database: any) => {
     console.log('feedback column already exists or was added successfully');
   }
 
+  // Add new columns for delivery performance tracking
+  try {
+    await database.exec(`
+      ALTER TABLE orders ADD COLUMN requestedDeliveryDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('requestedDeliveryDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE orders ADD COLUMN expectedReceiptDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('expectedReceiptDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE orders ADD COLUMN actualDispatchDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('actualDispatchDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE orders ADD COLUMN confirmationDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('confirmationDate column already exists or was added successfully');
+  }
+
   // Create order items table
   await database.exec(`
     CREATE TABLE IF NOT EXISTS order_items (
@@ -454,6 +491,22 @@ export const initializeDatabase = async (database: any) => {
       quantity INTEGER NOT NULL,
       status TEXT NOT NULL,
       FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
+    )
+  `);
+
+  // Create audit logs table
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      userId INTEGER,
+      username TEXT,
+      action TEXT NOT NULL,
+      resourceType TEXT NOT NULL,
+      resourceId TEXT,
+      details TEXT,
+      ipAddress TEXT,
+      userAgent TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 

@@ -54,6 +54,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid order data' }, { status: 400 });
     }
     
+    // Check factory stock for each item before allowing the order
+    const db = await getDb();
+    for (const item of orderData.items) {
+      const variant = await db.get(`
+        SELECT stock FROM product_variants WHERE id = ?
+      `, item.variant.id);
+      
+      if (!variant) {
+        return NextResponse.json({ 
+          error: `Product variant ${item.variant.id} not found in factory inventory` 
+        }, { status: 400 });
+      }
+      
+      if (variant.stock < item.quantity) {
+        return NextResponse.json({ 
+          error: `Insufficient factory stock for ${item.name}. Requested: ${item.quantity}, Available: ${variant.stock}` 
+        }, { status: 400 });
+      }
+    }
+    
     // Generate order ID
     const orderId = `ORD-${Date.now()}`;
     
@@ -64,14 +84,18 @@ export async function POST(request: Request) {
       status: 'Pending',
       date: new Date().toISOString().split('T')[0],
       createdAt: new Date(),
-      items: orderData.items
+      items: orderData.items,
+      // Initialize delivery performance tracking fields
+      requestedDeliveryDate: orderData.requestedDeliveryDate || null,
+      expectedReceiptDate: orderData.expectedReceiptDate || null,
+      actualDispatchDate: null,
+      confirmationDate: null
     };
 
     // Insert order into database
-    const db = await getDb();
     await db.run(`
-      INSERT INTO orders (id, shopId, shopName, date, status, amount, items)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, shopId, shopName, date, status, amount, items, requestedDeliveryDate, expectedReceiptDate)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       orderId,
       newOrderData.shopId,
@@ -79,7 +103,9 @@ export async function POST(request: Request) {
       newOrderData.date,
       newOrderData.status,
       newOrderData.amount,
-      JSON.stringify(newOrderData.items)
+      JSON.stringify(newOrderData.items),
+      newOrderData.requestedDeliveryDate,
+      newOrderData.expectedReceiptDate
     );
 
     console.log('Order inserted into database:', orderId);

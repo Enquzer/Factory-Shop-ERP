@@ -1,7 +1,7 @@
 'use client';
 
 import { type Product, type ProductVariant } from "@/lib/products";
-import { createContext, useContext, useState, ReactNode, useMemo, useEffect } from "react";
+import { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { type Order } from "@/lib/orders";
 import { useToast } from "./use-toast";
@@ -9,6 +9,7 @@ import { createNotification } from "@/lib/notifications";
 import { getShopById, getShopByUsername, type Shop } from "@/lib/shops";
 import { useAuth } from '@/contexts/auth-context';
 import { type ShopInventoryItem } from "@/lib/shop-inventory-sqlite";
+
 
 export type OrderItem = { 
   productId: string;
@@ -24,9 +25,9 @@ interface OrderContextType {
   items: OrderItem[];
   orders: Order[];
   isLoading: boolean;
-  addItem: (product: Product, variant: ProductVariant, quantity?: number) => void;
+  addItem: (product: Product, variant: ProductVariant, quantity?: number) => Promise<void>;
   removeItem: (variantId: string) => void;
-  updateQuantity: (variantId: string, quantity: number) => void;
+  updateQuantity: (variantId: string, quantity: number) => Promise<void>;
   clearOrder: () => void;
   placeOrder: () => void;
   totalAmount: number;
@@ -36,6 +37,8 @@ interface OrderContextType {
   // Add shop inventory to the context
   shopInventory: ShopInventoryItem[];
   getAvailableStock: (variantId: string) => number;
+  // Add refresh function
+  refreshOrders: () => Promise<void>;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -45,9 +48,9 @@ const defaultOrderContext: OrderContextType = {
   items: [],
   orders: [],
   isLoading: false,
-  addItem: () => {},
+  addItem: async () => {},
   removeItem: () => {},
-  updateQuantity: () => {},
+  updateQuantity: async () => {},
   clearOrder: () => {},
   placeOrder: () => {},
   totalAmount: 0,
@@ -56,6 +59,7 @@ const defaultOrderContext: OrderContextType = {
   shopName: "",
   shopInventory: [],
   getAvailableStock: () => 0,
+  refreshOrders: async () => {},
 };
 
 export function OrderProvider({ children }: { children: ReactNode }) {
@@ -68,6 +72,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAuth();
+  const isRefreshing = useRef(false); // Ref to track refresh state
 
   // Get the shop ID from the authenticated user
   const shopId = useMemo(() => {
@@ -127,7 +132,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     };
     
     fetchShopData();
-  }, [user, router, toast]);
+  }, [user?.username, user?.role]); // Add proper dependencies
 
   // Fetch shop inventory when shop data is available
   useEffect(() => {
@@ -146,16 +151,19 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     };
     
     fetchShopInventory();
-  }, [shop, user]);
+  }, [shop?.id, user?.username]); // Add proper dependencies
 
   useEffect(() => {
     // Only fetch orders if we have a valid shop
     if (!shop) return;
     
-    setIsLoading(true);
-    
     // Fetch orders from API instead of using ordersStore directly
     const fetchOrders = async () => {
+      if (isRefreshing.current) return;
+      
+      isRefreshing.current = true;
+      setIsLoading(true);
+      
       try {
         const response = await fetch('/api/orders');
         if (response.ok) {
@@ -166,6 +174,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Error fetching orders:", error);
       } finally {
+        isRefreshing.current = false;
         setIsLoading(false);
       }
     };
@@ -176,39 +185,86 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     const intervalId = setInterval(fetchOrders, 30000); // Every 30 seconds
     
     return () => clearInterval(intervalId);
-  }, [shop]);
+  }, [shop?.id]); // Make sure dependencies are correct
 
-  const addItem = (product: Product, variant: ProductVariant, quantity: number = 1) => {
-    // Check if the item is in stock
-    const availableStock = getAvailableStock(variant.id);
-    if (availableStock <= 0) {
+  // Add function to get available stock for a variant
+  const getAvailableStock = (variantId: string) => {
+    const inventoryItem = shopInventory.find(item => item.productVariantId === variantId);
+    return inventoryItem ? inventoryItem.stock : 0;
+  };
+
+  // Add function to check if factory has stock for a variant
+  const checkFactoryStock = async (variantId: string) => {
+    try {
+      const response = await fetch(`/api/factory-stock?variantId=${variantId}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.factoryStock > 0;
+      } else if (response.status === 404) {
+        // Variant not found in factory stock
+        return false;
+      }
+      // For other errors, we'll just return false
+      return false;
+    } catch (error) {
+      console.error(`Error checking factory stock for variant ${variantId}:`, error);
+      return false;
+    }
+  };
+  
+  // Add function to get exact factory stock quantity
+  const getFactoryStock = async (variantId: string): Promise<number> => {
+    try {
+      const response = await fetch(`/api/factory-stock?variantId=${variantId}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.factoryStock;
+      } else if (response.status === 404) {
+        // Variant not found in factory stock
+        return 0;
+      }
+      // For other errors, we'll just return 0
+      return 0;
+    } catch (error) {
+      console.error(`Error checking factory stock for variant ${variantId}:`, error);
+      return 0;
+    }
+  };
+
+  const addItem = async (product: Product, variant: ProductVariant, quantity: number = 1) => {
+    // Always check factory stock first - shops should be able to order based on factory availability
+    const factoryStock = await getFactoryStock(variant.id);
+    
+    // If factory has no stock, prevent ordering
+    if (factoryStock <= 0) {
       toast({
         title: "Out of Stock",
-        description: `${product.name} is currently out of stock.`,
+        description: `${product.name} is currently out of stock at the factory.`,
         variant: "destructive",
       });
       return;
     }
     
-    // Check if requested quantity exceeds available stock
-    if (quantity > availableStock) {
+    // If factory has some stock but not enough for the requested quantity
+    if (factoryStock < quantity) {
       toast({
-        title: "Insufficient Stock",
-        description: `Only ${availableStock} items available in stock for ${product.name}.`,
+        title: "Insufficient Factory Stock",
+        description: `Only ${factoryStock} units available in factory stock. Please reduce quantity.`,
         variant: "destructive",
       });
       return;
     }
     
+    // If factory has enough stock, allow the order regardless of shop inventory levels
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.variant.id === variant.id);
       if (existingItem) {
         const newQuantity = existingItem.quantity + quantity;
-        // Check if the new quantity exceeds available stock
-        if (newQuantity > availableStock) {
+        // Check if the new quantity exceeds factory stock
+        if (newQuantity > factoryStock) {
           toast({
-            title: "Insufficient Stock",
-            description: `Only ${availableStock} items available in stock for ${product.name}.`,
+            title: "Insufficient Factory Stock",
+            description: `Only ${factoryStock} units available in factory stock. Please reduce quantity.`,
             variant: "destructive",
           });
           return prevItems;
@@ -224,15 +280,15 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           name: product.name,
           price: product.price,
           productCode: product.productCode,
-          imageUrl: variant.imageUrl || product.imageUrl || "", // Ensure it's always a string
+          imageUrl: variant.imageUrl || product.imageUrl || "",
           variant, 
           quantity 
       }];
     });
-    
+  
     toast({
-        title: "Item Added",
-        description: `${product.name} added to your order.`,
+      title: "Item Added",
+      description: `${product.name} added to your order. (Will be fulfilled from factory stock)`,
     });
   };
 
@@ -240,35 +296,54 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     const itemToRemove = items.find((item) => item.variant.id === variantId);
     if (itemToRemove) {
       toast({
-          title: "Item Removed",
-          description: `${itemToRemove.name} removed from your order.`,
-      });
-    }
-    setItems((prevItems) => prevItems.filter((item) => item.variant.id !== variantId));
-  };
+      title: "Item Removed",
+      description: `${itemToRemove.name} removed from your order.`,
+    });
+  }
+  setItems((prevItems) => prevItems.filter((item) => item.variant.id !== variantId));
+};
 
-  const updateQuantity = (variantId: string, quantity: number) => {
+  const updateQuantity = async (variantId: string, quantity: number) => {
     if (quantity < 1) {
-        removeItem(variantId);
-        return;
+      removeItem(variantId);
+      return;
     }
     
-    // Check if the new quantity exceeds available stock
-    const itemToUpdate = items.find((item) => item.variant.id === variantId);
-    if (itemToUpdate) {
-      const availableStock = getAvailableStock(variantId);
-      if (quantity > availableStock) {
+    // Always check factory stock - shops should be able to order based on factory availability
+    const factoryStock = await getFactoryStock(variantId);
+    
+    // If factory has no stock, prevent ordering
+    if (factoryStock <= 0) {
+      const itemToUpdate = items.find((item) => item.variant.id === variantId);
+      if (itemToUpdate) {
         toast({
-          title: "Insufficient Stock",
-          description: `Only ${availableStock} items available in stock for ${itemToUpdate.name}.`,
+          title: "Out of Stock",
+          description: `${itemToUpdate.name} is currently out of stock at the factory.`,
           variant: "destructive",
         });
-        return;
       }
-      
+      return;
+    }
+    
+    // If factory has some stock but not enough for the requested quantity
+    if (factoryStock < quantity) {
+      const itemToUpdate = items.find((item) => item.variant.id === variantId);
+      if (itemToUpdate) {
+        toast({
+          title: "Insufficient Factory Stock",
+          description: `Only ${factoryStock} units available in factory stock. Please reduce quantity.`,
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+    
+    // If factory has stock, allow the update regardless of shop inventory levels
+    const itemToUpdate = items.find((item) => item.variant.id === variantId);
+    if (itemToUpdate) {
       toast({
-          title: "Quantity Updated",
-          description: `Quantity for ${itemToUpdate.name} updated to ${quantity}.`,
+        title: "Quantity Updated",
+        description: `Quantity for ${itemToUpdate.name} updated to ${quantity}. (Will be fulfilled from factory stock)`,
       });
     }
     
@@ -277,6 +352,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         item.variant.id === variantId ? { ...item, quantity: quantity } : item
       )
     );
+    return;
   };
 
   const clearOrder = () => {
@@ -296,6 +372,29 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const shopDiscount = shop?.discount || 0;
   const shopName = shop?.name || "";
   const finalAmountAfterDiscount = totalAmount * (1 - shopDiscount);
+
+  // Add refreshOrders function
+  const refreshOrders = useCallback(async () => {
+    if (!shop || isRefreshing.current) return;
+    
+    // Prevent multiple simultaneous refreshes
+    isRefreshing.current = true;
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch('/api/orders');
+      if (response.ok) {
+        const allOrders = await response.json();
+        const shopOrders = allOrders.filter((o: any) => o.shopId === shop.id);
+        setOrders(shopOrders);
+      }
+    } catch (error) {
+      console.error("Error refreshing orders:", error);
+    } finally {
+      isRefreshing.current = false;
+      setIsLoading(false);
+    }
+  }, [shop?.id]);
 
   const placeOrder = async () => {
       if (items.length === 0 || !shop) {
@@ -388,12 +487,6 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       }
   }
 
-  // Add function to get available stock for a variant
-  const getAvailableStock = (variantId: string) => {
-    const inventoryItem = shopInventory.find(item => item.productVariantId === variantId);
-    return inventoryItem ? inventoryItem.stock : 0;
-  };
-
   const value = {
     items,
     orders,
@@ -409,7 +502,9 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     shopName: shop?.name || "",
     // Include shop inventory in the context value
     shopInventory,
-    getAvailableStock
+    getAvailableStock,
+    // Add refresh function
+    refreshOrders
   };
 
   // Always provide the context, even for non-shop users

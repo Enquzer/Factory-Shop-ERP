@@ -13,8 +13,9 @@ export function Logo({ className }: { className?: string }) {
            height={40} 
            priority
            style={{
-             maxWidth: '100%',
-             height: 'auto'
+             width: 'auto',
+             height: 'auto',
+             maxWidth: '100%'
            }}
            onError={(e) => {
              const target = e.target as HTMLImageElement;

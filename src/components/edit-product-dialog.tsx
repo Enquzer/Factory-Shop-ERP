@@ -37,6 +37,7 @@ import Image from "next/image";
 import { Product, ProductVariant, AgePricing, updateProduct, updateVariantStock, updateVariantImage } from "@/lib/products";
 import { createStockEvent } from "@/lib/stock-events";
 import { updateShopInventoryOnReplenishment } from "@/lib/products-sqlite";
+import { EnhancedImageUpload } from "@/components/enhanced-image-upload";
 
 const variantSchema = z.object({
   id: z.string(),
@@ -160,20 +161,25 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     setMainImagePreview(product.imageUrl ?? null);
   }, [product, form]);
 
-  const handleMainImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const newPreviewUrl = URL.createObjectURL(file);
-      if (mainImagePreview) URL.revokeObjectURL(mainImagePreview); // Revoke previous URL
-      setMainImagePreview(newPreviewUrl);
-      form.setValue("imageUrl", file);
+  const handleMainImageChange = (file: File | null) => {
+    if (!file) {
+      setMainImagePreview(null);
+      form.setValue("imageUrl", product.imageUrl || undefined);
+      return;
     }
+
+    const newPreviewUrl = URL.createObjectURL(file);
+    if (mainImagePreview) URL.revokeObjectURL(mainImagePreview); // Revoke previous URL
+    setMainImagePreview(newPreviewUrl);
+    form.setValue("imageUrl", file);
   };
 
-  const handleVariantImageChange = (file: File | undefined, onChange: (...event: any[]) => void) => {
-    if (file) {
-      onChange(file);
+  const handleVariantImageChange = (file: File | null, index: number) => {
+    if (!file) {
+      form.setValue(`variants.${index}.image`, undefined);
+      return;
     }
+    form.setValue(`variants.${index}.image`, file);
   }
 
   const onSubmit = async (data: ProductFormValues) => {
@@ -248,8 +254,10 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
           imageUrl: imageUrl || null
         });
         
+        // Create a new variant object without the File object
+        const { image, ...variantWithoutImage } = variant;
         return {
-          ...variant,
+          ...variantWithoutImage,
           imageUrl: imageUrl || null
         };
       }));
@@ -415,29 +423,11 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
             onSubmit={form.handleSubmit(onSubmit)}
             className="grid gap-4 py-4"
           >
-            <FormField
-              control={form.control}
-              name="imageUrl"
-              render={({ field: { onChange, value, ...rest } }) => (
-                <FormItem>
-                  <FormLabel>Main Product Image</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleMainImageChange}
-                      className="file:text-primary-foreground"
-                      disabled={isLoading}
-                    />
-                  </FormControl>
-                  {mainImagePreview && (
-                    <div className="mt-2 relative w-full aspect-video max-w-sm rounded-md overflow-hidden border">
-                      <Image src={mainImagePreview} alt="Main product preview" fill style={{ objectFit: "contain" }} />
-                    </div>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
+            <EnhancedImageUpload
+              label="Main Product Image"
+              onImageChange={handleMainImageChange}
+              currentImage={mainImagePreview}
+              disabled={isLoading}
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -597,15 +587,12 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
                         render={({ field: { onChange, value, ...rest } }) => (
                           <FormItem>
                             <FormLabel>Variant Image</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleVariantImageChange(e.target.files?.[0], onChange)}
-                                className="text-xs file:text-primary-foreground"
-                                disabled={isLoading}
-                              />
-                            </FormControl>
+                            <EnhancedImageUpload
+                              label="Variant Image"
+                              onImageChange={(file) => handleVariantImageChange(file, index)}
+                              disabled={isLoading}
+                              accept="image/*"
+                            />
                           </FormItem>
                         )}
                       />

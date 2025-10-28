@@ -9,12 +9,12 @@ import { useOrder } from "@/hooks/use-order";
 import { useAuth } from '@/contexts/auth-context';
 import { type Shop } from "@/lib/shops";
 import { type Order, type OrderStatus } from "@/lib/orders";
-import { Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X, FileText } from "lucide-react";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
 import { OrderStatusIndicator } from "@/app/(app)/orders/_components/order-status-indicator";
 
 export default function ShopOrdersPage() {
-    const { orders, isLoading } = useOrder();
+    const { orders, isLoading, refreshOrders } = useOrder();
     const { user } = useAuth();
     const [shop, setShop] = useState<Shop|null>(null);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -51,6 +51,22 @@ export default function ShopOrdersPage() {
     const handleViewOrder = (order: Order) => {
         setSelectedOrder(order);
         setIsDialogOpen(true);
+    };
+
+    const handleDownloadOrderPDF = async (orderId: string) => {
+        try {
+            // Create a temporary link to download the PDF
+            const link = document.createElement('a');
+            link.href = `/api/orders/${orderId}/pdf`;
+            link.download = `shop-order-${orderId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            // In a real implementation, you would show a toast notification
+            alert("Failed to generate PDF. Please try again.");
+        }
     };
 
     const handleConfirmPayment = (order: Order) => {
@@ -114,8 +130,17 @@ export default function ShopOrdersPage() {
                 throw new Error('Failed to confirm payment');
             }
 
-            // Refresh orders
-            window.location.reload();
+            // Close the payment form
+            setShowPaymentForm(false);
+            // Reset form state
+            setSelectedOrderForPayment(null);
+            setPaymentSlipFile(null);
+            setPaymentSlipPreview(null);
+            
+            // Refresh orders using the hook function
+            if (refreshOrders) {
+                await refreshOrders();
+            }
         } catch (error) {
             console.error("Error confirming payment:", error);
         }
@@ -143,34 +168,63 @@ export default function ShopOrdersPage() {
                 throw new Error('Failed to confirm delivery');
             }
 
-            // Refresh orders
-            window.location.reload();
+            // Close the delivery form
+            setShowDeliveryForm(false);
+            // Reset form state
+            setSelectedOrderForDelivery(null);
+            setDeliveryDate('');
+            setIsClosed(false);
+            setFeedback('');
+            
+            // Refresh orders using the hook function
+            if (refreshOrders) {
+                await refreshOrders();
+            }
         } catch (error) {
             console.error("Error confirming delivery:", error);
         }
     };
 
     const getShopActions = (order: Order) => {
-        switch (order.status) {
-            case 'Awaiting Payment':
-                return (
-                    <Button variant="outline" size="sm" onClick={() => handleConfirmPayment(order)}>
-                        Confirm Payment
-                    </Button>
-                );
-            case 'Dispatched':
-                return (
-                    <Button variant="outline" size="sm" onClick={() => handleConfirmDelivery(order)}>
-                        Confirm Delivery
-                    </Button>
-                );
-            default:
-                return (
-                    <Button variant="outline" size="sm" onClick={() => handleViewOrder(order)}>
-                        View
-                    </Button>
-                );
-        }
+        // Determine if order is in a closed or final state
+        const isOrderClosed = order.isClosed || 
+                             order.status === 'Delivered' || 
+                             order.status === 'Cancelled';
+        
+        return (
+            <div className="flex gap-2">
+                <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => handleViewOrder(order)}
+                >
+                    View
+                </Button>
+                <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => handleDownloadOrderPDF(order.id)}
+                >
+                    <FileText className="h-4 w-4" />
+                </Button>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => handleConfirmPayment(order)}
+                    disabled={isOrderClosed || order.status !== 'Awaiting Payment'}
+                >
+                    Confirm Payment
+                </Button>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => handleConfirmDelivery(order)}
+                    disabled={isOrderClosed || order.status !== 'Dispatched'}
+                >
+                    Confirm Delivery
+                </Button>
+            </div>
+        );
     };
 
     const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -180,6 +234,17 @@ export default function ShopOrdersPage() {
         Dispatched: 'outline',
         Delivered: 'secondary',
         Cancelled: 'destructive'
+    };
+
+    const handleDialogOpenChange = (open: boolean) => {
+        setIsDialogOpen(open);
+        // Only reset selectedOrder when closing the dialog
+        if (!open) {
+            // Use setTimeout to ensure state updates don't cause re-renders
+            setTimeout(() => {
+                setSelectedOrder(null);
+            }, 0);
+        }
     };
 
     return (
@@ -351,7 +416,7 @@ export default function ShopOrdersPage() {
                 <OrderDetailDialog 
                     order={selectedOrder} 
                     open={isDialogOpen} 
-                    onOpenChange={setIsDialogOpen} 
+                    onOpenChange={handleDialogOpenChange} 
                 />
             )}
         </div>
