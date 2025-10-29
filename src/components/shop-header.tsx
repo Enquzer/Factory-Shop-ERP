@@ -17,13 +17,14 @@ import {
 } from "@/components/ui/popover"
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Bell, ShoppingCart } from 'lucide-react';
+import { Bell, ShoppingCart, BookOpen } from 'lucide-react';
 import { useOrder } from '@/hooks/use-order';
 import { Badge } from './ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import { getShopByUsername } from '@/lib/shops-sqlite';
 import { useRouter } from 'next/navigation';
+import { HelpCenter } from '@/components/help-center';
 
 type Notification = {
   id: string;
@@ -160,6 +161,8 @@ export function ShopHeader() {
       <div className="w-full flex-1">
         {/* Future breadcrumbs can go here */}
       </div>
+
+      <HelpCenter />
 
       {items.length > 0 && (
          <Button variant="ghost" size="icon" asChild>

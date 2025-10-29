@@ -18,12 +18,13 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Bell } from 'lucide-react';
+import { Bell, BookOpen } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { useResponsive } from '@/contexts/responsive-context';
+import { HelpCenter } from '@/components/help-center';
 
 type Notification = {
   id: string;
@@ -136,6 +137,8 @@ export function Header() {
       <div className="w-full flex-1">
         {/* Future breadcrumbs can go here */}
       </div>
+
+      <HelpCenter />
 
       <Popover>
         <PopoverTrigger asChild>
