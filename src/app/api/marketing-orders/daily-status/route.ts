@@ -7,8 +7,23 @@ export async function POST(request: Request) {
     const statusData = await request.json();
     
     // Validate required fields
-    if (!statusData.orderId || !statusData.date || !statusData.size || !statusData.color) {
+    if (!statusData.orderId || !statusData.date) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    
+    // If this is a total update, we require a process stage
+    if (statusData.isTotalUpdate && !statusData.processStage) {
+      return NextResponse.json({ error: 'Missing process stage for total update' }, { status: 400 });
+    }
+    
+    // If this is not a total update, we also require a process stage
+    if (!statusData.isTotalUpdate && !statusData.processStage) {
+      return NextResponse.json({ error: 'Missing process stage for breakdown update' }, { status: 400 });
+    }
+    
+    // If this is not a total update, we require size/color
+    if (!statusData.isTotalUpdate && (!statusData.size || !statusData.color)) {
+      return NextResponse.json({ error: 'Missing size or color for non-total update' }, { status: 400 });
     }
     
     const success = await updateDailyProductionStatus(statusData);

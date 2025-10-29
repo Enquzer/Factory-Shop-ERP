@@ -24,6 +24,8 @@ export type DailyProductionStatus = {
   color: string;
   quantity: number;
   status: string;
+  isTotalUpdate?: boolean;
+  processStage?: string; // Add processStage field
 };
 
 export type MarketingOrder = {
@@ -52,6 +54,11 @@ export type MarketingOrder = {
   sizeSetSampleApproved?: string;
   productionStartDate?: string;
   productionFinishedDate?: string;
+  // Process completion dates
+  cuttingCompletionDate?: string;
+  productionCompletionDate?: string;
+  packingCompletionDate?: string;
+  deliveryCompletionDate?: string;
   items: MarketingOrderItem[];
 };
 
@@ -178,6 +185,28 @@ export async function deleteMarketingOrder(id: string): Promise<boolean> {
   }
 }
 
+// Client-side function to get process status summary for an order
+export async function getProcessStatusSummary(orderId: string): Promise<any[]> {
+  try {
+    // Use absolute URL for server-side requests, relative for client-side
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const url = typeof window === 'undefined' 
+      ? `${baseUrl}/api/marketing-orders/process-status/${orderId}`
+      : `/api/marketing-orders/process-status/${orderId}`;
+      
+    const response = await fetch(url);
+    if (!response.ok) {
+      return [];
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching process status summary:', error);
+    return [];
+  }
+}
+
 // Server-side function to get all marketing orders from database
 export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
   try {
@@ -284,13 +313,7 @@ export async function getMarketingOrderByIdFromDB(id: string): Promise<Marketing
       sizeSetSampleApproved: order.sizeSetSampleApproved,
       productionStartDate: order.productionStartDate,
       productionFinishedDate: order.productionFinishedDate,
-      items: items.map((item: any) => ({
-        id: item.id,
-        orderId: item.orderId,
-        size: item.size,
-        color: item.color,
-        quantity: item.quantity
-      }))
+      items
     };
   } catch (error) {
     console.error('Error fetching marketing order:', error);
@@ -518,6 +541,36 @@ export async function deleteMarketingOrderFromDB(id: string): Promise<boolean> {
   }
 }
 
+// Server-side function to get total produced quantity for an order
+export async function getTotalProducedQuantity(orderId: string): Promise<number> {
+  try {
+    const db = await getDb();
+    // Try to get the sum with isTotalUpdate condition
+    try {
+      const result = await db.get(`
+        SELECT SUM(quantity) as totalProduced
+        FROM daily_production_status 
+        WHERE orderId = ? AND isTotalUpdate = 1
+      `, orderId);
+      
+      return result?.totalProduced || 0;
+    } catch (error) {
+      // If the isTotalUpdate column doesn't exist, fall back to summing all quantities
+      console.log('isTotalUpdate column not found, falling back to summing all quantities');
+      const result = await db.get(`
+        SELECT SUM(quantity) as totalProduced
+        FROM daily_production_status 
+        WHERE orderId = ?
+      `, orderId);
+      
+      return result?.totalProduced || 0;
+    }
+  } catch (error) {
+    console.error('Error fetching total produced quantity:', error);
+    return 0;
+  }
+}
+
 // Server-side function to get daily production status for an order
 export async function getDailyProductionStatus(orderId: string): Promise<DailyProductionStatus[]> {
   try {
@@ -535,7 +588,8 @@ export async function getDailyProductionStatus(orderId: string): Promise<DailyPr
       size: status.size,
       color: status.color,
       quantity: status.quantity,
-      status: status.status
+      status: status.status,
+      isTotalUpdate: status.isTotalUpdate ? status.isTotalUpdate === 1 : false
     }));
   } catch (error) {
     console.error('Error fetching daily production status:', error);
@@ -549,24 +603,72 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
     const db = await getDb();
     
     // Check if status entry already exists for this order/date/size/color combination
-    const existingStatus = await db.get(`
-      SELECT id FROM daily_production_status 
-      WHERE orderId = ? AND date = ? AND size = ? AND color = ?
-    `, status.orderId, status.date, status.size, status.color);
+    let existingStatus;
+    if (status.isTotalUpdate) {
+      // For total updates, check by order and date only
+      existingStatus = await db.get(`
+        SELECT id FROM daily_production_status 
+        WHERE orderId = ? AND date = ? AND isTotalUpdate = 1
+      `, status.orderId, status.date);
+    } else {
+      // For size/color specific updates, check by order/date/size/color
+      existingStatus = await db.get(`
+        SELECT id FROM daily_production_status 
+        WHERE orderId = ? AND date = ? AND size = ? AND color = ?
+      `, status.orderId, status.date, status.size, status.color);
+    }
     
     if (existingStatus) {
       // Update existing entry
       await db.run(`
         UPDATE daily_production_status 
-        SET quantity = ?, status = ?
+        SET quantity = ?, status = ?, isTotalUpdate = ?, processStage = ?
         WHERE id = ?
-      `, status.quantity, status.status, existingStatus.id);
+      `, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null, existingStatus.id);
     } else {
       // Insert new entry
-      await db.run(`
-        INSERT INTO daily_production_status (orderId, date, size, color, quantity, status)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, status.orderId, status.date, status.size, status.color, status.quantity, status.status);
+      if (status.isTotalUpdate) {
+        // For total updates, insert with empty size and color
+        await db.run(`
+          INSERT INTO daily_production_status (orderId, date, size, color, quantity, status, isTotalUpdate, processStage)
+          VALUES (?, ?, '', '', ?, ?, ?, ?)
+        `, status.orderId, status.date, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null);
+      } else {
+        // For size/color specific updates, insert with provided values
+        await db.run(`
+          INSERT INTO daily_production_status (orderId, date, size, color, quantity, status, isTotalUpdate, processStage)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, status.orderId, status.date, status.size, status.color, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null);
+      }
+    }
+    
+    // If the status is "Completed", update the process completion date in the marketing order
+    if (status.status === 'Completed' && status.processStage) {
+      const today = new Date().toISOString().split('T')[0];
+      let dateField = '';
+      
+      switch (status.processStage) {
+        case 'Cutting':
+          dateField = 'cuttingCompletionDate';
+          break;
+        case 'Production':
+          dateField = 'productionCompletionDate';
+          break;
+        case 'Packing':
+          dateField = 'packingCompletionDate';
+          break;
+        case 'Delivery':
+          dateField = 'deliveryCompletionDate';
+          break;
+      }
+      
+      if (dateField) {
+        await db.run(`
+          UPDATE marketing_orders 
+          SET ${dateField} = ?
+          WHERE id = ?
+        `, today, status.orderId);
+      }
     }
     
     return true;

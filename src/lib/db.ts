@@ -486,13 +486,71 @@ export const initializeDatabase = async (database: any) => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       orderId TEXT NOT NULL,
       date TEXT NOT NULL,
-      size TEXT NOT NULL,
-      color TEXT NOT NULL,
+      size TEXT,
+      color TEXT,
       quantity INTEGER NOT NULL,
       status TEXT NOT NULL,
+      isTotalUpdate INTEGER DEFAULT 0,
       FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
     )
   `);
+  
+  // Add isTotalUpdate column to existing daily_production_status table if it doesn't exist
+  try {
+    await database.exec(`
+      ALTER TABLE daily_production_status ADD COLUMN isTotalUpdate INTEGER DEFAULT 0
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('isTotalUpdate column already exists or was added successfully');
+  }
+
+  // Add processStage column to existing daily_production_status table if it doesn't exist
+  try {
+    await database.exec(`
+      ALTER TABLE daily_production_status ADD COLUMN processStage TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('processStage column already exists or was added successfully');
+  }
+
+  // Add process completion date columns to existing marketing_orders table if they don't exist
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN cuttingCompletionDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('cuttingCompletionDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN productionCompletionDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('productionCompletionDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN packingCompletionDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('packingCompletionDate column already exists or was added successfully');
+  }
+
+  try {
+    await database.exec(`
+      ALTER TABLE marketing_orders ADD COLUMN deliveryCompletionDate TEXT
+    `);
+  } catch (error) {
+    // Column might already exist, which is fine
+    console.log('deliveryCompletionDate column already exists or was added successfully');
+  }
 
   // Create audit logs table
   await database.exec(`
