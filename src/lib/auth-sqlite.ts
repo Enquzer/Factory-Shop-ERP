@@ -22,17 +22,23 @@ export const registerUser = async (
   role: 'factory' | 'shop'
 ): Promise<AuthResult> => {
   try {
+    console.log('Registering user with data:', { username, role });
+    
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('Password hashed successfully');
     
     // Get database connection
     const db = await getDb();
+    console.log('Database connection established');
     
     // Insert the user into the database
     const result = await db.run(`
       INSERT INTO users (username, password, role)
       VALUES (?, ?, ?)
     `, username, hashedPassword, role);
+    
+    console.log('User inserted successfully, result:', result);
     
     return {
       success: true,
@@ -44,6 +50,11 @@ export const registerUser = async (
       }
     };
   } catch (error: any) {
+    console.error('=== ERROR IN REGISTER USER ===');
+    console.error('Error details:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
     if (error.message.includes('UNIQUE constraint failed')) {
       return {
         success: false,
@@ -53,7 +64,7 @@ export const registerUser = async (
     
     return {
       success: false,
-      message: 'Failed to register user'
+      message: 'Failed to register user: ' + error.message
     };
   }
 };
@@ -87,6 +98,23 @@ export const authenticateUser = async (
         success: false,
         message: 'Invalid username or password'
       };
+    }
+    
+    // For shop users, check if the shop is active
+    if (user.role === 'shop') {
+      // Import the getShopByUsername function
+      const { getShopByUsername } = await import('./shops-sqlite');
+      
+      // Get the shop associated with this username
+      const shop = await getShopByUsername(username);
+      
+      // If shop doesn't exist or is not active, deny login
+      if (!shop || shop.status !== 'Active') {
+        return {
+          success: false,
+          message: 'Shop account is not active. Please contact administrator.'
+        };
+      }
     }
     
     return {
@@ -176,6 +204,24 @@ export const updateUserProfilePicture = async (
     return true;
   } catch (error) {
     console.error('Error updating user profile picture:', error);
+    return false;
+  }
+};
+
+// Delete user by username
+export const deleteUserByUsername = async (username: string): Promise<boolean> => {
+  try {
+    // Get database connection
+    const db = await getDb();
+    
+    // Delete the user from the database
+    const result = await db.run(`
+      DELETE FROM users WHERE username = ?
+    `, username);
+    
+    return (result.changes || 0) > 0;
+  } catch (error) {
+    console.error('Error deleting user:', error);
     return false;
   }
 };

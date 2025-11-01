@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -23,7 +22,15 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -39,6 +46,10 @@ const editShopSchema = z.object({
     monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional(),
     tradeLicenseNumber: z.string().optional(),
     tinNumber: z.string().optional(),
+    // New fields for variant visibility control
+    showVariantDetails: z.boolean().optional(),
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional(),
+    aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).optional()
 });
 
 type EditShopFormValues = z.infer<typeof editShopSchema>;
@@ -57,6 +68,10 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
         form.reset({
             ...shop,
             discount: shop.discount * 100, // Convert to percentage for display
+            // New fields for variant visibility control
+            showVariantDetails: shop.showVariantDetails,
+            maxVisibleVariants: shop.maxVisibleVariants,
+            aiDistributionMode: shop.aiDistributionMode
         });
     }
   }, [shop, form]);
@@ -67,7 +82,7 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
         // Only include discount in update data if user is factory
         const updateData: any = {
             ...data,
-            discount: data.discount / 100, // Convert back to decimal
+            discount: data.discount ? data.discount / 100 : undefined, // Convert back to decimal
         };
         
         // If user is not factory, remove discount from update data
@@ -226,6 +241,81 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                             </FormItem>
                         )}
                     />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 pt-4">
+                <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Variant Visibility Settings</h3>
+                    <FormField
+                        control={form.control}
+                        name="showVariantDetails"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                    <FormLabel className="text-base">Show Variant Details</FormLabel>
+                                    <p className="text-sm text-muted-foreground">
+                                        When enabled, shops see each product variant (color/size) separately.
+                                        When disabled, shops see only aggregated product totals.
+                                    </p>
+                                </div>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                            control={form.control}
+                            name="maxVisibleVariants"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Max Visible Variants</FormLabel>
+                                    <FormControl>
+                                        <Input 
+                                            type="number" 
+                                            min="1" 
+                                            max="1000" 
+                                            {...field} 
+                                        />
+                                    </FormControl>
+                                    <p className="text-xs text-muted-foreground">
+                                        Maximum number of variants to display per shop (1-1000)
+                                    </p>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="aiDistributionMode"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>AI Distribution Mode</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select distribution mode" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="proportional">Proportional</SelectItem>
+                                            <SelectItem value="equal">Equal Distribution</SelectItem>
+                                            <SelectItem value="manual_override">Manual Override</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        How AI allocates orders when variants are hidden
+                                    </p>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    </div>
                 </div>
             </div>
 

@@ -18,6 +18,7 @@ import { getProducts, updateProduct } from "@/lib/products";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { DateRange } from "react-day-picker";
+import { StockDistributionChart } from "@/components/stock-distribution-chart";
 
 type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
 
@@ -296,7 +297,7 @@ export function ProductList({
                                 <CardTitle className="text-base sm:text-lg">{product.name}</CardTitle>
                                 <CardDescription className="text-xs sm:text-sm">{product.productCode}</CardDescription>
                             </CardHeader>
-                            <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <CardContent className="p-4">
                                 <div className="space-y-1">
                                     <p className="text-base sm:text-lg font-semibold">ETB {product.price.toFixed(2)}</p>
                                     <div className="flex items-center text-sm">
@@ -317,6 +318,13 @@ export function ProductList({
                                             </Label>
                                         </div>
                                     )}
+                                </div>
+                                {/* Stock Distribution Chart */}
+                                <div className="mt-2">
+                                  <StockDistributionChart 
+                                    product={product}
+                                    viewType="factory"
+                                  />
                                 </div>
                                 <Button size="sm" className="text-xs sm:text-sm h-8" onClick={() => setSelectedProduct(product)}>View Options</Button>
                             </CardContent>

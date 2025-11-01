@@ -5,8 +5,9 @@ import { getDb } from '@/lib/db';
 import { withAuth, withRoleAuth, AuthenticatedUser } from '@/lib/auth-middleware';
 import { NextRequest } from 'next/server';
 import { productSchema, sanitizeInput } from '@/lib/validation';
-import { handleErrorResponse, ValidationError, ConflictError } from '@/lib/error-handler';
+import { handleErrorResponse, ValidationError, ConflictError, AppError } from '@/lib/error-handler';
 import { logAuditEntry } from '@/lib/audit-logger'; // Import audit logger
+import { getShopById } from '@/lib/shops-sqlite';
 
 // GET /api/products - Get all products
 export async function GET(request: Request) {
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     // Check if this is a request from a shop user
     const url = new URL(request.url);
     const isShopRequest = url.searchParams.get('for') === 'shop';
+    const shopId = url.searchParams.get('shopId');
     
     let products = await getProducts();
     console.log('Products fetched from database:', products);
@@ -24,6 +26,38 @@ export async function GET(request: Request) {
     if (isShopRequest) {
       products = products.filter(product => product.readyToDeliver === 1);
       console.log('Filtered products for shop:', products);
+      
+      // If shopId is provided and shop has variant details disabled, aggregate variants
+      if (shopId) {
+        const shop = await getShopById(shopId);
+        if (shop && !shop.showVariantDetails) {
+          // Return aggregated products
+          const aggregatedProducts = products.map(product => {
+            const totalAvailable = product.variants.reduce((sum: number, variant: any) => sum + variant.stock, 0);
+            return {
+              id: product.id,
+              productCode: product.productCode,
+              name: product.name,
+              category: product.category,
+              price: product.price,
+              totalAvailable,
+              description: product.description,
+              imageUrl: product.imageUrl,
+              updatedAt: product.updatedAt
+            };
+          });
+          
+          const response = NextResponse.json(aggregatedProducts);
+          
+          // Add cache control headers to prevent caching
+          response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('Expires', '0');
+          
+          console.log('Products API response sent (aggregated)');
+          return response;
+        }
+      }
     }
     
     const response = NextResponse.json(products);
@@ -111,6 +145,7 @@ export async function PUT(request: NextRequest) {
       let productData;
       try {
         productData = await req.json();
+        console.log('Parsed product data:', productData);
       } catch (parseError) {
         console.error('Error parsing request body:', parseError);
         throw new ValidationError('Invalid request body. Expected JSON data.');
@@ -118,6 +153,7 @@ export async function PUT(request: NextRequest) {
       
       // Sanitize input data
       const sanitizedData = sanitizeInput(productData);
+      console.log('Sanitized data:', sanitizedData);
       
       // Validate input data (only validate provided fields)
       if (Object.keys(sanitizedData).length > 0) {
@@ -125,7 +161,9 @@ export async function PUT(request: NextRequest) {
           // Create a partial schema for validation
           const partialSchema = productSchema.partial();
           partialSchema.parse(sanitizedData);
+          console.log('Validation passed');
         } catch (validationError: any) {
+          console.error('Validation error:', validationError);
           throw new ValidationError('Invalid input data', validationError.errors);
         }
       }
@@ -143,6 +181,11 @@ export async function PUT(request: NextRequest) {
       
       // Get current product for audit logging
       const currentProduct = await getProductById(id);
+      console.log('Current product:', currentProduct);
+      
+      if (!currentProduct) {
+        throw new AppError('Product not found', 404);
+      }
       
       const success = await updateProduct(id, sanitizedData);
       

@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Package } from "lucide-react";
+import { Search, Package, Grid, List } from "lucide-react";
 import Image from "next/image";
+import { ShopProductsTableView } from "./_components/shop-products-table-view";
 
 export default function ShopProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -21,6 +22,7 @@ export default function ShopProductsPage() {
   const [loading, setLoading] = useState(true);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -122,6 +124,26 @@ export default function ShopProductsPage() {
           />
         </div>
         
+        {/* View Toggle Buttons */}
+        <div className="flex rounded-md border border-input">
+          <Button
+            variant={viewMode === "grid" ? "default" : "ghost"}
+            size="sm"
+            className="rounded-r-none border-0"
+            onClick={() => setViewMode("grid")}
+          >
+            <Grid className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === "table" ? "default" : "ghost"}
+            size="sm"
+            className="rounded-l-none border-0"
+            onClick={() => setViewMode("table")}
+          >
+            <List className="h-4 w-4" />
+          </Button>
+        </div>
+        
         <Select value={selectedCategory} onValueChange={setSelectedCategory}>
           <SelectTrigger className="w-full md:w-48">
             <SelectValue placeholder="Category" />
@@ -146,7 +168,7 @@ export default function ShopProductsPage() {
         </Select>
       </div>
 
-      {/* Product Grid */}
+      {/* Product Grid or Table */}
       {filteredProducts.length === 0 ? (
         <div className="text-center py-12">
           <Package className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -155,7 +177,7 @@ export default function ShopProductsPage() {
             Try adjusting your search or filter to find what you're looking for.
           </p>
         </div>
-      ) : (
+      ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map((product) => (
             <Card 
@@ -191,6 +213,13 @@ export default function ShopProductsPage() {
             </Card>
           ))}
         </div>
+      ) : (
+        <ShopProductsTableView 
+          products={products} 
+          searchTerm={searchTerm}
+          selectedCategory={selectedCategory}
+          sortOption={sortOption}
+        />
       )}
 
       {/* Product Detail Dialog */}

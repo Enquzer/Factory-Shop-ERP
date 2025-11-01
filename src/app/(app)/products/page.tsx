@@ -3,10 +3,11 @@
 import { Suspense, useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, PlusCircle, Loader2, FileText, Filter, ChevronDown } from "lucide-react";
+import { Search, PlusCircle, Loader2, FileText, Filter, ChevronDown, Grid, List } from "lucide-react";
 import Link from "next/link";
 import { Product, getProducts } from '@/lib/products';
 import { ProductList } from './_components/product-list';
+import { ProductsTableView } from './_components/products-table-view';
 import { ProductsDashboard } from './_components/products-dashboard';
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -45,6 +46,7 @@ export default function ProductsPage({
         from: undefined,
         to: undefined
     });
+    const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
     
     // Get unique categories for filter
     const categories = useMemo(() => {
@@ -117,6 +119,26 @@ export default function ProductsPage({
                             defaultValue={searchTerm}
                         />
                     </form>
+                    
+                    {/* View Toggle Buttons */}
+                    <div className="flex rounded-md border border-input">
+                        <Button
+                            variant={viewMode === "grid" ? "default" : "ghost"}
+                            size="sm"
+                            className="rounded-r-none border-0"
+                            onClick={() => setViewMode("grid")}
+                        >
+                            <Grid className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            variant={viewMode === "table" ? "default" : "ghost"}
+                            size="sm"
+                            className="rounded-l-none border-0"
+                            onClick={() => setViewMode("table")}
+                        >
+                            <List className="h-4 w-4" />
+                        </Button>
+                    </div>
                     
                     {/* Date Range Filter */}
                     <Popover>
@@ -248,14 +270,25 @@ export default function ProductsPage({
                     <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 </div>
             }>
-                <ProductList 
-                    products={products} 
-                    query={searchTerm} 
-                    selectedCategory={selectedCategory}
-                    selectedStatus={selectedStatus}
-                    stockFilter={stockFilter}
-                    dateRange={dateRange}
-                />
+                {viewMode === "grid" ? (
+                    <ProductList 
+                        products={products} 
+                        query={searchTerm} 
+                        selectedCategory={selectedCategory}
+                        selectedStatus={selectedStatus}
+                        stockFilter={stockFilter}
+                        dateRange={dateRange}
+                    />
+                ) : (
+                    <ProductsTableView 
+                        products={products} 
+                        query={searchTerm} 
+                        selectedCategory={selectedCategory}
+                        selectedStatus={selectedStatus}
+                        stockFilter={stockFilter}
+                        dateRange={dateRange}
+                    />
+                )}
             </Suspense>
         </div>
     );

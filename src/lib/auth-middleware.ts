@@ -13,9 +13,24 @@ async function verifyToken(token: string): Promise<{ userId: number } | null> {
   try {
     // In a real implementation, you would verify the JWT token here
     // For now, we'll just decode the token (assuming it's a simple base64 encoded JSON)
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    // Handle both JWT format and simple base64 format
+    let payload;
+    if (token.includes('.')) {
+      // JWT format
+      payload = JSON.parse(atob(token.split('.')[1]));
+    } else {
+      // Simple base64 format
+      payload = JSON.parse(atob(token));
+    }
+    
+    // Check if token is expired
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    
     return { userId: payload.userId };
   } catch (error) {
+    console.error('Token verification error:', error);
     return null;
   }
 }

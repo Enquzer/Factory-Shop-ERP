@@ -13,6 +13,10 @@ export type Shop = {
   discount: number;
   status: 'Active' | 'Inactive' | 'Pending';
   monthlySalesTarget: number;
+  // New fields for variant visibility control
+  showVariantDetails: boolean;
+  maxVisibleVariants: number;
+  aiDistributionMode: 'proportional' | 'equal' | 'manual_override';
 };
 
 // Get all shops with pagination support
@@ -35,7 +39,30 @@ export async function getShops(limit: number = 10, offset: number = 0): Promise<
       LIMIT ? OFFSET ?
     `, limit, offset);
     
-    return { shops, totalCount };
+    console.log('Fetched shops from database:', shops);
+    
+    // Map database fields to Shop type
+    const mappedShops = shops.map((shop: any) => ({
+      id: shop.id,
+      username: shop.username,
+      name: shop.name,
+      contactPerson: shop.contactPerson,
+      contactPhone: shop.contactPhone,
+      city: shop.city,
+      exactLocation: shop.exactLocation,
+      tradeLicenseNumber: shop.tradeLicenseNumber,
+      tinNumber: shop.tinNumber,
+      discount: shop.discount,
+      status: shop.status,
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.show_variant_details === 1,
+      maxVisibleVariants: shop.max_visible_variants,
+      aiDistributionMode: shop.ai_distribution_distribution_mode as 'proportional' | 'equal' | 'manual_override'
+    }));
+    
+    console.log('Mapped shops:', mappedShops);
+    
+    return { shops: mappedShops, totalCount };
   } catch (error) {
     console.error('Error fetching shops:', error);
     return { shops: [], totalCount: 0 };
@@ -55,7 +82,27 @@ export async function getAllShops(): Promise<Shop[]> {
       SELECT * FROM shops
       ORDER BY name
     `);
-    return shops;
+    
+    // Map database fields to Shop type
+    const mappedShops = shops.map((shop: any) => ({
+      id: shop.id,
+      username: shop.username,
+      name: shop.name,
+      contactPerson: shop.contactPerson,
+      contactPhone: shop.contactPhone,
+      city: shop.city,
+      exactLocation: shop.exactLocation,
+      tradeLicenseNumber: shop.tradeLicenseNumber,
+      tinNumber: shop.tinNumber,
+      discount: shop.discount,
+      status: shop.status,
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.show_variant_details === 1,
+      maxVisibleVariants: shop.max_visible_variants,
+      aiDistributionMode: shop.ai_distribution_mode as 'proportional' | 'equal' | 'manual_override'
+    }));
+    
+    return mappedShops;
   } catch (error) {
     console.error('Error fetching shops:', error);
     return [];
@@ -71,7 +118,35 @@ export async function getShopById(id: string): Promise<Shop | null> {
     const shop = await db.get(`
       SELECT * FROM shops WHERE id = ?
     `, id);
-    return shop || null;
+    
+    console.log(`Fetched shop by ID ${id}:`, shop);
+    
+    if (!shop) {
+      return null;
+    }
+    
+    // Map database fields to Shop type
+    const mappedShop = {
+      id: shop.id,
+      username: shop.username,
+      name: shop.name,
+      contactPerson: shop.contactPerson,
+      contactPhone: shop.contactPhone,
+      city: shop.city,
+      exactLocation: shop.exactLocation,
+      tradeLicenseNumber: shop.tradeLicenseNumber,
+      tinNumber: shop.tinNumber,
+      discount: shop.discount,
+      status: shop.status,
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.show_variant_details === 1,
+      maxVisibleVariants: shop.max_visible_variants,
+      aiDistributionMode: shop.ai_distribution_mode as 'proportional' | 'equal' | 'manual_override'
+    };
+    
+    console.log(`Mapped shop by ID ${id}:`, mappedShop);
+    
+    return mappedShop;
   } catch (error) {
     console.error('Error fetching shop:', error);
     return null;
@@ -87,7 +162,28 @@ export async function getShopByUsername(username: string): Promise<Shop | null> 
     const shop = await db.get(`
       SELECT * FROM shops WHERE username = ?
     `, username);
-    return shop || null;
+    
+    if (!shop) {
+      return null;
+    }
+    // Map database fields to Shop type
+    return {
+      id: shop.id,
+      username: shop.username,
+      name: shop.name,
+      contactPerson: shop.contactPerson,
+      contactPhone: shop.contactPhone,
+      city: shop.city,
+      exactLocation: shop.exactLocation,
+      tradeLicenseNumber: shop.tradeLicenseNumber,
+      tinNumber: shop.tinNumber,
+      discount: shop.discount,
+      status: shop.status,
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.show_variant_details === 1,
+      maxVisibleVariants: shop.max_visible_variants,
+      aiDistributionMode: shop.ai_distribution_mode as 'proportional' | 'equal' | 'manual_override'
+    };
   } catch (error) {
     console.error('Error fetching shop:', error);
     return null;
@@ -103,10 +199,29 @@ export async function createShop(shop: Omit<Shop, 'id'>): Promise<Shop> {
     // Generate a simple ID
     const shopId = `SHP-${Date.now()}`;
     
+    // Log the data we're trying to insert for debugging
+    console.log('Attempting to create shop with data:', {
+      id: shopId,
+      username: shop.username,
+      name: shop.name,
+      contactPerson: shop.contactPerson,
+      contactPhone: shop.contactPhone,
+      city: shop.city,
+      exactLocation: shop.exactLocation,
+      tradeLicenseNumber: shop.tradeLicenseNumber,
+      tinNumber: shop.tinNumber,
+      discount: shop.discount,
+      status: shop.status,
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.showVariantDetails,
+      maxVisibleVariants: shop.maxVisibleVariants,
+      aiDistributionMode: shop.aiDistributionMode
+    });
+    
     await db.run(`
-      INSERT INTO shops (id, username, name, contactPerson, contactPhone, city, exactLocation, tradeLicenseNumber, tinNumber, discount, status, monthlySalesTarget)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, shopId, shop.username, shop.name, shop.contactPerson, shop.contactPhone, shop.city, shop.exactLocation, shop.tradeLicenseNumber, shop.tinNumber, shop.discount, shop.status, shop.monthlySalesTarget);
+      INSERT INTO shops (id, username, name, contactPerson, contactPhone, city, exactLocation, tradeLicenseNumber, tinNumber, discount, status, monthlySalesTarget, show_variant_details, max_visible_variants, ai_distribution_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, shopId, shop.username, shop.name, shop.contactPerson, shop.contactPhone, shop.city, shop.exactLocation, shop.tradeLicenseNumber, shop.tinNumber, shop.discount, shop.status, shop.monthlySalesTarget, shop.showVariantDetails ? 1 : 0, shop.maxVisibleVariants, shop.aiDistributionMode);
 
     return {
       id: shopId,
@@ -120,22 +235,34 @@ export async function createShop(shop: Omit<Shop, 'id'>): Promise<Shop> {
       tinNumber: shop.tinNumber,
       discount: shop.discount,
       status: shop.status,
-      monthlySalesTarget: shop.monthlySalesTarget
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.showVariantDetails,
+      maxVisibleVariants: shop.maxVisibleVariants,
+      aiDistributionMode: shop.aiDistributionMode
     };
-  } catch (error) {
+  } catch (error: any) {
+    console.error('=== DATABASE ERROR IN CREATE SHOP ===');
     console.error('Error creating shop:', error);
+    console.error('Error stack:', error.stack);
     throw error;
   }
 }
 
 // Update a shop
 export async function updateShop(id: string, shop: Partial<Shop>): Promise<boolean> {
+  let db;
   try {
-    // Get database connection
-    const db = await getDb();
+    console.log(`=== STARTING UPDATE SHOP ${id} ===`);
+    console.log(`Update data:`, shop);
     
-    const fields = [];
-    const values = [];
+    // Get database connection
+    console.log('Getting database connection...');
+    db = await getDb();
+    console.log('Database connection established');
+    console.log(`Database connection object:`, typeof db);
+    
+    const fields: string[] = [];
+    const values: any[] = [];
     
     if (shop.name !== undefined) {
       fields.push('name = ?');
@@ -172,23 +299,76 @@ export async function updateShop(id: string, shop: Partial<Shop>): Promise<boole
     if (shop.status !== undefined) {
       fields.push('status = ?');
       values.push(shop.status);
+      console.log(`Adding status update: ${shop.status}`);
     }
     if (shop.monthlySalesTarget !== undefined) {
       fields.push('monthlySalesTarget = ?');
       values.push(shop.monthlySalesTarget);
     }
+    if (shop.showVariantDetails !== undefined) {
+      fields.push('show_variant_details = ?');
+      values.push(shop.showVariantDetails ? 1 : 0);
+    }
+    if (shop.maxVisibleVariants !== undefined) {
+      fields.push('max_visible_variants = ?');
+      values.push(shop.maxVisibleVariants);
+    }
+    if (shop.aiDistributionMode !== undefined) {
+      fields.push('ai_distribution_mode = ?');
+      values.push(shop.aiDistributionMode);
+    }
+    
+    // Always update the updated_at timestamp
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    
+    console.log(`Fields to update:`, fields);
+    console.log(`Values to update:`, values);
     
     if (fields.length > 0) {
       values.push(id);
-      await db.run(`
-        UPDATE shops SET ${fields.join(', ')} WHERE id = ?
-      `, ...values);
+      const query = `UPDATE shops SET ${fields.join(', ')} WHERE id = ?`;
+      console.log('Executing query:', query);
+      console.log('Values:', values);
+      
+      try {
+        console.log('Running database query...');
+        const result = await db.run(query, ...values);
+        console.log('Database update result:', result);
+        
+        // Check if any rows were affected
+        console.log('Update result - changes:', result.changes);
+        if (result.changes === 0) {
+          console.warn(`No rows were updated for shop ${id}. Shop may not exist or no changes were made.`);
+          return false;
+        }
+        console.log(`Successfully updated shop ${id}`);
+        return true;
+      } catch (dbError: any) {
+        console.error(`Database error when updating shop ${id}:`, dbError);
+        console.error(`Database error stack:`, dbError.stack);
+        return false;
+      }
+    } else {
+      console.log('No fields to update');
+      return false;
     }
 
-    return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating shop:', error);
+    console.error('Error stack:', error.stack);
     return false;
+  } finally {
+    // Close the database connection if needed
+    if (db) {
+      try {
+        // In sqlite library, we don't need to explicitly close connections
+        // But we'll add this for future-proofing
+        console.log('Database connection managed');
+      } catch (closeError) {
+        console.error('Error closing database connection:', closeError);
+      }
+    }
+    console.log(`=== FINISHED UPDATE SHOP ${id} ===`);
   }
 }
 

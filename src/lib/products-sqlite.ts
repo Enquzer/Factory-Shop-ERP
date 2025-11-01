@@ -246,36 +246,32 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
 // Update a product
 export async function updateProduct(id: string, product: Partial<Product>): Promise<boolean> {
   try {
-    console.log('SQLite updateProduct called with id:', id, 'and data:', JSON.stringify(product, null, 2));
+    console.log('updateProduct called with id:', id, 'and data:', product);
     
     // Get database connection
     const db = await getDb();
     
-    console.log('Database connection established');
-    
-    // Get the current product for notification
-    const currentProduct = await db.get(`
-      SELECT * FROM products WHERE id = ?
-    `, id);
+    // Get current product for audit logging and validation
+    const currentProduct = await getProductById(id);
+    if (!currentProduct) {
+      console.error('Product not found with id:', id);
+      throw new Error('Product not found');
+    }
     
     console.log('Current product:', currentProduct);
     
-    if (!currentProduct) {
-      console.error('Product not found with id:', id);
-      throw new Error(`Product not found with id: ${id}`);
-    }
-
-    // Update the product
+    // Build dynamic update query based on provided fields
     const fields: string[] = [];
     const values: any[] = [];
-
-    if (product.productCode !== undefined) {
-      fields.push('productCode = ?');
-      values.push(product.productCode);
-    }
+    
+    // Handle product fields if provided
     if (product.name !== undefined) {
       fields.push('name = ?');
       values.push(product.name);
+    }
+    if (product.productCode !== undefined) {
+      fields.push('productCode = ?');
+      values.push(product.productCode);
     }
     if (product.category !== undefined) {
       fields.push('category = ?');
@@ -289,15 +285,17 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       fields.push('minimumStockLevel = ?');
       values.push(product.minimumStockLevel);
     }
-    if (product.imageUrl !== undefined) {
-      fields.push('imageUrl = ?');
-      values.push(product.imageUrl);
-    }
     if (product.description !== undefined) {
       fields.push('description = ?');
-      values.push(product.description);
+      values.push(product.description || null);
     }
+    if (product.imageUrl !== undefined) {
+      fields.push('imageUrl = ?');
+      values.push(product.imageUrl || null);
+    }
+    // Handle readyToDeliver field specifically
     if (product.readyToDeliver !== undefined) {
+      console.log('Updating readyToDeliver field to:', product.readyToDeliver);
       fields.push('readyToDeliver = ?');
       values.push(product.readyToDeliver);
     }
@@ -311,6 +309,12 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       console.log('Executing product update query:', query, 'with values:', values);
       const result = await db.run(query, ...values);
       console.log('Product update result:', result);
+      
+      // Check if any rows were affected
+      if (result.changes === 0) {
+        console.warn('No rows were updated. Product may not exist or no changes were made.');
+        // This isn't necessarily an error - it could mean no changes were needed
+      }
     }
 
     // Handle variants if provided

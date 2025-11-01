@@ -22,7 +22,15 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "./ui/textarea";
 import { addShop } from "@/lib/shops";
@@ -40,6 +48,10 @@ const shopSchema = z.object({
     monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional(),
     tradeLicenseNumber: z.string().optional(),
     tinNumber: z.string().optional(),
+    // New fields for variant visibility control
+    showVariantDetails: z.boolean().default(true),
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).default(1000),
+    aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).default('proportional')
 });
 
 type ShopFormValues = z.infer<typeof shopSchema>;
@@ -64,14 +76,18 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
         monthlySalesTarget: 10000,
         tradeLicenseNumber: "",
         tinNumber: "",
+        // New fields for variant visibility control
+        showVariantDetails: true,
+        maxVisibleVariants: 1000,
+        aiDistributionMode: "proportional"
     },
   });
 
   const onSubmit = async (data: ShopFormValues) => {
     setIsLoading(true);
     try {
-        // Only include discount in shop data if user is factory
-        const shopData: any = {
+        // Prepare shop data for submission
+        const shopData = {
             username: data.username,
             password: data.password,
             name: data.name,
@@ -80,15 +96,15 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
             city: data.city,
             exactLocation: data.exactLocation,
             discount: data.discount / 100, // Convert percentage to decimal
-            monthlySalesTarget: data.monthlySalesTarget ?? 0, // Provide default value if undefined
+            monthlySalesTarget: data.monthlySalesTarget ?? 0,
             tradeLicenseNumber: data.tradeLicenseNumber ?? "",
-            tinNumber: data.tinNumber ?? ""
+            tinNumber: data.tinNumber ?? "",
+            status: "Pending" as const, // Always set status to Pending for new shops
+            // New fields for variant visibility control with proper defaults
+            showVariantDetails: data.showVariantDetails ?? true,
+            maxVisibleVariants: data.maxVisibleVariants ?? 1000,
+            aiDistributionMode: data.aiDistributionMode ?? 'proportional'
         };
-        
-        // If user is not factory, remove discount from shop data
-        if (userRole !== 'factory') {
-            delete shopData.discount;
-        }
 
         await addShop(shopData);
         toast({
@@ -288,19 +304,74 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
                     />
                 </div>
                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Attachments (Coming Soon)</h3>
-                    <FormItem>
-                        <FormLabel>Shop Picture(s)</FormLabel>
-                        <FormControl>
-                            <Input type="file" disabled />
-                        </FormControl>
-                    </FormItem>
-                     <FormItem>
-                        <FormLabel>License Attachment</FormLabel>
-                        <FormControl>
-                            <Input type="file" disabled />
-                        </FormControl>
-                    </FormItem>
+                    <h3 className="text-lg font-medium">Variant Visibility Settings</h3>
+                    <FormField
+                        control={form.control}
+                        name="showVariantDetails"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                    <FormLabel className="text-base">Show Variant Details</FormLabel>
+                                    <p className="text-sm text-muted-foreground">
+                                        When enabled, shops see each product variant (color/size) separately.
+                                        When disabled, shops see only aggregated product totals.
+                                    </p>
+                                </div>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="maxVisibleVariants"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Max Visible Variants</FormLabel>
+                                <FormControl>
+                                    <Input 
+                                        type="number" 
+                                        min="1" 
+                                        max="1000" 
+                                        {...field} 
+                                    />
+                                </FormControl>
+                                <p className="text-xs text-muted-foreground">
+                                    Maximum number of variants to display per shop (1-1000)
+                                </p>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="aiDistributionMode"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>AI Distribution Mode</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select distribution mode" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="proportional">Proportional</SelectItem>
+                                        <SelectItem value="equal">Equal Distribution</SelectItem>
+                                        <SelectItem value="manual_override">Manual Override</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    How AI allocates orders when variants are hidden
+                                </p>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
                 </div>
             </div>
 

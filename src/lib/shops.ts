@@ -15,6 +15,10 @@ export type Shop = {
   discount: number;
   status: 'Active' | 'Inactive' | 'Pending';
   monthlySalesTarget: number;
+  // New fields for variant visibility control
+  showVariantDetails: boolean;
+  maxVisibleVariants: number;
+  aiDistributionMode: 'proportional' | 'equal' | 'manual_override';
 };
 
 // Updated type for paginated results
@@ -77,13 +81,17 @@ export async function getShopByUsername(username: string): Promise<Shop | null> 
   return await getShopByUsernameFromSQLite(username);
 }
 
-export async function addShop(shopData: Omit<Shop, 'id' | 'status'> & { password: string }): Promise<Shop> {
+export async function addShop(shopData: Omit<Shop, 'id'> & { password: string }): Promise<Shop> {
     try {
+        // Get auth token from localStorage
+        const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+        
         // Call the API endpoint to register the shop
         const response = await fetch('/api/shops', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...(authToken && { 'Authorization': `Bearer ${authToken}` })
             },
             body: JSON.stringify(shopData),
         });
@@ -91,14 +99,16 @@ export async function addShop(shopData: Omit<Shop, 'id' | 'status'> & { password
         if (!response.ok) {
             // Try to parse error response as JSON, but handle cases where it's not JSON
             let errorMessage = 'Failed to register shop';
+            let errorDetails = '';
             try {
                 const errorData = await response.json();
                 errorMessage = errorData.error || errorMessage;
+                errorDetails = errorData.details ? `: ${errorData.details}` : '';
             } catch (jsonError) {
                 // If JSON parsing fails, use the status text or a generic message
                 errorMessage = response.statusText || errorMessage;
             }
-            throw new Error(errorMessage);
+            throw new Error(`${errorMessage}${errorDetails} (Status: ${response.status})`);
         }
 
         // Try to parse the successful response as JSON
@@ -135,6 +145,23 @@ export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop
     return response.ok;
   } catch (error) {
     console.error("Error updating shop:", error);
+    return false;
+  }
+}
+
+// Add deleteShop function
+export async function deleteShop(shopId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/shops?id=${shopId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    return response.ok;
+  } catch (error) {
+    console.error("Error deleting shop:", error);
     return false;
   }
 }

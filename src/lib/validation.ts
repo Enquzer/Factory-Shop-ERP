@@ -36,7 +36,11 @@ export const shopSchema = z.object({
   tinNumber: z.string().max(50, 'TIN number must be less than 50 characters').optional().nullable(),
   discount: z.number().min(0, 'Discount must be a non-negative number').max(100, 'Discount must be less than or equal to 100'),
   monthlySalesTarget: z.number().min(0, 'Monthly sales target must be a non-negative number'),
-  status: z.enum(['Active', 'Pending', 'Suspended']).optional(),
+  status: z.enum(['Active', 'Inactive', 'Pending']).optional(),
+  // New fields for variant visibility control
+  showVariantDetails: z.boolean().optional(),
+  maxVisibleVariants: z.number().min(1).max(1000).optional(),
+  aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).optional()
 });
 
 // Order validation schema

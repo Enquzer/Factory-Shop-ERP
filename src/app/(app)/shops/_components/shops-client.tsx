@@ -22,48 +22,58 @@ import {
   } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { getShops, getPaginatedShops, type Shop } from "@/lib/shops";
+import { type Shop } from "@/lib/shops";
 import { useToast } from '@/hooks/use-toast';
 import { ShopDetailDialog } from '@/components/shop-detail-dialog';
 import { EditShopDialog } from '@/components/edit-shop-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/auth-context';
+import { deleteShop } from '@/lib/shops'; // Import deleteShop function
 
-export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
+export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops: Shop[], onShopsUpdate?: (shops: Shop[]) => void }) {
     const { user } = useAuth(); // Get user context
     const [shops, setShops] = useState<Shop[]>(initialShops);
     const [isLoading, setIsLoading] = useState(false);
-    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false); // Add state for delete operation
     
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const shopsPerPage = 2; // Reduced to 2 for better pagination testing
+    const shopsPerPage = 10; // Increased for better UX
     
     const [shopToView, setShopToView] = useState<Shop | null>(null);
     const [shopToEdit, setShopToEdit] = useState<Shop | null>(null);
-    const [shopToToggleStatus, setShopToToggleStatus] = useState<Shop | null>(null);
+    const [shopToDelete, setShopToDelete] = useState<Shop | null>(null); // Add state for shop to delete
     
     const { toast } = useToast();
 
     const fetchShops = async (page: number = 1) => {
         setIsLoading(true);
         try {
-            // Use pagination for better performance with many shops
-            const paginatedShops = await getPaginatedShops(page, shopsPerPage);
+            // Use API endpoint for fetching paginated shops
+            const response = await fetch(`/api/shops?page=${page}&limit=${shopsPerPage}`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch shops');
+            }
+            
+            const paginatedShops = await response.json();
             setShops(paginatedShops.shops);
             setTotalPages(paginatedShops.totalPages);
             setTotalCount(paginatedShops.totalCount);
             setCurrentPage(page);
+            
+            // Notify parent component of updated shops data for dashboard if callback is provided
+            if (onShopsUpdate) {
+                onShopsUpdate(paginatedShops.shops);
+            }
         } catch (error) {
             console.error('Error fetching shops:', error);
-            // Fallback to non-paginated version
-            const shopsData = await getShops(true); // Force refresh
-            setShops(shopsData);
-            setTotalPages(1);
-            setTotalCount(shopsData.length);
-            setCurrentPage(1);
+            toast({
+                title: "Error",
+                description: "Failed to fetch shops. Please try again.",
+                variant: "destructive",
+            });
         } finally {
             setIsLoading(false);
         }
@@ -79,44 +89,35 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
         setShopToEdit(null);
     }
 
-    const handleToggleStatus = async () => {
-        if (!shopToToggleStatus) return;
+    // Add handleDelete function
+    const handleDelete = async () => {
+        if (!shopToDelete) return;
         
-        setIsUpdatingStatus(true);
-        const currentStatus = shopToToggleStatus.status;
-        const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-
+        setIsDeleting(true);
         try {
-            // Use the API to update the shop status
-            const response = await fetch(`/api/shops?id=${shopToToggleStatus.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ status: newStatus }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to update shop status');
-            }
-
-            toast({
-                title: "Status Updated",
-                description: `Shop status changed to ${newStatus}`
-            });
+            const success = await deleteShop(shopToDelete.id);
             
-            // Refresh the shop list
-            fetchShops(currentPage);
-            setShopToToggleStatus(null);
+            if (success) {
+                toast({
+                    title: "Success",
+                    description: `Shop "${shopToDelete.name}" has been deleted successfully.`,
+                });
+                
+                // Refresh the shop list
+                await fetchShops(currentPage);
+                setShopToDelete(null);
+            } else {
+                throw new Error("Failed to delete shop");
+            }
         } catch (error) {
-            console.error('Error updating shop status:', error);
+            console.error('Error deleting shop:', error);
             toast({
                 title: "Error",
-                description: "Failed to update shop status",
+                description: error instanceof Error ? error.message : "Failed to delete shop",
                 variant: "destructive"
             });
         } finally {
-            setIsUpdatingStatus(false);
+            setIsDeleting(false);
         }
     };
 
@@ -143,6 +144,11 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
             });
         }
     };
+
+    // Initial fetch when component mounts
+    useEffect(() => {
+        fetchShops(currentPage);
+    }, [currentPage]);
 
     return (
         <>
@@ -174,7 +180,6 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                                 <TableHead>Shop Name</TableHead>
                                 <TableHead className="hidden md:table-cell">Contact Person</TableHead>
                                 <TableHead className="hidden lg:table-cell">Location</TableHead>
-                                <TableHead className="hidden sm:table-cell">Status</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -204,11 +209,6 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                                             </Link>
                                             <div className="text-sm text-muted-foreground">{shop.exactLocation}</div>
                                         </TableCell>
-                                        <TableCell className="hidden sm:table-cell">
-                                            <Badge variant={shop.status === 'Active' ? 'default' : shop.status === 'Pending' ? 'secondary' : 'destructive'}>
-                                                {shop.status}
-                                            </Badge>
-                                        </TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -227,11 +227,10 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem 
-                                                        onClick={() => setShopToToggleStatus(shop)}
-                                                        className={shop.status === 'Active' ? 'text-destructive' : ''}
+                                                        onClick={() => setShopToDelete(shop)}
+                                                        className="text-destructive"
                                                     >
-                                                        {shop.status === 'Active' ? <ToggleLeft className="mr-2 h-4 w-4" /> : <ToggleRight className="mr-2 h-4 w-4" />}
-                                                        {shop.status === 'Active' ? 'Deactivate' : 'Activate'}
+                                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -240,7 +239,7 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                                 ))
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                                         No shops found. <Button variant="link" onClick={() => {
                                             const registerButton = document.querySelector('[data-register-shop-button]');
                                             if (registerButton) {
@@ -316,19 +315,18 @@ export function ShopsClientPage({ initialShops }: { initialShops: Shop[] }) {
                 />
             )}
             
-            <AlertDialog open={!!shopToToggleStatus} onOpenChange={(isOpen) => !isOpen && setShopToToggleStatus(null)}>
+            <AlertDialog open={!!shopToDelete} onOpenChange={(isOpen) => !isOpen && setShopToDelete(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                     <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This will change the status of "{shopToToggleStatus?.name}" to {shopToToggleStatus?.status === 'Active' ? '"Inactive"' : '"Active"'}.
-                        An inactive shop will not be able to log in or place new orders.
+                        This will permanently delete "{shopToDelete?.name}". This action cannot be undone.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isUpdatingStatus}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleToggleStatus} disabled={isUpdatingStatus}>
-                        {isUpdatingStatus ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</> : "Confirm"}
+                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+                        {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
                     </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

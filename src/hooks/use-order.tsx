@@ -9,7 +9,7 @@ import { createNotification } from "@/lib/notifications";
 import { getShopById, getShopByUsername, type Shop } from "@/lib/shops";
 import { useAuth } from '@/contexts/auth-context';
 import { type ShopInventoryItem } from "@/lib/shop-inventory-sqlite";
-
+import { getProducts } from "@/lib/products";
 
 export type OrderItem = { 
   productId: string;
@@ -39,6 +39,7 @@ interface OrderContextType {
   getAvailableStock: (variantId: string) => number;
   // Add refresh function
   refreshOrders: () => Promise<void>;
+  addSimplifiedOrder: (productCode: string, distribution: Map<string, number>) => Promise<void>;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -60,6 +61,7 @@ const defaultOrderContext: OrderContextType = {
   shopInventory: [],
   getAvailableStock: () => 0,
   refreshOrders: async () => {},
+  addSimplifiedOrder: async () => {},
 };
 
 export function OrderProvider({ children }: { children: ReactNode }) {
@@ -487,6 +489,102 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       }
   }
 
+  const addSimplifiedOrder = async (productCode: string, distribution: Map<string, number>) => {
+    try {
+      // Get the full product with variants
+      const products = await getProducts();
+      const product = products.find(p => p.productCode === productCode);
+      
+      if (!product) {
+        toast({
+          title: "Product Not Found",
+          description: `Product ${productCode} could not be found.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Convert distribution map to order items
+      const orderItems: OrderItem[] = [];
+      let totalQuantity = 0;
+      
+      for (const [variantId, quantity] of distribution) {
+        if (quantity <= 0) continue;
+        
+        const variant = product.variants.find(v => v.id === variantId);
+        if (!variant) continue;
+        
+        // Check factory stock for this variant
+        const factoryStock = await getFactoryStock(variantId);
+        if (factoryStock < quantity) {
+          toast({
+            title: "Insufficient Factory Stock",
+            description: `Not enough stock for ${product.name} (${variant.color}, ${variant.size}). Available: ${factoryStock}, Requested: ${quantity}`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        orderItems.push({
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          imageUrl: product.imageUrl || "",
+          productCode: product.productCode,
+          variant: variant,
+          quantity: quantity
+        });
+        
+        totalQuantity += quantity;
+      }
+      
+      if (orderItems.length === 0) {
+        toast({
+          title: "No Items to Order",
+          description: "No valid items to add to your order.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Add items to the order
+      setItems(prevItems => {
+        const newItems = [...prevItems];
+        
+        for (const newItem of orderItems) {
+          const existingItemIndex = newItems.findIndex(
+            item => item.variant.id === newItem.variant.id
+          );
+          
+          if (existingItemIndex >= 0) {
+            // Update existing item quantity
+            newItems[existingItemIndex] = {
+              ...newItems[existingItemIndex],
+              quantity: newItems[existingItemIndex].quantity + newItem.quantity
+            };
+          } else {
+            // Add new item
+            newItems.push(newItem);
+          }
+        }
+        
+        return newItems;
+      });
+      
+      toast({
+        title: "Order Updated",
+        description: `Added ${totalQuantity} units of ${product.name} to your order.`,
+      });
+    } catch (error) {
+      console.error("Error adding simplified order:", error);
+      toast({
+        title: "Order Failed",
+        description: "There was an issue adding items to your order. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const value = {
     items,
     orders,
@@ -504,7 +602,9 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     shopInventory,
     getAvailableStock,
     // Add refresh function
-    refreshOrders
+    refreshOrders,
+    // Add simplified order function
+    addSimplifiedOrder
   };
 
   // Always provide the context, even for non-shop users

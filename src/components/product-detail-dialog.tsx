@@ -31,12 +31,23 @@ import {
   DialogFooter as DialogFooterPrimitive,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { StockDistributionToggle } from "@/components/stock-distribution-toggle";
+import { useShopInventory } from "@/hooks/use-shop-inventory";
+
+// Fixed TypeScript error with useShopInventory hook usage
 
 type OrderQuantities = {
     [variantId: string]: number;
 }
 
-export function ProductDetailDialog({ product, open, onOpenChange }: { product: Product; open: boolean; onOpenChange: (open: boolean) => void }) {
+type ProductDetailDialogProps = {
+    product: Product;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    userRole?: string;
+}
+
+export function ProductDetailDialog({ product, open, onOpenChange, userRole }: ProductDetailDialogProps) {
     // Try to use the order context, but provide fallbacks for factory context
     const orderContext = useOrder();
     const { toast } = useToast();
@@ -301,6 +312,10 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
         }
     };
     
+    // For shop users, get their inventory
+    const shopId = user?.id ? String(user.id) : '';
+    const { inventory: shopInventory } = useShopInventory(shopId);
+    
     const totalSelected = Object.values(quantities).reduce((sum, qty) => sum + qty, 0);
     const subTotal = Object.entries(quantities).reduce((total, [variantId, quantity]) => {
         return total + (product.price * quantity);
@@ -368,7 +383,8 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
              )}
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
+                  {/* Factory view - show all variants by color */}
+                  {user?.role === 'factory' && Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
                       <Card key={color} className="overflow-hidden">
                            <div className="relative h-48 w-full">
                               <Image 
@@ -471,7 +487,122 @@ export function ProductDetailDialog({ product, open, onOpenChange }: { product: 
                           </CardContent>
                       </Card>
                   ))}
+                  
+                  {/* Shop view - show variants with stock info */}
+                  {user?.role === 'shop' && Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
+                      <Card key={color} className="overflow-hidden">
+                          <div className="relative h-48 w-full">
+                              <Image 
+                                src={imageUrl} 
+                                alt={`${product.name} - ${color}`} 
+                                fill 
+                                sizes="(max-width: 768px) 100vw, 50vw"
+                                style={{objectFit: 'cover'}} 
+                              />
+                            </div>
+                          <CardContent className="p-4 space-y-3">
+                              <h3 className="font-bold text-lg">{color}</h3>
+                              <Separator />
+                              <div className="space-y-4">
+                                  {variants.map(variant => {
+                                      const availableStock = getRealTimeAvailableStock(variant.id);
+                                      const orderedQuantity = quantities[variant.id] || 0;
+                                      const totalInOrder = orderItems
+                                          .filter(item => item.variant.id === variant.id)
+                                          .reduce((sum, item) => sum + item.quantity, 0);
+                                      
+                                      return (
+                                          <div key={variant.id} className="grid grid-cols-3 items-center gap-2">
+                                              <div className="space-y-1">
+                                                  <p className="font-medium">{variant.size}</p>
+                                                  {user?.role === 'shop' ? (
+                                                      // For shops, show both factory and shop stock
+                                                      <>
+                                                          <div className="flex items-center gap-1">
+                                                              <Store className="h-3 w-3 text-green-500" />
+                                                              <Badge variant={availableStock > 0 ? "secondary" : "destructive"} className="text-xs">
+                                                                  Your Stock: {availableStock}
+                                                              </Badge>
+                                                          </div>
+                                                          <div className="flex items-center gap-1">
+                                                              <Factory className="h-3 w-3 text-blue-500" />
+                                                              <Badge variant={variant.stock > 0 ? "secondary" : "destructive"} className="text-xs">
+                                                                  Factory: {variant.stock}
+                                                              </Badge>
+                                                          </div>
+                                                      </>
+                                                  ) : (
+                                                      // For factory, show only factory stock
+                                                      <Badge variant={variant.stock > 0 ? "secondary" : "destructive"}>
+                                                          {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
+                                                      </Badge>
+                                                  )}
+                                                  {totalInOrder > 0 && (
+                                                      <p className="text-xs text-muted-foreground">
+                                                          {totalInOrder} already in order
+                                                      </p>
+                                                  )}
+                                              </div>
+
+                                              <div className="col-span-2 flex items-center justify-end gap-2">
+                                                  <Button 
+                                                      size="icon" 
+                                                      variant="outline" 
+                                                      className="h-8 w-8" 
+                                                      onClick={() => handleQuantityChange(variant.id, -1)} 
+                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (availableStock === 0 && variant.stock === 0) : variant.stock === 0)}
+                                                  >
+                                                      <MinusCircle className="h-4 w-4" />
+                                                  </Button>
+                                                  <Input
+                                                      type="number"
+                                                      className="w-16 h-8 text-center"
+                                                      value={orderedQuantity}
+                                                      onChange={(e) => {
+                                                          const value = parseInt(e.target.value) || 0;
+                                                          const maxAllowed = user?.role === 'shop' ? Math.max(availableStock, variant.stock) + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
+                                                          if (value <= maxAllowed) {
+                                                              setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
+                                                          } else {
+                                                              toast({
+                                                                  title: "Insufficient Stock",
+                                                                  description: `Only ${maxAllowed} items available in stock.`,
+                                                                  variant: "destructive",
+                                                              });
+                                                          }
+                                                      }}
+                                                      min="0"
+                                                      max={user?.role === 'shop' ? Math.max(availableStock, variant.stock) + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
+                                                      disabled={user?.role === 'shop' ? (availableStock === 0 && variant.stock === 0) : variant.stock === 0}
+                                                  />
+                                                  <Button 
+                                                      size="icon" 
+                                                      variant="outline" 
+                                                      className="h-8 w-8" 
+                                                      onClick={() => handleQuantityChange(variant.id, 1)} 
+                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= Math.max(availableStock, variant.stock) && Math.max(availableStock, variant.stock) > 0) : orderedQuantity >= variant.stock}
+                                                  >
+                                                      <PlusCircle className="h-4 w-4" />
+                                                  </Button>
+                                              </div>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </CardContent>
+                      </Card>
+                  ))}
              </div>
+             
+             {/* Stock Distribution Chart Toggle */}
+             <div className="mt-6">
+               <StockDistributionToggle 
+                 product={product}
+                 shopInventory={shopInventory}
+                 viewType={user?.role === 'factory' ? 'factory' : 'shop'}
+               />
+             </div>
+             
           </div>
           <DialogFooter className="flex-col sm:items-end gap-4 border-t pt-4">
               <div className="w-full sm:w-64 space-y-2 text-sm">

@@ -1,80 +1,123 @@
-# Daily Production Reporting Enhancement - Implementation Summary
+# Product Variant Visibility Control Implementation Summary
 
 ## Overview
-I have successfully enhanced the daily production reporting functionality in the Factory-Shop ERP system to make it more intuitive and provide better analysis capabilities.
-
-## Features Implemented
-
-### 1. Enhanced Daily Production Form
-- **Mode Toggle**: Users can now switch between "Size/Color Breakdown" and "Total Quantity" modes
-- **Total Quantity Entry**: Simplified data entry for users who prefer to enter a single total quantity instead of size/color breakdown
-- **Placed vs Produced Comparison**: Visual dashboard showing:
-  - Total quantity placed in the order
-  - Total quantity produced so far
-  - Remaining quantity to be produced
-
-### 2. Database Schema Updates
-- Added `isTotalUpdate` field to `daily_production_status` table to distinguish between:
-  - Granular size/color updates (isTotalUpdate = 0)
-  - Total quantity updates (isTotalUpdate = 1)
-
-### 3. API Enhancements
-- Updated daily status API endpoint to handle both update types
-- Added new API endpoint (`/api/marketing-orders/total-produced`) to fetch total produced quantity for an order
-- Enhanced data retrieval to gracefully handle cases where the new column might not exist yet
-
-### 4. Backend Logic
-- Modified database initialization to safely add the new column
-- Updated data mapping functions to handle the new field
-- Added fallback logic for backward compatibility
+This document summarizes the implementation of the Product Variant Visibility Control feature with AI-assisted distribution for the Factory-Shop ERP system.
 
 ## Files Modified
 
-1. `src/lib/db.ts` - Database schema update with `isTotalUpdate` column
-2. `src/lib/marketing-orders.ts` - Updated types and functions to support new functionality
-3. `src/app/api/marketing-orders/daily-status/route.ts` - API endpoint update
-4. `src/app/api/marketing-orders/total-produced/route.ts` - New API endpoint for total produced quantity
-5. `src/components/daily-production-form.tsx` - Enhanced UI with mode toggle and comparison dashboard
-6. `src/components/marketing-order-detail-dialog.tsx` - Updated to pass total quantity to form
+### 1. Database Schema Updates
+- **File**: `src/lib/db.ts`
+- **Changes**: Added new columns to the `shops` table:
+  - `show_variant_details` (INTEGER, default 1)
+  - `max_visible_variants` (INTEGER, default 1000)
+  - `ai_distribution_mode` (TEXT, default 'proportional')
 
-## Key Improvements
+### 2. Type Definitions
+- **File**: `src/lib/shops-sqlite.ts`
+- **Changes**: Updated `Shop` type to include new fields:
+  - `showVariantDetails: boolean`
+  - `maxVisibleVariants: number`
+  - `aiDistributionMode: 'proportional' | 'equal' | 'manual_override'`
 
-### User Experience
-- Simplified data entry with mode selection
-- Clear visualization of production progress
-- More intuitive interface for tracking daily production
+- **File**: `src/lib/shops.ts`
+- **Changes**: Updated `Shop` type to match the database schema
 
-### Data Management
-- Better organization of production data
-- Support for both detailed and aggregate tracking
-- Enhanced reporting capabilities
+### 3. Validation Schema
+- **File**: `src/lib/validation.ts`
+- **Changes**: Updated `shopSchema` to include validation for new fields
 
-### System Architecture
-- Backward compatibility maintained
-- Graceful error handling for schema updates
-- Robust API design
+### 4. UI Components
+- **File**: `src/components/register-shop-dialog.tsx`
+- **Changes**: Added form fields for variant visibility control:
+  - Switch for `showVariantDetails`
+  - Input for `maxVisibleVariants`
+  - Select for `aiDistributionMode`
 
-## Testing Results
-- Database schema updates applied successfully
-- API endpoints functioning correctly
-- UI components rendering properly
-- Data retrieval and storage working as expected
+- **File**: `src/components/edit-shop-dialog.tsx`
+- **Changes**: Added form fields for variant visibility control (same as registration)
 
-## Usage Instructions
+### 5. API Endpoints
+- **File**: `src/app/api/shops/route.ts`
+- **Changes**: Updated POST and PUT methods to handle new shop fields
 
-1. Navigate to Marketing Orders section
-2. Open a marketing order detail view
-3. In the Daily Production Status section:
-   - Toggle between "Size/Color Breakdown" and "Total Quantity" modes using the buttons
-   - Enter production data in the selected mode
-   - View real-time "Placed vs Produced" comparison in the dashboard
-4. All updates are automatically saved with date tracking
+- **File**: `src/app/api/products/view/route.ts`
+- **Changes**: Created new endpoint to serve products according to shop visibility settings
 
-## Technical Notes
+- **File**: `src/app/api/products/route.ts`
+- **Changes**: Modified GET method to support shop visibility settings
 
-- The implementation maintains full backward compatibility
-- Database schema updates are applied automatically on server startup
-- Error handling ensures system stability even if database changes haven't been applied yet
-- The new functionality integrates seamlessly with existing production tracking workflows
+### 6. Business Logic
+- **File**: `src/lib/ai-distribution.ts`
+- **Changes**: Created new module with AI distribution algorithms:
+  - Proportional distribution
+  - Equal distribution
+  - Validation functions
 
-This enhancement significantly improves the intuitiveness of the daily production reporting system while providing better analytical capabilities for production tracking.
+### 7. UI Components
+- **File**: `src/components/shop-product-view.tsx`
+- **Changes**: Created new component to display products according to shop settings
+
+## New Features Implemented
+
+### 1. Variant Visibility Control
+- Shops can toggle between detailed variant view and aggregated product view
+- Factory controls this setting per shop
+- UI adapts based on shop preferences
+
+### 2. AI-Assisted Distribution
+- When shops order products with hidden variants, AI automatically distributes quantities
+- Two distribution modes:
+  - Proportional: Based on current stock ratios
+  - Equal: Distributed evenly across all variants
+- Validation to ensure distributions don't exceed available stock
+
+### 3. Scalability Features
+- Maximum variant limit per shop (default 1000)
+- Efficient API endpoints for both detailed and aggregated views
+
+## Technical Details
+
+### Database Migration
+The implementation is backward-compatible with existing data. New columns have default values:
+- `show_variant_details`: 1 (true)
+- `max_visible_variants`: 1000
+- `ai_distribution_mode`: 'proportional'
+
+### API Endpoints
+
+1. **GET /api/products/view?shopId=SHOP_ID**
+   - Returns products according to shop's visibility settings
+   - Aggregates variants when `showVariantDetails` is false
+
+2. **Enhanced GET /api/products?for=shop&shopId=SHOP_ID**
+   - Modified existing endpoint to support visibility settings
+
+### AI Distribution Logic
+
+Located in `src/lib/ai-distribution.ts`:
+- **Proportional Distribution**: Distributes based on stock ratios with proper remainder handling
+- **Equal Distribution**: Distributes quantities evenly across variants
+- **Validation**: Ensures distributions don't exceed available stock
+
+## Testing
+
+Created test script `test-variant-visibility.js` that validates:
+- Proportional distribution accuracy
+- Equal distribution accuracy
+- Validation of distributions against available stock
+- Edge cases with insufficient stock
+
+## Benefits Achieved
+
+✅ **Reduced Shop Confusion**: Shops can choose simplified product views
+✅ **Full Data Fidelity**: Factory maintains complete variant-level data
+✅ **Scalable UI**: Supports up to 1000 variants per shop
+✅ **Smart Allocation**: AI-driven order distribution when variants are hidden
+✅ **Role-Based Visibility**: Factory controls what each shop sees
+
+## Future Enhancements
+
+1. **Manual Override Mode**: Allow factory to manually specify distribution
+2. **Historical Sales Distribution**: Use past sales data for smarter AI allocation
+3. **UI Customization**: Allow shops to customize their view preferences
+4. **Performance Optimization**: Implement caching for aggregated product views
