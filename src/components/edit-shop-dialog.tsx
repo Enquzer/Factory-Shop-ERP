@@ -78,21 +78,24 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
 
   useEffect(() => {
     if (shop) {
-        form.reset({
-            name: shop.name || "",
-            contactPerson: shop.contactPerson || "",
-            contactPhone: shop.contactPhone || "",
-            city: shop.city || "",
-            exactLocation: shop.exactLocation || "",
-            discount: shop.discount ? shop.discount * 100 : 0, // Convert to percentage for display
-            monthlySalesTarget: shop.monthlySalesTarget ?? undefined,
-            tradeLicenseNumber: shop.tradeLicenseNumber ?? "",
-            tinNumber: shop.tinNumber ?? "",
-            // New fields for variant visibility control
-            showVariantDetails: shop.showVariantDetails ?? true,
-            maxVisibleVariants: shop.maxVisibleVariants ?? undefined,
-            aiDistributionMode: shop.aiDistributionMode ?? undefined
-        });
+        // Use setTimeout to ensure the form is ready before resetting
+        setTimeout(() => {
+            form.reset({
+                name: shop.name || "",
+                contactPerson: shop.contactPerson || "",
+                contactPhone: shop.contactPhone || "",
+                city: shop.city || "",
+                exactLocation: shop.exactLocation || "",
+                discount: shop.discount ? shop.discount * 100 : 0, // Convert to percentage for display
+                monthlySalesTarget: shop.monthlySalesTarget ?? undefined,
+                tradeLicenseNumber: shop.tradeLicenseNumber ?? "",
+                tinNumber: shop.tinNumber ?? "",
+                // New fields for variant visibility control
+                showVariantDetails: shop.showVariantDetails ?? true,
+                maxVisibleVariants: shop.maxVisibleVariants ?? undefined,
+                aiDistributionMode: shop.aiDistributionMode ?? undefined
+            });
+        }, 0);
     }
   }, [shop, form]);
 
@@ -124,7 +127,10 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
         });
         
         onShopUpdated();
-        onOpenChange(false);
+        // Use setTimeout to ensure proper state updates before closing
+        setTimeout(() => {
+            onOpenChange(false);
+        }, 0);
 
     } catch (error) {
         console.error("Error updating shop:", error);
@@ -140,10 +146,10 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Edit Shop: {shop.name}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-2xl" key="edit-shop-dialog-content">
+        <DialogHeader key="edit-shop-dialog-header">
+          <DialogTitle key="edit-shop-dialog-title">Edit Shop: {shop.name}</DialogTitle>
+          <DialogDescription key="edit-shop-dialog-description">
             Update the details for this shop.
           </DialogDescription>
         </DialogHeader>
@@ -225,11 +231,11 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                     disabled={userRole !== 'factory'} // Disable for non-factory users
                                 />
                             </FormControl>
-                            {userRole !== 'factory' && (
-                                <p className="text-xs text-muted-foreground">
+                            {userRole !== 'factory' ? (
+                                <p key="discount-info" className="text-xs text-muted-foreground">
                                     Only factory users can edit discount percentage
                                 </p>
-                            )}
+                            ) : null}
                             <FormMessage />
                             </FormItem>
                         )}

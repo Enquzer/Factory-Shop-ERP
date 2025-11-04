@@ -105,7 +105,10 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                 
                 // Refresh the shop list
                 await fetchShops(currentPage);
-                setShopToDelete(null);
+                // Use setTimeout to ensure proper state updates before closing
+                setTimeout(() => {
+                    setShopToDelete(null);
+                }, 0);
             } else {
                 throw new Error("Failed to delete shop");
             }
@@ -129,7 +132,10 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
             link.download = 'shops-report.pdf';
             document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
+            // Use setTimeout to ensure proper cleanup
+            setTimeout(() => {
+                document.body.removeChild(link);
+            }, 0);
             
             toast({
                 title: "Success",
@@ -147,7 +153,10 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
 
     // Initial fetch when component mounts
     useEffect(() => {
-        fetchShops(currentPage);
+        // Use setTimeout to ensure proper initialization
+        setTimeout(() => {
+            fetchShops(currentPage);
+        }, 0);
     }, [currentPage]);
 
     return (
@@ -160,7 +169,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                         Export PDF
                     </Button>
                     <RegisterShopDialog onShopRegistered={onShopRegistered} userRole={user?.role}>
-                        <Button className="w-full sm:w-auto">
+                        <Button className="w-full sm:w-auto" data-register-shop-button>
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Register Shop
                         </Button>
@@ -186,7 +195,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                         <TableBody>
                             {shops.length > 0 ? (
                                 shops.map((shop) => (
-                                    <TableRow key={shop.id}>
+                                    <TableRow key={`shop-row-${shop.id}`}>
                                         <TableCell className="font-medium">
                                             <div className="flex items-center gap-2">
                                                 <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16" />
@@ -210,7 +219,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                             <div className="text-sm text-muted-foreground">{shop.exactLocation}</div>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <DropdownMenu>
+                                            <DropdownMenu key={`dropdown-${shop.id}`}>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon">
                                                         <MoreHorizontal className="h-4 w-4" />
@@ -219,15 +228,30 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                    <DropdownMenuItem onClick={() => setShopToView(shop)}>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        // Use setTimeout to ensure proper state updates
+                                                        setTimeout(() => {
+                                                            setShopToView(shop);
+                                                        }, 0);
+                                                    }}>
                                                         <Eye className="mr-2 h-4 w-4" /> View Details
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => setShopToEdit(shop)}>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        // Use setTimeout to ensure proper state updates
+                                                        setTimeout(() => {
+                                                            setShopToEdit(shop);
+                                                        }, 0);
+                                                    }}>
                                                         <Edit className="mr-2 h-4 w-4" /> Edit
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem 
-                                                        onClick={() => setShopToDelete(shop)}
+                                                        onClick={() => {
+                                                            // Use setTimeout to ensure proper state updates
+                                                            setTimeout(() => {
+                                                                setShopToDelete(shop);
+                                                            }, 0);
+                                                        }}
                                                         className="text-destructive"
                                                     >
                                                         <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -238,13 +262,16 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                     </TableRow>
                                 ))
                             ) : (
-                                <TableRow>
+                                <TableRow key="no-shops-row">
                                     <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                                         No shops found. <Button variant="link" onClick={() => {
-                                            const registerButton = document.querySelector('[data-register-shop-button]');
-                                            if (registerButton) {
-                                                (registerButton as HTMLButtonElement).click();
-                                            }
+                                            // Use setTimeout to ensure proper state updates
+                                            setTimeout(() => {
+                                                const registerButton = document.querySelector('[data-register-shop-button]');
+                                                if (registerButton) {
+                                                    (registerButton as HTMLButtonElement).click();
+                                                }
+                                            }, 0);
                                         }}>Register your first shop</Button>
                                     </TableCell>
                                 </TableRow>
@@ -259,9 +286,15 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                             </div>
                             <div className="flex items-center space-x-2">
                                 <Button
+                                    key="prev-button"
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => fetchShops(currentPage - 1)}
+                                    onClick={() => {
+                                        // Use setTimeout to ensure proper state updates
+                                        setTimeout(() => {
+                                            fetchShops(currentPage - 1);
+                                        }, 0);
+                                    }}
                                     disabled={currentPage === 1}
                                 >
                                     <ChevronLeft className="h-4 w-4" />
@@ -272,10 +305,15 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                     const pageNum = i + 1;
                                     return (
                                         <Button
-                                            key={pageNum}
+                                            key={`page-button-${pageNum}`}
                                             variant={pageNum === currentPage ? "default" : "outline"}
                                             size="sm"
-                                            onClick={() => fetchShops(pageNum)}
+                                            onClick={() => {
+                                                // Use setTimeout to ensure proper state updates
+                                                setTimeout(() => {
+                                                    fetchShops(pageNum);
+                                                }, 0);
+                                            }}
                                         >
                                             {pageNum}
                                         </Button>
@@ -283,9 +321,15 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                 })}
                                 
                                 <Button
+                                    key="next-button"
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => fetchShops(currentPage + 1)}
+                                    onClick={() => {
+                                        // Use setTimeout to ensure proper state updates
+                                        setTimeout(() => {
+                                            fetchShops(currentPage + 1);
+                                        }, 0);
+                                    }}
                                     disabled={currentPage === totalPages}
                                 >
                                     Next
@@ -297,40 +341,44 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                 </>
             )}
             
-            {shopToView && (
-                <ShopDetailDialog
-                    shop={shopToView}
-                    open={!!shopToView}
-                    onOpenChange={(isOpen) => !isOpen && setShopToView(null)}
-                />
-            )}
+            <div key="dialogs-container">
+                {shopToView && (
+                    <ShopDetailDialog
+                        key={`shop-detail-${shopToView.id}`}
+                        shop={shopToView}
+                        open={!!shopToView}
+                        onOpenChange={(isOpen) => !isOpen && setShopToView(null)}
+                    />
+                )}
 
-            {shopToEdit && (
-                <EditShopDialog
-                    shop={shopToEdit}
-                    open={!!shopToEdit}
-                    onOpenChange={(isOpen) => !isOpen && setShopToEdit(null)}
-                    onShopUpdated={onShopUpdated}
-                    userRole={user?.role} // Pass user role to EditShopDialog
-                />
-            )}
-            
-            <AlertDialog open={!!shopToDelete} onOpenChange={(isOpen) => !isOpen && setShopToDelete(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This will permanently delete "{shopToDelete?.name}". This action cannot be undone.
-                    </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
-                        {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
-                    </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+                {shopToEdit && (
+                    <EditShopDialog
+                        key={`shop-edit-${shopToEdit.id}`}
+                        shop={shopToEdit}
+                        open={!!shopToEdit}
+                        onOpenChange={(isOpen) => !isOpen && setShopToEdit(null)}
+                        onShopUpdated={onShopUpdated}
+                        userRole={user?.role} // Pass user role to EditShopDialog
+                    />
+                )}
+                
+                <AlertDialog key="delete-alert" open={!!shopToDelete} onOpenChange={(isOpen) => !isOpen && setShopToDelete(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete "{shopToDelete?.name}". This action cannot be undone.
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+                            {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
+                        </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
         </>
     );
 }

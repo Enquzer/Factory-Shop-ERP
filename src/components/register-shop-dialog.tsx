@@ -111,8 +111,11 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
           title: "Shop Registered Successfully",
           description: `Shop "${data.name}" has been registered.`,
         });
-        setOpen(false);
-        form.reset();
+        // Use setTimeout to ensure proper state updates before closing
+        setTimeout(() => {
+            setOpen(false);
+            form.reset();
+        }, 0);
         onShopRegistered();
     } catch (error: any) {
         console.error("Error registering shop:", error);
@@ -144,10 +147,10 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Register New Shop</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-3xl" key="register-shop-dialog-content">
+        <DialogHeader key="register-shop-dialog-header">
+          <DialogTitle key="register-shop-dialog-title">Register New Shop</DialogTitle>
+          <DialogDescription key="register-shop-dialog-description">
             Fill in the details below to register a new shop.
           </DialogDescription>
         </DialogHeader>
@@ -254,11 +257,11 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
                                     disabled={userRole !== 'factory'} // Disable for non-factory users
                                 />
                             </FormControl>
-                            {userRole !== 'factory' && (
-                                <p className="text-xs text-muted-foreground">
+                            {userRole !== 'factory' ? (
+                                <p key="discount-info" className="text-xs text-muted-foreground">
                                     Only factory users can set discount percentage
                                 </p>
-                            )}
+                            ) : null}
                             <FormMessage />
                             </FormItem>
                         )}

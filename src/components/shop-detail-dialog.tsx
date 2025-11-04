@@ -19,10 +19,10 @@ export function ShopDetailDialog({ shop, open, onOpenChange }: { shop: Shop; ope
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{shop.name}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-w-lg" key="shop-detail-dialog-content">
+        <DialogHeader key="shop-detail-dialog-header">
+          <DialogTitle key="shop-detail-dialog-title">{shop.name}</DialogTitle>
+          <DialogDescription key="shop-detail-dialog-description">
             Username: {shop.username}
           </DialogDescription>
         </DialogHeader>
