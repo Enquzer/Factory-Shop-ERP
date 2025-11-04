@@ -18,7 +18,7 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Bell, BookOpen } from 'lucide-react';
+import { Bell, BookOpen, Globe } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
@@ -137,6 +137,13 @@ export function Header() {
       <div className="w-full flex-1">
         {/* Future breadcrumbs can go here */}
       </div>
+
+      <Button variant="ghost" size={isMobile ? "icon" : "default"} className={`rounded-full ${isMobile ? 'h-8 w-8' : 'h-9 w-9'}`} asChild>
+        <Link href="/public-website">
+          <Globe className={` ${isMobile ? 'h-4 w-4' : 'h-5 w-5'}`} />
+          <span className="sr-only">Public Website</span>
+        </Link>
+      </Button>
 
       <HelpCenter />
 

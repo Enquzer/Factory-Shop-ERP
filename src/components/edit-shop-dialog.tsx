@@ -43,13 +43,13 @@ const editShopSchema = z.object({
     city: z.string().min(1, "City is required"),
     exactLocation: z.string().min(1, "Exact location is required"),
     discount: z.coerce.number().min(0, "Discount can't be negative").max(100, "Discount can't be over 100").default(0),
-    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional(),
-    tradeLicenseNumber: z.string().optional(),
-    tinNumber: z.string().optional(),
+    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional().nullable(),
+    tradeLicenseNumber: z.string().optional().nullable(),
+    tinNumber: z.string().optional().nullable(),
     // New fields for variant visibility control
     showVariantDetails: z.boolean().optional(),
-    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional(),
-    aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).optional()
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional().nullable(),
+    aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).optional().nullable()
 });
 
 type EditShopFormValues = z.infer<typeof editShopSchema>;
@@ -60,18 +60,38 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
 
   const form = useForm<EditShopFormValues>({
     resolver: zodResolver(editShopSchema),
-    defaultValues: {},
+    defaultValues: {
+      name: "",
+      contactPerson: "",
+      contactPhone: "",
+      city: "",
+      exactLocation: "",
+      discount: 0,
+      monthlySalesTarget: undefined,
+      tradeLicenseNumber: "",
+      tinNumber: "",
+      showVariantDetails: true,
+      maxVisibleVariants: 1000,
+      aiDistributionMode: "proportional"
+    },
   });
 
   useEffect(() => {
     if (shop) {
         form.reset({
-            ...shop,
-            discount: shop.discount * 100, // Convert to percentage for display
+            name: shop.name || "",
+            contactPerson: shop.contactPerson || "",
+            contactPhone: shop.contactPhone || "",
+            city: shop.city || "",
+            exactLocation: shop.exactLocation || "",
+            discount: shop.discount ? shop.discount * 100 : 0, // Convert to percentage for display
+            monthlySalesTarget: shop.monthlySalesTarget ?? undefined,
+            tradeLicenseNumber: shop.tradeLicenseNumber ?? "",
+            tinNumber: shop.tinNumber ?? "",
             // New fields for variant visibility control
-            showVariantDetails: shop.showVariantDetails,
-            maxVisibleVariants: shop.maxVisibleVariants,
-            aiDistributionMode: shop.aiDistributionMode
+            showVariantDetails: shop.showVariantDetails ?? true,
+            maxVisibleVariants: shop.maxVisibleVariants ?? undefined,
+            aiDistributionMode: shop.aiDistributionMode ?? undefined
         });
     }
   }, [shop, form]);
@@ -82,7 +102,13 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
         // Only include discount in update data if user is factory
         const updateData: any = {
             ...data,
-            discount: data.discount ? data.discount / 100 : undefined, // Convert back to decimal
+            discount: data.discount !== undefined && data.discount !== null ? data.discount / 100 : undefined, // Convert back to decimal
+            // Handle nullable fields - convert undefined to null for API consistency
+            monthlySalesTarget: data.monthlySalesTarget !== undefined ? data.monthlySalesTarget : null,
+            tradeLicenseNumber: data.tradeLicenseNumber !== undefined ? data.tradeLicenseNumber : null,
+            tinNumber: data.tinNumber !== undefined ? data.tinNumber : null,
+            maxVisibleVariants: data.maxVisibleVariants !== undefined ? data.maxVisibleVariants : null,
+            aiDistributionMode: data.aiDistributionMode !== undefined ? data.aiDistributionMode : null
         };
         
         // If user is not factory, remove discount from update data
@@ -214,18 +240,36 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>Monthly Sales Target (ETB)</FormLabel>
-                            <FormControl><Input type="number" min="0" {...field} /></FormControl>
+                            <FormControl>
+                                <Input 
+                                    type="number" 
+                                    min="0" 
+                                    value={field.value ?? undefined}
+                                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                    ref={field.ref}
+                                />
+                            </FormControl>
                             <FormMessage />
                             </FormItem>
                         )}
                     />
-                    <FormField
+                     <FormField
                         control={form.control}
                         name="tradeLicenseNumber"
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>Trade License Number</FormLabel>
-                            <FormControl><Input {...field} /></FormControl>
+                            <FormControl>
+                                <Input 
+                                    value={field.value ?? ""}
+                                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                    ref={field.ref}
+                                />
+                            </FormControl>
                             <FormMessage />
                             </FormItem>
                         )}
@@ -236,7 +280,15 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>TIN Number</FormLabel>
-                            <FormControl><Input {...field} /></FormControl>
+                            <FormControl>
+                                <Input 
+                                    value={field.value ?? ""}
+                                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                    ref={field.ref}
+                                />
+                            </FormControl>
                             <FormMessage />
                             </FormItem>
                         )}
@@ -280,7 +332,11 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                             type="number" 
                                             min="1" 
                                             max="1000" 
-                                            {...field} 
+                                            value={field.value ?? undefined}
+                                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                                            onBlur={field.onBlur}
+                                            name={field.name}
+                                            ref={field.ref}
                                         />
                                     </FormControl>
                                     <p className="text-xs text-muted-foreground">
@@ -296,7 +352,7 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>AI Distribution Mode</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select distribution mode" />

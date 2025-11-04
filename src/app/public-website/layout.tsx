@@ -1,14 +1,14 @@
 import type { Metadata } from 'next';
-import './erp-globals.css';
-import { Toaster } from '@/components/ui/toaster';
-import { AuthProvider } from '@/contexts/auth-context';
+import './globals.css';
+// import { Toaster } from '@/components/ui/toaster';
+// import { AnalyticsTracker } from '@/components/analytics-tracker';
 
 export const metadata: Metadata = {
-  title: 'Carement Central',
-  description: 'Factory and Shop Management Tool',
+  title: 'Carement Fashion - Official Website',
+  description: 'Official website of Carement Fashion - Premium fashion solutions in Ethiopia',
 };
 
-export default function RootLayout({
+export default function PublicWebsiteLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -21,10 +21,9 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-body antialiased">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
-        <Toaster />
+        {children}
+        {/* <AnalyticsTracker /> */}
+        {/* <Toaster /> */}
       </body>
     </html>
   );

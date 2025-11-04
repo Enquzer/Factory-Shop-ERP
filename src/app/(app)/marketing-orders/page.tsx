@@ -33,6 +33,9 @@ import { MarketingOrdersDashboard } from "./_components/marketing-orders-dashboa
 
 export default function MarketingOrdersPage() {
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<MarketingOrder[]>([]);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [producedQuantities, setProducedQuantities] = useState<Record<string, number>>({});
   const [processStatuses, setProcessStatuses] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
@@ -64,6 +67,29 @@ export default function MarketingOrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  useEffect(() => {
+    // Filter orders based on date range
+    if (!startDate && !endDate) {
+      setFilteredOrders(orders);
+    } else {
+      const filtered = orders.filter(order => {
+        const orderDate = new Date(order.createdAt);
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        
+        if (start && end) {
+          return orderDate >= start && orderDate <= end;
+        } else if (start) {
+          return orderDate >= start;
+        } else if (end) {
+          return orderDate <= end;
+        }
+        return true;
+      });
+      setFilteredOrders(filtered);
+    }
+  }, [orders, startDate, endDate]);
 
   const fetchOrders = async () => {
     try {
@@ -316,7 +342,7 @@ export default function MarketingOrdersPage() {
 
   const handleExportSummaryToPdf = async () => {
     try {
-      const pdfBlob = await generateSummaryReport(orders);
+      const pdfBlob = await generateSummaryReport(filteredOrders);
       downloadPDF(pdfBlob, 'marketing_orders_summary.pdf');
       
       toast({
@@ -777,15 +803,133 @@ export default function MarketingOrdersPage() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-4">
+                {/* Date Filter Section */}
+                <div className="p-4 border rounded-lg bg-muted/50">
+                  <h3 className="font-medium mb-3">Filter by Date Range</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="startDate">Start Date</Label>
+                      <Input
+                        id="startDate"
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="endDate">End Date</Label>
+                      <Input
+                        id="endDate"
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setStartDate("");
+                          setEndDate("");
+                        }}
+                        className="w-full"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Summary Report */}
                 <div className="flex justify-between items-center p-4 border rounded-lg">
                   <div>
                     <h3 className="font-medium">Summary Report</h3>
                     <p className="text-sm text-muted-foreground">Overview of all marketing orders</p>
+                    {startDate || endDate ? (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Showing {filteredOrders.length} of {orders.length} orders
+                        {startDate && ` from ${new Date(startDate).toLocaleDateString()}`}
+                        {endDate && ` to ${new Date(endDate).toLocaleDateString()}`}
+                      </p>
+                    ) : null}
                   </div>
-                  <Button onClick={handleExportSummaryToPdf}>
+                  <Button onClick={() => handleExportSummaryToPdf()}>
                     <FileText className="mr-2 h-4 w-4" />
                     Export PDF
                   </Button>
+                </div>
+
+                {/* Orders Table */}
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Order Number</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Created Date</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredOrders.length > 0 ? (
+                        filteredOrders.map((order) => (
+                          <TableRow key={order.id}>
+                            <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {order.imageUrl && (
+                                  <div className="relative h-10 w-10 rounded-md overflow-hidden">
+                                    <Image
+                                      src={order.imageUrl}
+                                      alt={order.productName}
+                                      fill
+                                      className="object-cover"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.src = '/placeholder-product.png';
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                                <div>
+                                  <div>{order.productName}</div>
+                                  <div className="text-sm text-muted-foreground">{order.productCode}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{order.quantity}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className={`h-2 w-2 rounded-full ${
+                                  order.isCompleted ? 'bg-green-500' : 
+                                  order.status.toString() === 'Cancelled' ? 'bg-red-500' : 'bg-blue-500'
+                                }`}></div>
+                                <span>{order.status}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleExportToPdf(order.id)}
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                            {startDate || endDate ? 'No orders found for the selected date range.' : 'No marketing orders found.'}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
             </CardContent>

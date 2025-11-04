@@ -39,10 +39,10 @@ export async function GET(request: Request) {
       const existingNotification = await db.get(`
         SELECT id FROM notifications 
         WHERE userType = 'factory' 
-        AND title LIKE 'Low Stock Alert%' 
+        AND title = 'Low Stock Alert' 
         AND description LIKE ? 
         AND isRead = 0
-      `, `%Product "${product.name}" (${product.color}, ${product.size}) stock is at ${variant.stock}%`);
+      `, `%Product "${product.name}" (${product.color}, ${product.size}) stock is at ${variant.stock}, which is at or below the minimum level of ${product.minimumStockLevel}.%`);
       
       // Only create notification if one doesn't already exist
       if (!existingNotification) {

@@ -14,7 +14,7 @@
 
 .loading-bar-progress {
   height: 100%;
-  background-color: #3b82f6;
+  background-color: #054150; /* Updated to the specified color */
   transition: width 0.3s ease-out;
 }
 
@@ -23,11 +23,47 @@
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  background-color: #3b82f6;
+  background-color: #054150; /* Updated to the specified color */
   color: white;
   padding: 4px 12px;
   border-radius: 4px;
   font-size: 14px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   white-space: nowrap;
+}
+
+/* Specific styles for public website */
+.public-website .loading-bar-progress {
+  background-color: #0ea5e9; /* Different color for public website */
+}
+
+/* Specific styles for ERP */
+.erp-system .loading-bar-progress {
+  background-color: #054150; /* ERP color */
+}
+
+/* Hover states for buttons */
+button:hover,
+.button:hover {
+  background-color: #C68f4f !important; /* Updated to the specified hover color */
+}
+
+/* Notification styles */
+.notification,
+.notification-badge {
+  background-color: #C68f4f !important; /* Updated to the specified color */
+}
+
+/* Status bar styles */
+.status-bar {
+  background-color: #054150; /* Updated to the specified color */
+}
+
+/* Dropdown selection styles */
+select:focus,
+select:active,
+.dropdown:focus,
+.dropdown:active {
+  border-color: #C68f4f !important; /* Updated to the specified color */
+  box-shadow: 0 0 0 2px rgba(198, 143, 79, 0.2) !important; /* #C68f4f with opacity */
 }

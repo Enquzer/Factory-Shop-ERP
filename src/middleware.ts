@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Define allowed origins (in production, you would list your actual domains)
+// Define allowed origins
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
   // Add your production domains here
+  process.env.NEXT_PUBLIC_BASE_URL ? process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '') : '',
+  // Add additional production domains as needed
   // 'https://yourdomain.com',
   // 'https://www.yourdomain.com',
-];
+].filter(origin => origin !== '');
 
 // Helper function to check if origin is allowed
 function isOriginAllowed(origin: string): boolean {

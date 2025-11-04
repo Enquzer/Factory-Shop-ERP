@@ -9,9 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Package, Grid, List } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Search, Package, Grid, List, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { ShopProductsTableView } from "./_components/shop-products-table-view";
+import { DateRange } from "react-day-picker";
 
 export default function ShopProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -19,6 +24,7 @@ export default function ShopProductsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortOption, setSortOption] = useState('name');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -64,6 +70,17 @@ export default function ShopProductsPage() {
       result = result.filter(product => product.category === selectedCategory);
     }
     
+    // Filter by date range
+    if (dateRange?.from || dateRange?.to) {
+      result = result.filter(product => {
+        const productDate = new Date(product.created_at || new Date());
+        return (
+          (!dateRange.from || productDate >= dateRange.from) &&
+          (!dateRange.to || productDate <= dateRange.to)
+        );
+      });
+    }
+    
     // Sort products
     result.sort((a, b) => {
       switch (sortOption) {
@@ -75,13 +92,21 @@ export default function ShopProductsPage() {
           return b.price - a.price;
         case 'category':
           return a.category.localeCompare(b.category);
+        case 'newest':
+          const dateA = new Date(a.created_at || new Date());
+          const dateB = new Date(b.created_at || new Date());
+          return dateB.getTime() - dateA.getTime();
+        case 'oldest':
+          const dateC = new Date(a.created_at || new Date());
+          const dateD = new Date(b.created_at || new Date());
+          return dateC.getTime() - dateD.getTime();
         default:
           return 0;
       }
     });
     
     setFilteredProducts(result);
-  }, [searchTerm, selectedCategory, sortOption, products]);
+  }, [searchTerm, selectedCategory, sortOption, dateRange, products]);
 
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
@@ -124,6 +149,45 @@ export default function ShopProductsPage() {
           />
         </div>
         
+        {/* Date Range Filter */}
+        <div className="flex gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={"outline"}
+                className={cn(
+                  "w-full md:w-48 justify-start text-left font-normal",
+                  !dateRange?.from && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange?.from ? (
+                  dateRange?.to ? (
+                    <>
+                      {format(dateRange.from, "LLL dd, y")} -{" "}
+                      {format(dateRange.to, "LLL dd, y")}
+                    </>
+                  ) : (
+                    format(dateRange.from, "LLL dd, y")
+                  )
+                ) : (
+                  <span>Recently Added</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={(range) => setDateRange(range as DateRange | undefined)}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        
         {/* View Toggle Buttons */}
         <div className="flex rounded-md border border-input">
           <Button
@@ -164,6 +228,8 @@ export default function ShopProductsPage() {
             <SelectItem value="price-low">Price: Low to High</SelectItem>
             <SelectItem value="price-high">Price: High to Low</SelectItem>
             <SelectItem value="category">Category</SelectItem>
+            <SelectItem value="newest">Newest First</SelectItem>
+            <SelectItem value="oldest">Oldest First</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -219,6 +285,7 @@ export default function ShopProductsPage() {
           searchTerm={searchTerm}
           selectedCategory={selectedCategory}
           sortOption={sortOption}
+          dateRange={dateRange ? { from: dateRange.from || undefined, to: dateRange.to || undefined } : undefined}
         />
       )}
 

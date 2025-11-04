@@ -27,6 +27,7 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
   const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false);
+  const [isOrderDetailsDialogOpen, setIsOrderDetailsDialogOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [isClosing, setIsClosing] = useState(false);
   const { toast } = useToast();
@@ -363,7 +364,7 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
                       size="sm"
                       onClick={() => {
                         setSelectedOrder(order);
-                        setIsFeedbackDialogOpen(true);
+                        setIsOrderDetailsDialogOpen(true);
                       }}
                     >
                       <Eye className="h-4 w-4" />
@@ -575,6 +576,184 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
             </Button>
             <Button variant="destructive" onClick={handleDeleteOrder}>
               Delete Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Order Details Dialog */}
+      <Dialog open={isOrderDetailsDialogOpen} onOpenChange={setIsOrderDetailsDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Order Details</DialogTitle>
+            <DialogDescription>
+              Full details and status for order {selectedOrder?.id}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedOrder && (
+            <div className="space-y-6">
+              {/* Order Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Order Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Order ID</div>
+                    <div className="font-medium">{selectedOrder.id}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Order Date</div>
+                    <div className="font-medium">{new Date(selectedOrder.date).toLocaleDateString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Shop Name</div>
+                    <div className="font-medium">{selectedOrder.shopName}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Status</div>
+                    <div className="font-medium">
+                      <OrderStatusIndicator status={selectedOrder.status} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Total Amount</div>
+                    <div className="font-medium">ETB {selectedOrder.amount.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Is Closed</div>
+                    <div className="font-medium">{selectedOrder.isClosed ? 'Yes' : 'No'}</div>
+                  </div>
+                  {selectedOrder.feedback && (
+                    <div className="md:col-span-2">
+                      <div className="text-sm text-muted-foreground">Feedback</div>
+                      <div className="font-medium p-3 bg-muted rounded-md">{selectedOrder.feedback}</div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              
+              {/* Order Items */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Order Items</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Variant</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Unit Price</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedOrder.items.map((item, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              {item.imageUrl ? (
+                                <div className="relative h-12 w-12 rounded-md overflow-hidden">
+                                  <Image
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    fill
+                                    className="object-cover"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.src = '/placeholder-product.png';
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="bg-muted rounded-md w-12 h-12 flex items-center justify-center">
+                                  <Package className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-medium">{item.name}</div>
+                                <div className="text-sm text-muted-foreground">{item.productId}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div>{item.variant.color}, {item.variant.size}</div>
+                          </TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">ETB {item.price.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">ETB {(item.quantity * item.price).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-right font-medium">Total</TableCell>
+                        <TableCell className="text-right font-bold">ETB {selectedOrder.amount.toLocaleString()}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+              
+              {/* Dispatch Information */}
+              {selectedOrder.dispatchInfo && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Dispatch Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Shop Name</div>
+                      <div className="font-medium">{selectedOrder.dispatchInfo.shopName}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Transport License Plate</div>
+                      <div className="font-medium">{selectedOrder.dispatchInfo.transportLicensePlate}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Contact Person</div>
+                      <div className="font-medium">{selectedOrder.dispatchInfo.contactPerson}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Dispatch Date</div>
+                      <div className="font-medium">{new Date(selectedOrder.dispatchInfo.dispatchDate).toLocaleDateString()}</div>
+                    </div>
+                    {selectedOrder.dispatchInfo.driverName && (
+                      <div>
+                        <div className="text-sm text-muted-foreground">Driver Name</div>
+                        <div className="font-medium">{selectedOrder.dispatchInfo.driverName}</div>
+                      </div>
+                    )}
+                    {selectedOrder.dispatchInfo.attachments && selectedOrder.dispatchInfo.attachments.length > 0 && (
+                      <div>
+                        <div className="text-sm text-muted-foreground">Attachments</div>
+                        <div className="font-medium">
+                          {selectedOrder.dispatchInfo.attachments.map((attachment, index) => (
+                            <div key={index} className="text-sm">{attachment}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Status History */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Status History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <OrderStatusFlow order={selectedOrder} />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsOrderDetailsDialogOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

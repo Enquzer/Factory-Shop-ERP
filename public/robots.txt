@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /public-website/
+Allow: /public-website/analytics/
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /products/
+Disallow: /inventory/
+Disallow: /shops/
+Disallow: /orders/
+Disallow: /marketing-orders/
+Disallow: /reports/
+Disallow: /profile/
+Disallow: /shop/
+Disallow: /login/
+Disallow: /factory/
+
+Sitemap: https://carement.com/sitemap.xml

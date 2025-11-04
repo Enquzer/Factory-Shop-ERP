@@ -9,19 +9,22 @@ import { Download, Eye } from "lucide-react";
 import { Product } from "@/lib/products";
 import { useToast } from "@/hooks/use-toast";
 import { generateColorScheme } from "@/lib/stock-distribution";
+import { DateRange } from "react-day-picker";
 
 interface ShopProductsTableViewProps {
   products: Product[];
   searchTerm: string;
   selectedCategory: string;
   sortOption: string;
+  dateRange?: DateRange;
 }
 
 export function ShopProductsTableView({ 
   products, 
   searchTerm,
   selectedCategory,
-  sortOption
+  sortOption,
+  dateRange
 }: ShopProductsTableViewProps) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
@@ -49,6 +52,17 @@ export function ShopProductsTableView({
       result = result.filter(product => product.category === selectedCategory);
     }
     
+    // Filter by date range
+    if (dateRange?.from || dateRange?.to) {
+      result = result.filter(product => {
+        const productDate = new Date(product.created_at || new Date());
+        return (
+          (!dateRange.from || productDate >= dateRange.from) &&
+          (!dateRange.to || productDate <= dateRange.to)
+        );
+      });
+    }
+    
     // Sort products
     result.sort((a, b) => {
       switch (sortOption) {
@@ -60,24 +74,33 @@ export function ShopProductsTableView({
           return b.price - a.price;
         case 'category':
           return a.category.localeCompare(b.category);
+        case 'newest':
+          const dateA = new Date(a.created_at || new Date());
+          const dateB = new Date(b.created_at || new Date());
+          return dateB.getTime() - dateA.getTime();
+        case 'oldest':
+          const dateC = new Date(a.created_at || new Date());
+          const dateD = new Date(b.created_at || new Date());
+          return dateC.getTime() - dateD.getTime();
         default:
           return 0;
       }
     });
     
     return result;
-  }, [products, searchTerm, selectedCategory, sortOption]);
+  }, [products, searchTerm, selectedCategory, sortOption, dateRange]);
 
   // Export to CSV
   const exportToCSV = async () => {
     setExporting(true);
     try {
       // Generate CSV content
-      let csvContent = "Product Code,Product Name,Category,Price,Total Stock Quantity\n";
+      let csvContent = "Product Code,Product Name,Category,Price,Total Stock Quantity,Created Date\n";
       
       filteredProducts.forEach(product => {
         const totalStock = calculateTotalStock(product);
-        csvContent += `"${product.productCode}","${product.name}","${product.category}",${product.price},${totalStock}\n`;
+        const createdDate = product.created_at ? new Date(product.created_at).toLocaleDateString() : 'N/A';
+        csvContent += `"${product.productCode}","${product.name}","${product.category}",${product.price},${totalStock},"${createdDate}"\n`;
       });
       
       // Create download link
@@ -189,6 +212,7 @@ export function ShopProductsTableView({
               <TableHead>Category</TableHead>
               <TableHead>Price</TableHead>
               <TableHead>Total Stock Quantity</TableHead>
+              <TableHead>Created Date</TableHead>
               <TableHead>Stock Distribution</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -196,6 +220,7 @@ export function ShopProductsTableView({
           <TableBody>
             {filteredProducts.map((product) => {
               const totalStock = calculateTotalStock(product);
+              const createdDate = product.created_at ? new Date(product.created_at).toLocaleDateString() : 'N/A';
               
               return (
                 <TableRow key={product.id}>
@@ -226,6 +251,7 @@ export function ShopProductsTableView({
                       {totalStock} in stock
                     </Badge>
                   </TableCell>
+                  <TableCell>{createdDate}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {/* Color variant representation */}

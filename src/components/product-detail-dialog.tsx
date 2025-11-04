@@ -150,7 +150,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
           }
         }
         
-        if (newQuantity > availableStock && amount > 0) {
+        // For shop users, we've already validated against factory stock above
+        // For factory users, check against actual stock
+        if (user?.role === 'factory' && newQuantity > availableStock && amount > 0) {
             toast({
                 title: "Insufficient Stock",
                 description: `Only ${availableStock} items available in stock.`,
@@ -445,7 +447,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, -1)} 
-                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (availableStock === 0 && variant.stock === 0) : variant.stock === 0)}
+                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0)}
                                                   >
                                                       <MinusCircle className="h-4 w-4" />
                                                   </Button>
@@ -455,7 +457,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       value={orderedQuantity}
                                                       onChange={(e) => {
                                                           const value = parseInt(e.target.value) || 0;
-                                                          const maxAllowed = user?.role === 'shop' ? Math.max(availableStock, variant.stock) + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
+                                                          const maxAllowed = user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
                                                           if (value <= maxAllowed) {
                                                               setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
                                                           } else {
@@ -467,15 +469,15 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                           }
                                                       }}
                                                       min="0"
-                                                      max={user?.role === 'shop' ? Math.max(availableStock, variant.stock) + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
-                                                      disabled={user?.role === 'shop' ? (availableStock === 0 && variant.stock === 0) : variant.stock === 0}
+                                                      max={user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
+                                                      disabled={user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0}
                                                   />
                                                   <Button 
                                                       size="icon" 
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, 1)} 
-                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= Math.max(availableStock, variant.stock) && Math.max(availableStock, variant.stock) > 0) : orderedQuantity >= variant.stock}
+                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= variant.stock && variant.stock > 0) : orderedQuantity >= variant.stock}
                                                   >
                                                       <PlusCircle className="h-4 w-4" />
                                                   </Button>
@@ -550,7 +552,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, -1)} 
-                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (availableStock === 0 && variant.stock === 0) : variant.stock === 0)}
+                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0)}
                                                   >
                                                       <MinusCircle className="h-4 w-4" />
                                                   </Button>
@@ -560,7 +562,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       value={orderedQuantity}
                                                       onChange={(e) => {
                                                           const value = parseInt(e.target.value) || 0;
-                                                          const maxAllowed = user?.role === 'shop' ? Math.max(availableStock, variant.stock) + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
+                                                          const maxAllowed = user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
                                                           if (value <= maxAllowed) {
                                                               setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
                                                           } else {
@@ -572,15 +574,15 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                           }
                                                       }}
                                                       min="0"
-                                                      max={user?.role === 'shop' ? Math.max(availableStock, variant.stock) + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
-                                                      disabled={user?.role === 'shop' ? (availableStock === 0 && variant.stock === 0) : variant.stock === 0}
+                                                      max={user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
+                                                      disabled={user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0}
                                                   />
                                                   <Button 
                                                       size="icon" 
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, 1)} 
-                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= Math.max(availableStock, variant.stock) && Math.max(availableStock, variant.stock) > 0) : orderedQuantity >= variant.stock}
+                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= variant.stock && variant.stock > 0) : orderedQuantity >= variant.stock}
                                                   >
                                                       <PlusCircle className="h-4 w-4" />
                                                   </Button>

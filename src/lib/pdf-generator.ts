@@ -345,13 +345,37 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     doc.text(`Total Amount: ETB ${order.amount.toLocaleString()}`, 20, 102);
     
     // Add delivery date if available
+    let currentY = 109;
     if (order.deliveryDate) {
-      doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, 109);
+      doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, currentY);
+      currentY += 7;
+    }
+    
+    // Add delivery performance metrics if available
+    if (order.requestedDeliveryDate || order.expectedReceiptDate || order.actualDispatchDate || order.confirmationDate) {
+      doc.text('Delivery Performance:', 20, currentY);
+      currentY += 7;
+      
+      if (order.requestedDeliveryDate) {
+        doc.text(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
+      if (order.expectedReceiptDate) {
+        doc.text(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
+      if (order.actualDispatchDate) {
+        doc.text(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
+      if (order.confirmationDate) {
+        doc.text(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
     }
     
     // Add dispatch information if available
     if (order.dispatchInfo) {
-      let currentY = order.deliveryDate ? 116 : 109;
       doc.text('Dispatch Information:', 20, currentY);
       currentY += 7;
       doc.text(`  Shop Name: ${order.dispatchInfo.shopName}`, 20, currentY);
@@ -372,17 +396,12 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     }
     
     // Add a line separator
-    let startY = 100;
-    if (order.dispatchInfo) {
-      startY = order.deliveryDate ? 130 : 123;
-    } else if (order.deliveryDate) {
-      startY = 102;
-    }
-    doc.line(20, startY, 190, startY);
+    doc.line(20, currentY + 5, 190, currentY + 5);
+    currentY += 10;
     
     // Add table title
     doc.setFontSize(14);
-    doc.text('Order Items', 105, startY + 10, { align: 'center' });
+    doc.text('Order Items', 105, currentY, { align: 'center' });
     
     // Create table data with image placeholders
     const imagePromises = [];
@@ -411,7 +430,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     
     // Add table with order items including images
     (doc as any).autoTable({
-      startY: startY + 15,
+      startY: currentY + 15,
       head: [['Product Image', 'Product ID', 'Product', 'Variant', 'Quantity', 'Price (ETB)', 'Total (ETB)']],
       body: order.items.map((item, index) => {
         const imageBase64 = images[index];
@@ -475,8 +494,137 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
       }
     });
     
+    // Add payment information if available
+    let finalY = (doc as any).lastAutoTable.finalY || currentY + 30;
+    finalY += 15; // Increased spacing to prevent overlap
+    
+    if (order.paymentSlipUrl) {
+      doc.setFontSize(14);
+      doc.text('Payment Information', 20, finalY);
+      finalY += 10;
+      
+      doc.setFontSize(12);
+      doc.text('Payment Status: Payment Confirmed', 20, finalY);
+      finalY += 10; // Increased spacing
+      
+      doc.text('Payment Slip:', 20, finalY);
+      finalY += 10; // Increased spacing
+      
+      // Try to add payment slip image
+      try {
+        const paymentSlipBase64 = await imageUrlToBase64(order.paymentSlipUrl);
+        // Check if we need a new page
+        if (finalY > 240) { // Near bottom of page
+          doc.addPage();
+          finalY = 20;
+        }
+        doc.addImage(paymentSlipBase64, 'PNG', 20, finalY, 80, 60);
+        finalY += 75; // Increased spacing after image
+      } catch (error) {
+        console.warn('Could not load payment slip image:', error);
+        doc.text('Payment slip image not available', 20, finalY);
+        finalY += 15; // Increased spacing
+      }
+    }
+    
+    // Add order progress/status information
+    // Check if we need a new page
+    if (finalY > 200) {
+      doc.addPage();
+      finalY = 20;
+    }
+    
+    doc.setFontSize(14);
+    doc.text('Order Progress', 20, finalY);
+    finalY += 10;
+    
+    // Add status flow information
+    const statuses = [
+      'Order Placed',
+      'Payment Awaiting',
+      'Payment Confirmed',
+      'Order Dispatched',
+      'Order Delivered',
+      'Order Cancelled'
+    ];
+    
+    // Find current status index
+    const statusOrder = ['Pending', 'Awaiting Payment', 'Paid', 'Dispatched', 'Delivered', 'Cancelled'];
+    const currentStatusIndex = statusOrder.indexOf(order.status);
+    
+    // Add status indicators
+    statuses.forEach((status, index) => {
+      const isCurrent = index === currentStatusIndex;
+      const isCompleted = index < currentStatusIndex;
+      
+      doc.setFontSize(10);
+      if (isCurrent) {
+        doc.setTextColor(22, 160, 133); // Carement green
+        doc.text(`${status} ← Current`, 25, finalY);
+      } else if (isCompleted) {
+        doc.setTextColor(0, 150, 0); // Dark green
+        doc.text(`${status} ✓`, 25, finalY);
+      } else {
+        doc.setTextColor(150, 150, 150); // Gray
+        doc.text(status, 25, finalY);
+      }
+      finalY += 7;
+    });
+    
+    // Add current status description
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Current Status', 20, finalY);
+    finalY += 7;
+    
+    let statusDescription = '';
+    switch (order.status) {
+      case 'Pending':
+        statusDescription = 'Order has been placed but payment is pending.';
+        break;
+      case 'Awaiting Payment':
+        statusDescription = 'Payment is being processed.';
+        break;
+      case 'Paid':
+        statusDescription = 'Payment confirmed. Order is being prepared for dispatch.';
+        break;
+      case 'Dispatched':
+        statusDescription = 'Order has been dispatched to the shop.';
+        break;
+      case 'Delivered':
+        statusDescription = 'Order has been delivered to the shop.';
+        break;
+      case 'Cancelled':
+        statusDescription = 'Order has been cancelled.';
+        break;
+      default:
+        statusDescription = `Order is in ${order.status} status.`;
+    }
+    
+    doc.setFontSize(10);
+    doc.text(statusDescription, 25, finalY);
+    finalY += 15; // Increased spacing
+    
+    // Add inventory update information
+    // Check if we need a new page
+    if (finalY > 200) {
+      doc.addPage();
+      finalY = 20;
+    }
+    
+    doc.setFontSize(14);
+    doc.text('Inventory Update', 20, finalY);
+    finalY += 10;
+    
+    doc.setFontSize(10);
+    if (order.status === 'Paid' || order.status === 'Dispatched' || order.status === 'Delivered') {
+      doc.text('Status: Inventory has been updated. Shop inventory increased and factory stock reduced when payment was confirmed.', 25, finalY);
+    } else {
+      doc.text('Status: Inventory update pending.', 25, finalY);
+    }
+    finalY += 15; // Increased spacing
+    
     // Add footer
-    const finalY = (doc as any).lastAutoTable.finalY || startY + 30;
     addFooter(doc, finalY);
     
     // Generate PDF as blob
@@ -515,13 +663,37 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     doc.text(`Total Amount: ETB ${order.amount.toLocaleString()}`, 20, 102);
     
     // Add delivery date if available
+    let currentY = 109;
     if (order.deliveryDate) {
-      doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, 109);
+      doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, currentY);
+      currentY += 7;
+    }
+    
+    // Add delivery performance metrics if available
+    if (order.requestedDeliveryDate || order.expectedReceiptDate || order.actualDispatchDate || order.confirmationDate) {
+      doc.text('Delivery Performance:', 20, currentY);
+      currentY += 7;
+      
+      if (order.requestedDeliveryDate) {
+        doc.text(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
+      if (order.expectedReceiptDate) {
+        doc.text(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
+      if (order.actualDispatchDate) {
+        doc.text(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
+      if (order.confirmationDate) {
+        doc.text(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`, 20, currentY);
+        currentY += 7;
+      }
     }
     
     // Add dispatch information if available
     if (order.dispatchInfo) {
-      let currentY = order.deliveryDate ? 116 : 109;
       doc.text('Dispatch Information:', 20, currentY);
       currentY += 7;
       doc.text(`  Shop Name: ${order.dispatchInfo.shopName}`, 20, currentY);
@@ -542,17 +714,12 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     }
     
     // Add a line separator
-    let startY = 100;
-    if (order.dispatchInfo) {
-      startY = order.deliveryDate ? 130 : 123;
-    } else if (order.deliveryDate) {
-      startY = 102;
-    }
-    doc.line(20, startY, 190, startY);
+    doc.line(20, currentY + 5, 190, currentY + 5);
+    currentY += 10;
     
     // Add table title
     doc.setFontSize(14);
-    doc.text('Order Items', 105, startY + 10, { align: 'center' });
+    doc.text('Order Items', 105, currentY, { align: 'center' });
     
     // Create table data with image placeholders
     const imagePromises = [];
@@ -581,7 +748,7 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     
     // Add table with order items including images
     (doc as any).autoTable({
-      startY: startY + 15,
+      startY: currentY + 15,
       head: [['Product Image', 'Product ID', 'Product', 'Variant', 'Quantity', 'Price (ETB)', 'Total (ETB)']],
       body: order.items.map((item, index) => {
         const imageBase64 = images[index];
@@ -644,6 +811,122 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
         }
       }
     });
+    
+    // Add payment information if available
+    let finalY = (doc as any).lastAutoTable.finalY || currentY + 30;
+    finalY += 10;
+    
+    if (order.paymentSlipUrl) {
+      doc.setFontSize(14);
+      doc.text('Payment Information', 20, finalY);
+      finalY += 10;
+      
+      doc.setFontSize(12);
+      doc.text('Payment Status: Payment Confirmed', 20, finalY);
+      finalY += 7;
+      
+      doc.text('Payment Slip:', 20, finalY);
+      finalY += 7;
+      
+      // Try to add payment slip image
+      try {
+        const paymentSlipBase64 = await imageUrlToBase64(order.paymentSlipUrl);
+        doc.addImage(paymentSlipBase64, 'PNG', 20, finalY, 80, 60);
+        finalY += 70;
+      } catch (error) {
+        console.warn('Could not load payment slip image:', error);
+        doc.text('Payment slip image not available', 20, finalY);
+        finalY += 10;
+      }
+    }
+    
+    // Add order progress/status information
+    doc.setFontSize(14);
+    doc.text('Order Progress', 20, finalY);
+    finalY += 10;
+    
+    // Add status flow information
+    const statuses = [
+      'Order Placed',
+      'Payment Awaiting',
+      'Payment Confirmed',
+      'Order Dispatched',
+      'Order Delivered',
+      'Order Cancelled'
+    ];
+    
+    // Find current status index
+    const statusOrder = ['Pending', 'Awaiting Payment', 'Paid', 'Dispatched', 'Delivered', 'Cancelled'];
+    const currentStatusIndex = statusOrder.indexOf(order.status);
+    
+    // Add status indicators
+    statuses.forEach((status, index) => {
+      const isCurrent = index === currentStatusIndex;
+      const isCompleted = index < currentStatusIndex;
+      
+      doc.setFontSize(10);
+      if (isCurrent) {
+        doc.setTextColor(22, 160, 133); // Carement green
+        doc.text(`${status} ← Current`, 25, finalY);
+      } else if (isCompleted) {
+        doc.setTextColor(0, 150, 0); // Dark green
+        doc.text(`${status} ✓`, 25, finalY);
+      } else {
+        doc.setTextColor(150, 150, 150); // Gray
+        doc.text(status, 25, finalY);
+      }
+      finalY += 7;
+    });
+    
+    // Add current status description
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Current Status', 20, finalY);
+    finalY += 7;
+    
+    let statusDescription = '';
+    switch (order.status) {
+      case 'Pending':
+        statusDescription = 'Order has been placed but payment is pending.';
+        break;
+      case 'Awaiting Payment':
+        statusDescription = 'Payment is being processed.';
+        break;
+      case 'Paid':
+        statusDescription = 'Payment confirmed. Order is being prepared for dispatch.';
+        break;
+      case 'Dispatched':
+        statusDescription = 'Order has been dispatched to the shop.';
+        break;
+      case 'Delivered':
+        statusDescription = 'Order has been delivered to the shop.';
+        break;
+      case 'Cancelled':
+        statusDescription = 'Order has been cancelled.';
+        break;
+      default:
+        statusDescription = `Order is in ${order.status} status.`;
+    }
+    
+    doc.setFontSize(10);
+    doc.text(statusDescription, 25, finalY);
+    finalY += 10;
+    
+    // Add inventory update information
+    doc.setFontSize(14);
+    doc.text('Inventory Update', 20, finalY);
+    finalY += 10;
+    
+    doc.setFontSize(10);
+    if (order.status === 'Paid' || order.status === 'Dispatched' || order.status === 'Delivered') {
+      doc.text('Status: Inventory has been updated. Shop inventory increased and factory stock reduced when payment was confirmed.', 25, finalY);
+    } else {
+      doc.text('Status: Inventory update pending.', 25, finalY);
+    }
+    finalY += 10;
+    
+    // Add footer
+    addFooter(doc, finalY);
     
     // Generate PDF as blob
     const pdfBlob = doc.output('blob');

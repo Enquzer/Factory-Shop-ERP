@@ -5,5 +5,7 @@
       "url": "./.vscode/package.schema.json"
     }
   ],
-  "json.validate.enable": false
+  "json.validate.enable": false,
+  "css.validate": false,
+  "scss.validate": false
 }

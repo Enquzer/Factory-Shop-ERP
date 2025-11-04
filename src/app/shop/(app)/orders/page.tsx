@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useOrder } from "@/hooks/use-order";
 import { useAuth } from '@/contexts/auth-context';
 import { type Shop } from "@/lib/shops";
 import { type Order, type OrderStatus } from "@/lib/orders";
-import { Loader2, Upload, X, FileText } from "lucide-react";
+import { Loader2, Upload, X, FileText, Search, CalendarIcon } from "lucide-react";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
 import { OrderStatusIndicator } from "@/app/(app)/orders/_components/order-status-indicator";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { DateRange } from "react-day-picker";
 
 export default function ShopOrdersPage() {
     const { orders, isLoading, refreshOrders } = useOrder();
@@ -28,6 +35,12 @@ export default function ShopOrdersPage() {
     const [isClosed, setIsClosed] = useState(false);
     const [showDeliveryForm, setShowDeliveryForm] = useState(false);
     const [selectedOrderForDelivery, setSelectedOrderForDelivery] = useState<Order | null>(null);
+    
+    // Filter states
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+    
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -47,6 +60,36 @@ export default function ShopOrdersPage() {
             fetchShop();
         }
     }, [user?.username]);
+
+    // Filter orders based on search criteria
+    const filteredOrders = useMemo(() => {
+        let result = [...orders];
+        
+        // Filter by search term (order ID)
+        if (searchTerm) {
+            result = result.filter(order => 
+                order.id.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+        
+        // Filter by status
+        if (statusFilter !== 'All') {
+            result = result.filter(order => order.status === statusFilter);
+        }
+        
+        // Filter by date range
+        if (dateRange?.from || dateRange?.to) {
+            result = result.filter(order => {
+                const orderDate = new Date(order.date);
+                return (
+                    (!dateRange.from || orderDate >= dateRange.from) &&
+                    (!dateRange.to || orderDate <= dateRange.to)
+                );
+            });
+        }
+        
+        return result;
+    }, [orders, searchTerm, statusFilter, dateRange]);
 
     const handleViewOrder = (order: Order) => {
         setSelectedOrder(order);
@@ -359,6 +402,71 @@ export default function ShopOrdersPage() {
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">My Orders</h1>
             </div>
+            
+            {/* Filters */}
+            <div className="flex flex-col md:flex-row gap-4">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <Input
+                        placeholder="Search by Order ID..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                    />
+                </div>
+                
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full md:w-40">
+                        <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="All">All Statuses</SelectItem>
+                        <SelectItem value="Pending">Pending</SelectItem>
+                        <SelectItem value="Awaiting Payment">Awaiting Payment</SelectItem>
+                        <SelectItem value="Paid">Paid</SelectItem>
+                        <SelectItem value="Dispatched">Dispatched</SelectItem>
+                        <SelectItem value="Delivered">Delivered</SelectItem>
+                        <SelectItem value="Cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                </Select>
+                
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant={"outline"}
+                            className={cn(
+                                "w-full md:w-48 justify-start text-left font-normal",
+                                !dateRange?.from && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateRange?.from ? (
+                                dateRange?.to ? (
+                                    <>
+                                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                                        {format(dateRange.to, "LLL dd, y")}
+                                    </>
+                                ) : (
+                                    format(dateRange.from, "LLL dd, y")
+                                )
+                            ) : (
+                                <span>Date Range</span>
+                            )}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                            initialFocus
+                            mode="range"
+                            defaultMonth={dateRange?.from}
+                            selected={dateRange}
+                            onSelect={setDateRange}
+                            numberOfMonths={2}
+                        />
+                    </PopoverContent>
+                </Popover>
+            </div>
+            
             <Card>
                 <CardHeader>
                     <CardTitle>Order History</CardTitle>
@@ -382,8 +490,8 @@ export default function ShopOrdersPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {orders.length > 0 ? (
-                                    orders.map((order) => (
+                                {filteredOrders.length > 0 ? (
+                                    filteredOrders.map((order) => (
                                         <TableRow key={order.id}>
                                             <TableCell className="font-medium">{order.id}</TableCell>
                                             <TableCell className="hidden sm:table-cell">{order.date}</TableCell>
@@ -402,7 +510,7 @@ export default function ShopOrdersPage() {
                                 ) : (
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                                            You haven't placed any orders yet.
+                                            No orders found matching your filters.
                                         </TableCell>
                                     </TableRow>
                                 )}

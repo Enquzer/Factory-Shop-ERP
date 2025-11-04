@@ -6,9 +6,10 @@ import './loading-bar.css';
 interface LoadingBarProps {
   isLoading: boolean;
   message?: string;
+  variant?: 'public' | 'erp'; // Add variant prop to differentiate between public website and ERP
 }
 
-export function LoadingBar({ isLoading, message = "Loading..." }: LoadingBarProps) {
+export function LoadingBar({ isLoading, message = "Loading...", variant = 'erp' }: LoadingBarProps) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -49,8 +50,11 @@ export function LoadingBar({ isLoading, message = "Loading..." }: LoadingBarProp
     return null;
   }
 
+  // Determine the variant class
+  const variantClass = variant === 'public' ? 'public-website' : 'erp-system';
+
   return (
-    <div className="loading-bar-container">
+    <div className={`loading-bar-container ${variantClass}`}>
       <div className="loading-bar">
         <div 
           className="loading-bar-progress"

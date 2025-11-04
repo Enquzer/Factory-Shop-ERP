@@ -50,14 +50,8 @@ export function PlaceOrderDialog({
       return;
     }
 
-    if (quantity > item.stock) {
-      toast({
-        title: "Insufficient Stock",
-        description: `You only have ${item.stock} units available.`,
-        variant: "destructive",
-      });
-      return;
-    }
+    // Check factory stock instead of shop inventory
+    // This will be validated properly in the useOrder hook
 
     // Create a product object that matches the expected structure
     const product = {
@@ -109,11 +103,14 @@ export function PlaceOrderDialog({
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="available-stock" className="text-right">
-              Available Stock
+              Your Stock
             </Label>
             <div className="col-span-3 font-medium">
               {item.stock} units
             </div>
+          </div>
+          <div className="text-sm text-muted-foreground col-span-4 text-center">
+            Order will be fulfilled from factory stock
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="quantity" className="text-right">
@@ -123,9 +120,8 @@ export function PlaceOrderDialog({
               id="quantity"
               type="number"
               min="1"
-              max={item.stock}
               value={quantity}
-              onChange={(e) => setQuantity(Math.min(item.stock, Math.max(1, Number(e.target.value))))}
+              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
               className="col-span-3"
             />
           </div>
