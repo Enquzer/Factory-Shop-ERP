@@ -8,6 +8,11 @@ let fs: any;
 // Database instance cache
 let dbInstance: any = null;
 
+// Function to reset the database cache
+export const resetDbCache = () => {
+  dbInstance = null;
+};
+
 if (typeof window === 'undefined') {
   // These imports are only available on the server side
   sqlite3 = require('sqlite3');
@@ -168,7 +173,7 @@ export const initializeDatabase = async (database: any) => {
     await database.exec(`
       CREATE TABLE IF NOT EXISTS shops (
         id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
+        username TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL,
         contactPerson TEXT NOT NULL,
         contactPhone TEXT,
@@ -181,7 +186,6 @@ export const initializeDatabase = async (database: any) => {
         monthlySalesTarget REAL NOT NULL DEFAULT 0,
         show_variant_details INTEGER NOT NULL DEFAULT 1,
         max_visible_variants INTEGER NOT NULL DEFAULT 1000,
-        ai_distribution_mode TEXT NOT NULL DEFAULT 'proportional',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -235,16 +239,6 @@ export const initializeDatabase = async (database: any) => {
     } catch (error) {
       // Column might already exist, which is fine
       console.log('max_visible_variants column already exists or was added successfully');
-    }
-
-    // Add ai_distribution_mode column to existing shops table if it doesn't exist
-    try {
-      await database.exec(`
-        ALTER TABLE shops ADD COLUMN ai_distribution_mode TEXT NOT NULL DEFAULT 'proportional'
-      `);
-    } catch (error) {
-      // Column might already exist, which is fine
-      console.log('ai_distribution_mode column already exists or was added successfully');
     }
 
     // Add updated_at column to existing shops table if it doesn't exist

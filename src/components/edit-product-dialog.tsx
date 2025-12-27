@@ -57,7 +57,7 @@ const agePricingSchema = z.object({
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  productCode: z.string().regex(/^[a-zA-Z]{2}-[a-zA-Z]{2}-\d{3}$/i, "Code must be in XX-XX-XXX format"),
+  productCode: z.string().regex(/^[a-zA-Z]{2}-[a-zA-Z]{2}-\d{3}(\/\d{2})?$/i, "Code must be in XX-XX-XXX or XX-XX-XXX/XX format"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
   description: z.string().optional(),
@@ -88,7 +88,13 @@ const VariantImagePreview = ({ control, index }: { control: any, index: number }
       if (image instanceof File) {
         const url = URL.createObjectURL(image);
         setPreview(url);
-        return () => URL.revokeObjectURL(url);
+        return () => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            console.warn('Failed to revoke blob URL:', error);
+          }
+        };
       } else if (typeof image === 'string') {
         setPreview(image);
       } else if (existingUrl) {
@@ -128,13 +134,20 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     };
   }, [mainImagePreview]);
 
+  // Ensure variants have proper structure
+  const normalizedVariants = product.variants.map(v => ({
+    ...v,
+    image: v.imageUrl || undefined,
+    imageUrl: v.imageUrl || undefined
+  }));
+
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
       ...product,
       imageUrl: product.imageUrl,
       description: product.description || "",
-      variants: product.variants.map(v => ({ ...v, image: v.imageUrl })),
+      variants: normalizedVariants,
       agePricing: product.agePricing || [],
     },
   });
@@ -151,11 +164,17 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
 
   useEffect(() => {
     // Reset form when product changes
+    const normalizedVariants = product.variants.map(v => ({
+      ...v,
+      image: v.imageUrl || undefined,
+      imageUrl: v.imageUrl || undefined
+    }));
+    
     form.reset({
         ...product,
         imageUrl: product.imageUrl,
         description: product.description || "",
-        variants: product.variants.map(v => ({...v, image: v.imageUrl})),
+        variants: normalizedVariants,
         agePricing: product.agePricing || [],
     });
     setMainImagePreview(product.imageUrl ?? null);
@@ -399,327 +418,347 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
   }
 };
 
-  // Helper function to convert file to base64
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = error => reject(error);
-    });
-  };
+// Add a function to handle form errors
+const onError = (errors: any) => {
+  console.log('Form validation errors:', errors);
+  // Log specific field errors
+  Object.keys(errors).forEach(fieldName => {
+    console.log(`Field ${fieldName} error:`, errors[fieldName]);
+  });
+  toast({
+    title: "Validation Error",
+    description: "Please check the form for errors and try again.",
+    variant: "destructive",
+  });
+};
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Product</DialogTitle>
-          <DialogDescription>
-            Make changes to the product details below.
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form 
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="grid gap-4 py-4"
-          >
-            <EnhancedImageUpload
-              label="Main Product Image"
-              onImageChange={handleMainImageChange}
-              currentImage={mainImagePreview}
-              disabled={isLoading}
-            />
+// Helper function to convert file to base64
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Product Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., Men's Classic Tee" {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="productCode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Product Code</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., MC-TS-001" {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="category"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Price (ETB)</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+return (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Edit Product</DialogTitle>
+        <DialogDescription>
+          Make changes to the product details below.
+        </DialogDescription>
+      </DialogHeader>
+      <Form {...form}>
+        <form 
+          onSubmit={form.handleSubmit(onSubmit, onError)}
+          className="grid gap-4 py-4"
+        >
+          {/* Add global form error display */}
+          {form.formState.errors.root && (
+            <div className="text-red-500 text-sm">
+              {form.formState.errors.root.message}
             </div>
+          )}
+          <EnhancedImageUpload
+            label="Main Product Image"
+            onImageChange={handleMainImageChange}
+            currentImage={mainImagePreview}
+            disabled={isLoading}
+          />
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField
               control={form.control}
-              name="description"
+              name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>Product Name</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Describe the product" {...field} disabled={isLoading} />
+                    <Input placeholder="e.g., Men's Classic Tee" {...field} disabled={isLoading} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
-              name="minimumStockLevel"
+              name="productCode"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Minimum Stock Level (Optional)</FormLabel>
+                  <FormLabel>Product Code</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 10" {...field} disabled={isLoading} />
+                    <Input placeholder="e.g., MC-TS-001" {...field} disabled={isLoading} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="price"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Base Price (ETB)</FormLabel>
+                  <FormControl>
+                    <Input type="number" step="0.01" {...field} disabled={isLoading} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
 
+          <FormField
+            control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl>
+                  <Textarea placeholder="Describe the product" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="minimumStockLevel"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Minimum Stock Level (Optional)</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="e.g., 10" {...field} disabled={isLoading} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Product Variants</h3>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => appendVariant({ id: `VAR-${Date.now()}`, color: "", size: "", stock: 0, image: undefined, imageUrl: undefined })}
+                className="text-sm"
+                disabled={isLoading}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Variant
+              </Button>
+            </div>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">Product Variants</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => appendVariant({ id: `VAR-${Date.now()}`, color: "", size: "", stock: 0, image: undefined, imageUrl: undefined })}
-                  className="text-sm"
-                  disabled={isLoading}
-                >
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add Variant
-                </Button>
-              </div>
-              <div className="space-y-4">
-                {variantFields.map((field, index) => (
-                  <div key={field.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 border p-4 rounded-md relative">
-                    <FormField
-                      control={form.control}
-                      name={`variants.${index}.color`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Color</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Blue" {...field} disabled={isLoading} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`variants.${index}.size`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Size</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., M" {...field} disabled={isLoading} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`variants.${index}.stock`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Stock</FormLabel>
-                          <FormControl>
-                            <Input type="number" {...field} disabled={isLoading} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div>
-                      <FormField
-                        control={form.control}
-                        name={`variants.${index}.image`}
-                        render={({ field: { onChange, value, ...rest } }) => (
-                          <FormItem>
-                            <FormLabel>Variant Image</FormLabel>
-                            <EnhancedImageUpload
-                              label="Variant Image"
-                              onImageChange={(file) => handleVariantImageChange(file, index)}
-                              disabled={isLoading}
-                              accept="image/*"
-                            />
-                          </FormItem>
-                        )}
-                      />
-                      <VariantImagePreview control={form.control} index={index} />
-                    </div>
-                    {variantFields.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="absolute -top-3 -right-3 h-7 w-7"
-                        onClick={() => removeVariant(index)}
-                        disabled={isLoading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              {variantFields.map((field, index) => (
+                <div key={field.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 border p-4 rounded-md relative">
+                  <FormField
+                    control={form.control}
+                    name={`variants.${index}.color`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Color</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Blue" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
                     )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`variants.${index}.size`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Size</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., M" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`variants.${index}.stock`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Stock</FormLabel>
+                        <FormControl>
+                          <Input type="number" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name={`variants.${index}.image`}
+                      render={({ field: { onChange, value, ...rest } }) => (
+                        <FormItem>
+                          <FormLabel>Variant Image</FormLabel>
+                          <EnhancedImageUpload
+                            label="Variant Image"
+                            onImageChange={(file) => handleVariantImageChange(file, index)}
+                            disabled={isLoading}
+                            accept="image/*"
+                          />
+                        </FormItem>
+                      )}
+                    />
+                    <VariantImagePreview control={form.control} index={index} />
                   </div>
-                ))}
-                <FormMessage>{form.formState.errors.variants?.message || form.formState.errors.variants?.root?.message}</FormMessage>
-              </div>
+                  {variantFields.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute -top-3 -right-3 h-7 w-7"
+                      onClick={() => removeVariant(index)}
+                      disabled={isLoading}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <FormMessage>{form.formState.errors.variants?.message || form.formState.errors.variants?.root?.message}</FormMessage>
             </div>
+          </div>
 
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Age-Based Pricing</h3>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => appendAgePricing({ ageMin: 0, ageMax: 0, price: 0 })}
+                className="text-sm"
+                disabled={isLoading}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Pricing
+              </Button>
+            </div>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">Age-Based Pricing</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => appendAgePricing({ ageMin: 0, ageMax: 0, price: 0 })}
-                  className="text-sm"
-                  disabled={isLoading}
-                >
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add Pricing
-                </Button>
-              </div>
-              <div className="space-y-4">
-                {agePricingFields.map((field, index) => (
-                  <div key={field.id} className="grid grid-cols-1 sm:grid-cols-4 gap-4 border p-4 rounded-md relative">
-                    <FormField
-                      control={form.control}
-                      name={`agePricing.${index}.ageMin`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Min Age</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="e.g., 1" {...field} disabled={isLoading} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`agePricing.${index}.ageMax`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Max Age</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="e.g., 4" {...field} disabled={isLoading} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`agePricing.${index}.price`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Price (ETB)</FormLabel>
-                          <FormControl>
-                            <Input type="number" step="0.01" placeholder="e.g., 1200" {...field} disabled={isLoading} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="h-9 w-9"
-                        onClick={() => removeAgePricing(index)}
-                        disabled={isLoading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+              {agePricingFields.map((field, index) => (
+                <div key={field.id} className="grid grid-cols-1 sm:grid-cols-4 gap-4 border p-4 rounded-md relative">
+                  <FormField
+                    control={form.control}
+                    name={`agePricing.${index}.ageMin`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Min Age</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="e.g., 1" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`agePricing.${index}.ageMax`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Age</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="e.g., 4" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`agePricing.${index}.price`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Price (ETB)</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" placeholder="e.g., 1200" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => removeAgePricing(index)}
+                      disabled={isLoading}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                ))}
-                <FormMessage>{form.formState.errors.agePricing?.message}</FormMessage>
-              </div>
+                </div>
+              ))}
+              <FormMessage>{form.formState.errors.agePricing?.message}</FormMessage>
             </div>
+          </div>
 
-            <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  console.log('Cancel button clicked');
-                  onOpenChange(false);
-                }} 
-                className="w-full sm:w-auto" 
-                disabled={isLoading}
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                className="w-full sm:w-auto" 
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  "Update Product"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
+          <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                console.log('Cancel button clicked');
+                onOpenChange(false);
+              }} 
+              className="w-full sm:w-auto" 
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              className="w-full sm:w-auto" 
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Product"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </DialogContent>
+  </Dialog>
+);
 }

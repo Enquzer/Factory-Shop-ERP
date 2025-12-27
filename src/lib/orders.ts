@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getDb, resetDbCache } from './db';
 import { updateVariantStock } from './products';
 
 export type OrderItem = { 
@@ -58,8 +58,27 @@ export async function getOrders(): Promise<Order[]> {
       ? `${baseUrl}/api/orders`
       : '/api/orders';
       
-    const response = await fetch(url);
+    // Get auth token from localStorage for client-side requests
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add authorization header if token exists
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(url, {
+      headers: token ? headers : undefined
+    });
+    
     if (!response.ok) {
+      // If unauthorized, redirect to login
+      if (response.status === 401 && typeof window !== 'undefined') {
+        window.location.href = '/login';
+        return [];
+      }
       throw new Error('Failed to fetch orders');
     }
     return await response.json();
@@ -218,6 +237,9 @@ class OrdersManager {
                 items: order.items
             };
             
+            // Reset the database cache to ensure subsequent queries get fresh data
+            resetDbCache();
+            
             this.orders.push(newOrder);
             this.notifySubscribers();
             
@@ -236,11 +258,16 @@ class OrdersManager {
         
         try {
             const db = await getDb();
-            await db.run(`
+            const result = await db.run(`
               UPDATE orders 
               SET status = ? 
               WHERE id = ?
             `, newStatus, orderId);
+            
+            if (result.changes > 0) {
+              // Reset the database cache to ensure subsequent queries get fresh data
+              resetDbCache();
+            }
             
             // Update local cache
             const orderIndex = this.orders.findIndex(order => order.id === orderId);
@@ -261,6 +288,12 @@ class OrdersManager {
                 DELETE FROM orders WHERE id = ?
             `, orderId);
             
+            const deleted = (result.changes || 0) > 0;
+            if (deleted) {
+              // Reset the database cache to ensure subsequent queries get fresh data
+              resetDbCache();
+            }
+            
             // Update local cache
             const orderIndex = this.orders.findIndex(order => order.id === orderId);
             if (orderIndex !== -1) {
@@ -268,7 +301,7 @@ class OrdersManager {
                 this.notifySubscribers();
             }
             
-            return (result.changes || 0) > 0;
+            return deleted;
         } catch (error) {
             console.error(`Failed to delete order ${orderId}:`, error);
             return false;
@@ -287,7 +320,13 @@ export async function deleteOrderFromDB(id: string): Promise<boolean> {
             DELETE FROM orders WHERE id = ?
         `, id);
         
-        return (result.changes || 0) > 0;
+        const deleted = (result.changes || 0) > 0;
+        if (deleted) {
+          // Reset the database cache to ensure subsequent queries get fresh data
+          resetDbCache();
+        }
+        
+        return deleted;
     } catch (error) {
         console.error('Error deleting order:', error);
         return false;

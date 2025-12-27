@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { PlusCircle, MoreHorizontal, MapPin, Loader2, Edit, Eye, ToggleLeft, ToggleRight, Trash2, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { PlusCircle, MoreHorizontal, MapPin, Loader2, Edit, Eye, ToggleLeft, ToggleRight, Trash2, ChevronLeft, ChevronRight, FileText, Power } from "lucide-react";
 import { RegisterShopDialog } from "@/components/register-shop-dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from "@/components/ui/table"
 import {
     DropdownMenu,
@@ -19,7 +19,7 @@ import {
     DropdownMenuLabel,
     DropdownMenuTrigger,
     DropdownMenuSeparator,
-  } from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { type Shop } from "@/lib/shops";
@@ -35,34 +35,38 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
     const [shops, setShops] = useState<Shop[]>(initialShops);
     const [isLoading, setIsLoading] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false); // Add state for delete operation
-    
+
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const shopsPerPage = 10; // Increased for better UX
-    
+
     const [shopToView, setShopToView] = useState<Shop | null>(null);
     const [shopToEdit, setShopToEdit] = useState<Shop | null>(null);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // Add state for edit dialog
     const [shopToDelete, setShopToDelete] = useState<Shop | null>(null); // Add state for shop to delete
-    
+
     const { toast } = useToast();
 
     const fetchShops = async (page: number = 1) => {
         setIsLoading(true);
         try {
+            // Add a small delay to prevent rapid successive calls
+            await new Promise(resolve => setTimeout(resolve, 100));
+
             // Use API endpoint for fetching paginated shops
             const response = await fetch(`/api/shops?page=${page}&limit=${shopsPerPage}`);
             if (!response.ok) {
                 throw new Error('Failed to fetch shops');
             }
-            
+
             const paginatedShops = await response.json();
             setShops(paginatedShops.shops);
             setTotalPages(paginatedShops.totalPages);
             setTotalCount(paginatedShops.totalCount);
             setCurrentPage(page);
-            
+
             // Notify parent component of updated shops data for dashboard if callback is provided
             if (onShopsUpdate) {
                 onShopsUpdate(paginatedShops.shops);
@@ -83,26 +87,30 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
         // Always fetch the first page when a new shop is registered
         fetchShops(1);
     }
-    
+
     const onShopUpdated = () => {
-        fetchShops(currentPage);
-        setShopToEdit(null);
+        // Add a small delay to prevent rapid successive calls
+        setTimeout(() => {
+            fetchShops(currentPage);
+            setShopToEdit(null);
+            setIsEditDialogOpen(false); // Close the dialog
+        }, 100);
     }
 
     // Add handleDelete function
     const handleDelete = async () => {
         if (!shopToDelete) return;
-        
+
         setIsDeleting(true);
         try {
             const success = await deleteShop(shopToDelete.id);
-            
+
             if (success) {
                 toast({
                     title: "Success",
                     description: `Shop "${shopToDelete.name}" has been deleted successfully.`,
                 });
-                
+
                 // Refresh the shop list
                 await fetchShops(currentPage);
                 // Use setTimeout to ensure proper state updates before closing
@@ -136,7 +144,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
             setTimeout(() => {
                 document.body.removeChild(link);
             }, 0);
-            
+
             toast({
                 title: "Success",
                 description: "Shops report generated and downloaded successfully.",
@@ -151,12 +159,46 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
         }
     };
 
+    const toggleShopStatus = async (shop: Shop, newStatus: 'Active' | 'Inactive' | 'Pending') => {
+        try {
+            const response = await fetch(`/api/shops?id=${shop.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: newStatus }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to update shop status');
+            }
+
+            toast({
+                title: "Success",
+                description: `Shop "${shop.name}" is now ${newStatus}.`,
+            });
+
+            // Refresh the shop list
+            await fetchShops(currentPage);
+        } catch (error) {
+            console.error('Error toggling shop status:', error);
+            toast({
+                title: "Error",
+                description: "Failed to update shop status. Please try again.",
+                variant: "destructive",
+            });
+        }
+    };
+
     // Initial fetch when component mounts
     useEffect(() => {
-        // Use setTimeout to ensure proper initialization
-        setTimeout(() => {
+        // Add a small delay to ensure proper initialization
+        const timer = setTimeout(() => {
             fetchShops(currentPage);
-        }, 0);
+        }, 100);
+
+        // Clean up the timer
+        return () => clearTimeout(timer);
     }, [currentPage]);
 
     return (
@@ -176,7 +218,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                     </RegisterShopDialog>
                 </div>
             </div>
-            
+
             {isLoading ? (
                 <div className="flex justify-center items-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -189,6 +231,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                 <TableHead>Shop Name</TableHead>
                                 <TableHead className="hidden md:table-cell">Contact Person</TableHead>
                                 <TableHead className="hidden lg:table-cell">Location</TableHead>
+                                <TableHead className="hidden sm:table-cell">Status</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -207,8 +250,8 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                         </TableCell>
                                         <TableCell className="hidden md:table-cell">{shop.contactPerson}</TableCell>
                                         <TableCell className="hidden lg:table-cell">
-                                            <Link 
-                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.exactLocation}, ${shop.city}`)}`} 
+                                            <Link
+                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.exactLocation}, ${shop.city}`)}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-2 hover:underline"
@@ -217,6 +260,22 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                                 {shop.city}
                                             </Link>
                                             <div className="text-sm text-muted-foreground">{shop.exactLocation}</div>
+                                        </TableCell>
+                                        <TableCell className="hidden sm:table-cell">
+                                            <Badge
+                                                variant={
+                                                    shop.status === 'Active' ? 'default' :
+                                                        shop.status === 'Inactive' ? 'secondary' :
+                                                            'outline'
+                                                }
+                                                className={
+                                                    shop.status === 'Active' ? 'bg-green-500 hover:bg-green-600' :
+                                                        shop.status === 'Inactive' ? 'bg-gray-500 hover:bg-gray-600' :
+                                                            'bg-yellow-500 hover:bg-yellow-600'
+                                                }
+                                            >
+                                                {shop.status}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu key={`dropdown-${shop.id}`}>
@@ -240,12 +299,33 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                                         // Use setTimeout to ensure proper state updates
                                                         setTimeout(() => {
                                                             setShopToEdit(shop);
+                                                            setIsEditDialogOpen(true); // Open the dialog
                                                         }, 0);
                                                     }}>
                                                         <Edit className="mr-2 h-4 w-4" /> Edit
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
-                                                    <DropdownMenuItem 
+                                                    <DropdownMenuLabel>Status Control</DropdownMenuLabel>
+                                                    <DropdownMenuItem
+                                                        onClick={() => toggleShopStatus(shop, 'Active')}
+                                                        disabled={shop.status === 'Active'}
+                                                    >
+                                                        <Power className="mr-2 h-4 w-4 text-green-500" /> Set Active
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() => toggleShopStatus(shop, 'Inactive')}
+                                                        disabled={shop.status === 'Inactive'}
+                                                    >
+                                                        <Power className="mr-2 h-4 w-4 text-gray-500" /> Set Inactive
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() => toggleShopStatus(shop, 'Pending')}
+                                                        disabled={shop.status === 'Pending'}
+                                                    >
+                                                        <Power className="mr-2 h-4 w-4 text-yellow-500" /> Set Pending
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
                                                         onClick={() => {
                                                             // Use setTimeout to ensure proper state updates
                                                             setTimeout(() => {
@@ -263,7 +343,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                 ))
                             ) : (
                                 <TableRow key="no-shops-row">
-                                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                                         No shops found. <Button variant="link" onClick={() => {
                                             // Use setTimeout to ensure proper state updates
                                             setTimeout(() => {
@@ -278,7 +358,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                             )}
                         </TableBody>
                     </Table>
-                    
+
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between py-4">
                             <div className="text-sm text-muted-foreground">
@@ -300,7 +380,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                     <ChevronLeft className="h-4 w-4" />
                                     Previous
                                 </Button>
-                                
+
                                 {Array.from({ length: totalPages }, (_, i) => {
                                     const pageNum = i + 1;
                                     return (
@@ -319,7 +399,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                                         </Button>
                                     );
                                 })}
-                                
+
                                 <Button
                                     key="next-button"
                                     variant="outline"
@@ -340,7 +420,7 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                     )}
                 </>
             )}
-            
+
             <div key="dialogs-container">
                 {shopToView && (
                     <ShopDetailDialog
@@ -355,26 +435,31 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                     <EditShopDialog
                         key={`shop-edit-${shopToEdit.id}`}
                         shop={shopToEdit}
-                        open={!!shopToEdit}
-                        onOpenChange={(isOpen) => !isOpen && setShopToEdit(null)}
+                        open={isEditDialogOpen} // Use the dedicated state variable
+                        onOpenChange={(isOpen) => {
+                            setIsEditDialogOpen(isOpen);
+                            if (!isOpen) {
+                                setShopToEdit(null);
+                            }
+                        }}
                         onShopUpdated={onShopUpdated}
                         userRole={user?.role} // Pass user role to EditShopDialog
                     />
                 )}
-                
+
                 <AlertDialog key="delete-alert" open={!!shopToDelete} onOpenChange={(isOpen) => !isOpen && setShopToDelete(null)}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
-                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This will permanently delete "{shopToDelete?.name}". This action cannot be undone.
-                        </AlertDialogDescription>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will permanently delete "{shopToDelete?.name}". This action cannot be undone.
+                            </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
-                            {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
-                        </AlertDialogAction>
+                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+                                {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete"}
+                            </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>

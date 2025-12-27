@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import * as React from "react";
+import { ReactNode, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,27 +32,27 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Textarea } from "./ui/textarea";
-import { addShop } from "@/lib/shops";
 import { Loader2 } from "lucide-react";
+import { addShop } from "@/lib/shops";
 
 const shopSchema = z.object({
-    username: z.string().min(3, "Username must be at least 3 characters"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    username: z.string().min(1, "Username is required"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
     name: z.string().min(1, "Shop name is required"),
     contactPerson: z.string().min(1, "Contact person is required"),
     contactPhone: z.string().min(1, "Contact phone is required"),
     city: z.string().min(1, "City is required"),
     exactLocation: z.string().min(1, "Exact location is required"),
     discount: z.coerce.number().min(0, "Discount can't be negative").max(100, "Discount can't be over 100").default(0),
-    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional(),
+    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").default(0),
     tradeLicenseNumber: z.string().optional(),
     tinNumber: z.string().optional(),
     // New fields for variant visibility control
     showVariantDetails: z.boolean().default(true),
-    maxVisibleVariants: z.coerce.number().min(1).max(1000).default(1000),
-    aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).default('proportional')
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).default(1000)
+    // Removed aiDistributionMode field
 });
 
 type ShopFormValues = z.infer<typeof shopSchema>;
@@ -78,8 +79,8 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
         tinNumber: "",
         // New fields for variant visibility control
         showVariantDetails: true,
-        maxVisibleVariants: 1000,
-        aiDistributionMode: "proportional"
+        maxVisibleVariants: 1000
+        // Removed aiDistributionMode from default values
     },
   });
 
@@ -102,8 +103,8 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
             status: "Pending" as const, // Always set status to Pending for new shops
             // New fields for variant visibility control with proper defaults
             showVariantDetails: data.showVariantDetails ?? true,
-            maxVisibleVariants: data.maxVisibleVariants ?? 1000,
-            aiDistributionMode: data.aiDistributionMode ?? 'proportional'
+            maxVisibleVariants: data.maxVisibleVariants ?? 1000
+            // Removed aiDistributionMode from shop data
         };
 
         await addShop(shopData);
@@ -350,31 +351,7 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
                             </FormItem>
                         )}
                     />
-                    <FormField
-                        control={form.control}
-                        name="aiDistributionMode"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>AI Distribution Mode</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select distribution mode" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="proportional">Proportional</SelectItem>
-                                        <SelectItem value="equal">Equal Distribution</SelectItem>
-                                        <SelectItem value="manual_override">Manual Override</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    How AI allocates orders when variants are hidden
-                                </p>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                    {/* Removed AI Distribution Mode field */}
                 </div>
             </div>
 

@@ -286,6 +286,7 @@ export default function ShopProductsPage() {
           selectedCategory={selectedCategory}
           sortOption={sortOption}
           dateRange={dateRange ? { from: dateRange.from || undefined, to: dateRange.to || undefined } : undefined}
+          onViewProduct={handleProductClick}
         />
       )}
 

@@ -17,6 +17,7 @@ interface ShopProductsTableViewProps {
   selectedCategory: string;
   sortOption: string;
   dateRange?: DateRange;
+  onViewProduct?: (product: Product) => void;
 }
 
 export function ShopProductsTableView({ 
@@ -24,7 +25,8 @@ export function ShopProductsTableView({
   searchTerm,
   selectedCategory,
   sortOption,
-  dateRange
+  dateRange,
+  onViewProduct
 }: ShopProductsTableViewProps) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
@@ -300,12 +302,15 @@ export function ShopProductsTableView({
                       variant="ghost" 
                       size="sm"
                       onClick={() => {
-                        // This would typically trigger a modal or navigate to product detail
-                        // For now, we'll just show a toast
-                        toast({
-                          title: "Product Details",
-                          description: `Viewing details for ${product.name}`,
-                        });
+                        // Use the onViewProduct callback if provided, otherwise show toast
+                        if (onViewProduct) {
+                          onViewProduct(product);
+                        } else {
+                          toast({
+                            title: "Product Details",
+                            description: `Viewing details for ${product.name}`,
+                          });
+                        }
                       }}
                     >
                       <Eye className="h-4 w-4" />

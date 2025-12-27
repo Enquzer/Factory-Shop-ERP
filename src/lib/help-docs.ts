@@ -94,6 +94,45 @@ The Factory Dashboard is your central hub for managing all production activities
     tags: ['dashboard', 'overview', 'metrics']
   },
   {
+    id: 'system-logic',
+    title: 'Verified Workflow Logic',
+    category: 'getting-started',
+    content: `
+## Verified Workflow Logic
+
+This section explains the core inventory and purchase logic of the system to ensure smooth operations between the factory and shops.
+
+### Initial Inventory
+When you register a new product, the initial stock levels for each variant (color/size) are correctly stored in the factory's database (\`product_variants.stock\`).
+
+### Marketing Order Completion
+When a marketing order is marked as **isCompleted**:
+- The system automatically identifies the product and its variants.
+- It increases the factory stock by the quantities produced in that order.
+- If a variant doesn't exist yet, it creates it automatically.
+
+### Shop Order Placement
+When a shop places an order:
+- The system checks if the factory has enough stock.
+- If stock is available, it allows the order to be placed as **Pending**.
+- **Note**: At this stage, factory stock is not yet decreased (it acts as a request).
+
+### Shop Order Delivery/Confirmation
+When the order is marked as **Delivered** or **Closed** (received by shop):
+- The factory inventory for those specific items is decreased.
+- The shop's personal inventory (\`shop_inventory\`) is increased by the same amount.
+- If the shop didn't have that product in their inventory before, the system adds it automatically.
+
+### 🧪 Verification Results
+The inventory and purchase logic has been verified through automated testing:
+- Production increases factory stock correctly.
+- Shop orders prevent over-ordering based on factory availability.
+- Order delivery correctly handles the transfer of stock from factory to shop.
+    `,
+    roles: ['all'],
+    tags: ['logic', 'inventory', 'workflow', 'automation']
+  },
+  {
     id: 'factory-marketing-orders',
     title: 'Managing Marketing Orders',
     category: 'orders',

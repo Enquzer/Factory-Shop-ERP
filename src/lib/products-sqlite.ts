@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { getDb } from './db';
+import { getDb, resetDbCache } from './db';
 import { createNotification } from './notifications';
 
 export type ProductVariant = {
@@ -223,6 +223,9 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
     
     // Remove the automatic population of shop inventories
     // Shops will only get inventory when they actually order products
+    
+    // Reset the database cache to ensure subsequent queries get fresh data
+    resetDbCache();
     
     return {
       id: productId,
@@ -465,6 +468,8 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
     }
 
     console.log('Product update completed successfully');
+    // Reset the database cache to ensure subsequent queries get fresh data
+    resetDbCache();
     return true;
   } catch (error: any) {
     console.error('Error updating product:', error);
@@ -483,8 +488,12 @@ export async function deleteProduct(id: string): Promise<boolean> {
     const result = await db.run(`
       DELETE FROM products WHERE id = ?
     `, id);
-    
-    return (result.changes || 0) > 0;
+    const deleted = (result.changes || 0) > 0;
+    if (deleted) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
+    }
+    return deleted;
   } catch (error) {
     console.error('Error deleting product:', error);
     return false;
@@ -500,8 +509,12 @@ export async function updateVariantStock(variantId: string, newStock: number): P
     const result = await db.run(`
       UPDATE product_variants SET stock = ? WHERE id = ?
     `, newStock, variantId);
-    
-    return (result.changes || 0) > 0;
+    const updated = (result.changes || 0) > 0;
+    if (updated) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
+    }
+    return updated;
   } catch (error) {
     console.error('Error updating variant stock:', error);
     return false;
@@ -517,8 +530,12 @@ export async function updateVariantImage(variantId: string, imageUrl: string): P
     const result = await db.run(`
       UPDATE product_variants SET imageUrl = ? WHERE id = ?
     `, imageUrl, variantId);
-    
-    return (result.changes || 0) > 0;
+    const updated = (result.changes || 0) > 0;
+    if (updated) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
+    }
+    return updated;
   } catch (error) {
     console.error('Error updating variant image:', error);
     return false;
@@ -548,14 +565,19 @@ export async function updateShopInventoryOnReplenishment(productId: string, vari
       SELECT shopId FROM shop_inventory WHERE productVariantId = ?
     `, variantId);
     
+    let updated = false;
     // Update stock for each shop and create notifications
     for (const shop of shopsWithVariant) {
       // Update the shop's inventory
-      await db.run(`
+      const result = await db.run(`
         UPDATE shop_inventory 
         SET stock = stock + ? 
         WHERE shopId = ? AND productVariantId = ?
       `, quantityAdded, shop.shopId, variantId);
+      
+      if (result.changes > 0) {
+        updated = true;
+      }
       
       // Create notification for the shop
       await createNotification({
@@ -565,6 +587,11 @@ export async function updateShopInventoryOnReplenishment(productId: string, vari
         description: `Product "${product.name}" (${product.color}, ${product.size}) has been replenished with ${quantityAdded} units. You can now place orders for this product.`,
         href: '/shop/inventory',
       });
+    }
+    
+    if (updated) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
     }
     
     return true;

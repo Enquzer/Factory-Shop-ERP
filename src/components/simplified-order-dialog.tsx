@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import * as React from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,43 +14,33 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useOrder } from "@/hooks/use-order";
-import { Product } from "@/lib/products";
-import { distributeOrderQuantity } from "@/lib/ai-distribution";
-import { getProducts } from "@/lib/products";
 import { Loader2 } from "lucide-react";
+import { useOrder } from "@/hooks/use-order";
+import { distributeOrderQuantity } from "@/lib/ai-distribution";
 
 interface SimplifiedOrderDialogProps {
-  product: Product;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOrderPlaced: (productCode: string, quantities: Map<string, number>) => void;
+  product: {
+    id: string;
+    productCode: string;
+    name: string;
+    price: number;
+    variants: Array<{
+      id: string;
+      color: string;
+      size: string;
+      stock: number;
+    }>;
+  };
   shopId: string;
 }
 
-export function SimplifiedOrderDialog({ 
-  product, 
-  open, 
-  onOpenChange,
-  onOrderPlaced,
-  shopId
-}: SimplifiedOrderDialogProps) {
-  const { addSimplifiedOrder } = useOrder();
-  const [quantity, setQuantity] = useState(6); // Default to minimum order of 6
+export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId }: SimplifiedOrderDialogProps) {
+  const [quantity, setQuantity] = useState(6);
   const [isLoading, setIsLoading] = useState(false);
+  const { addSimplifiedOrder } = useOrder();
   const { toast } = useToast();
-
-  // Ensure quantity is always a multiple of 6
-  useEffect(() => {
-    if (quantity % 6 !== 0) {
-      setQuantity(Math.max(6, Math.ceil(quantity / 6) * 6));
-    }
-  }, [quantity]);
-
-  const handleQuantityChange = (value: string) => {
-    const numValue = parseInt(value) || 0;
-    setQuantity(Math.max(6, numValue));
-  };
 
   const handleIncrement = () => {
     setQuantity(prev => prev + 6);
@@ -59,11 +50,20 @@ export function SimplifiedOrderDialog({
     setQuantity(prev => Math.max(6, prev - 6));
   };
 
+  const handleQuantityChange = (value: string) => {
+    const numValue = parseInt(value);
+    if (!isNaN(numValue) && numValue >= 0) {
+      // Round to nearest multiple of 6
+      const rounded = Math.round(numValue / 6) * 6;
+      setQuantity(rounded || 6);
+    }
+  };
+
   const handlePlaceOrder = async () => {
     if (quantity <= 0 || quantity % 6 !== 0) {
       toast({
         title: "Invalid Quantity",
-        description: "Order quantity must be a multiple of 6.",
+        description: "Please enter a valid quantity (multiples of 6).",
         variant: "destructive",
       });
       return;
@@ -71,22 +71,16 @@ export function SimplifiedOrderDialog({
 
     setIsLoading(true);
     try {
-      // Get the full product with variants from the database
-      const products = await getProducts();
-      const fullProduct = products.find(p => p.id === product.id);
-      
-      if (!fullProduct) {
-        throw new Error("Product not found");
-      }
-
-      // Get shop details to determine distribution mode
-      const response = await fetch(`/api/shops?id=${shopId}`);
+      // Get the full product details including all variants
+      const response = await fetch(`/api/products/${product.id}`);
       if (!response.ok) {
-        throw new Error("Failed to fetch shop details");
+        throw new Error('Failed to fetch product details');
       }
       
-      const shop = await response.json();
-      const distributionMode = shop.aiDistributionMode || 'proportional';
+      const fullProduct = await response.json();
+      
+      // Use proportional distribution as default since we removed the AI distribution mode
+      const distributionMode = 'proportional';
 
       // Distribute the quantity across variants using AI
       const distribution = distributeOrderQuantity(
@@ -184,7 +178,7 @@ export function SimplifiedOrderDialog({
             <h4 className="font-medium mb-2">AI Distribution</h4>
             <p className="text-sm text-muted-foreground">
               The system will automatically distribute your order across available variants 
-              based on the shop's configured distribution mode.
+              based on proportional distribution.
             </p>
           </div>
         </div>

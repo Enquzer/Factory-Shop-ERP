@@ -2,9 +2,19 @@ import { NextResponse } from 'next/server';
 import { getOrdersFromDB, getOrdersForShop } from '@/lib/orders';
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
+import { authenticateRequest, isFactoryUser } from '@/lib/auth-middleware';
+import { NextRequest } from 'next/server';
 
 // GET /api/orders - Get all orders
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Authenticate the request
+  const user = await authenticateRequest(request);
+  
+  // If no user or not factory user, return unauthorized
+  if (!user || !isFactoryUser(user)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  
   const { searchParams } = new URL(request.url);
   const shopId = searchParams.get('shopId');
   
@@ -44,7 +54,15 @@ export async function GET(request: Request) {
 }
 
 // POST /api/orders - Create a new order
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Authenticate the request
+  const user = await authenticateRequest(request);
+  
+  // If no user or not factory user, return unauthorized
+  if (!user || !isFactoryUser(user)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  
   try {
     const orderData = await request.json();
     console.log('Received order data:', orderData);

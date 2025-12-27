@@ -91,11 +91,16 @@ type DashboardClientPageProps = {
 }
 
 export function DashboardClientPage({ products: initialProducts, orders: initialOrders, shops: initialShops, metrics: initialMetrics, lowStockItems: initialLowStockItems }: DashboardClientPageProps) {
-  const [products, setProducts] = useState(initialProducts);
-  const [orders, setOrders] = useState(initialOrders);
-  const [shops, setShops] = useState(initialShops);
-  const [metrics, setMetrics] = useState(initialMetrics);
-  const [lowStockItems, setLowStockItems] = useState(initialLowStockItems);
+  const [products, setProducts] = useState<Product[]>(Array.isArray(initialProducts) ? initialProducts : []);
+  const [orders, setOrders] = useState<Order[]>(Array.isArray(initialOrders) ? initialOrders : []);
+  const [shops, setShops] = useState<Shop[]>(Array.isArray(initialShops) ? initialShops : []);
+  const [metrics, setMetrics] = useState({
+    totalProducts: Array.isArray(initialProducts) ? initialProducts.length : 0,
+    registeredShops: Array.isArray(initialShops) ? initialShops.length : 0,
+    activeOrders: Array.isArray(initialOrders) ? initialOrders.filter((o: Order) => o.status === 'Pending' || o.status === 'Dispatched').length : 0,
+    recentOrders: Array.isArray(initialMetrics?.recentOrders) ? initialMetrics.recentOrders : (Array.isArray(initialOrders) ? initialOrders.slice(0, 4) : [])
+  });
+  const [lowStockItems, setLowStockItems] = useState<Array<{ id: string; name: string; category: string; stock: number; isLow: boolean; }>>(Array.isArray(initialLowStockItems) ? initialLowStockItems : []);
   const [date, setDate] = useState<DateRange | undefined>({
     from: subDays(new Date(), 29),
     to: new Date(),
@@ -108,28 +113,56 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
     try {
       // Add timestamp to bust cache
       const timestamp = Date.now();
+      
+      // Get auth token for API requests
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : undefined;
+      
       // Fetch fresh data
       const [freshProducts, freshOrders, freshShops] = await Promise.all([
-        fetch(`/api/products?t=${timestamp}`).then(res => res.json()),
-        fetch(`/api/orders?t=${timestamp}`).then(res => res.json()),
-        fetch(`/api/shops?t=${timestamp}`).then(res => res.json())
+        fetch(`/api/products?t=${timestamp}`, { headers }).then(res => {
+          if (!res.ok && res.status === 401 && typeof window !== 'undefined') {
+            window.location.href = '/login';
+            return [];
+          }
+          return res.json();
+        }),
+        fetch(`/api/orders?t=${timestamp}`, { headers }).then(res => {
+          if (!res.ok && res.status === 401 && typeof window !== 'undefined') {
+            window.location.href = '/login';
+            return [];
+          }
+          return res.json();
+        }),
+        fetch(`/api/shops?t=${timestamp}`, { headers }).then(res => {
+          if (!res.ok && res.status === 401 && typeof window !== 'undefined') {
+            window.location.href = '/login';
+            return [];
+          }
+          return res.json();
+        })
       ]);
 
-      setProducts(freshProducts);
-      setOrders(freshOrders);
-      setShops(freshShops);
+      // Ensure we're setting arrays
+      const productsArray = Array.isArray(freshProducts) ? freshProducts : [];
+      const ordersArray = Array.isArray(freshOrders) ? freshOrders : [];
+      const shopsArray = Array.isArray(freshShops) ? freshShops : [];
+
+      setProducts(productsArray);
+      setOrders(ordersArray);
+      setShops(shopsArray);
 
       // Update metrics
       const freshMetrics = {
-        totalProducts: freshProducts.length,
-        registeredShops: freshShops.length,
-        activeOrders: freshOrders.filter((o: Order) => o.status === 'Pending' || o.status === 'Dispatched').length,
-        recentOrders: freshOrders.slice(0, 4)
+        totalProducts: productsArray.length,
+        registeredShops: shopsArray.length,
+        activeOrders: ordersArray.filter((o: Order) => o.status === 'Pending' || o.status === 'Dispatched').length,
+        recentOrders: Array.isArray(ordersArray) ? ordersArray.slice(0, 4) : []
       };
       setMetrics(freshMetrics);
 
       // Update low stock items
-      const freshLowStockItems = getLowStockItems(freshProducts);
+      const freshLowStockItems = getLowStockItems(productsArray);
       setLowStockItems(freshLowStockItems);
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -139,10 +172,18 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
   };
 
   const getLowStockItems = (products: Product[]) => {
+    // Ensure products is an array
+    const productsArray = Array.isArray(products) ? products : [];
+    
     const lowStockItems: { id: string; name: string; category: string; stock: number; isLow: boolean; }[] = [];
-    products.forEach(product => {
-        const totalStock = product.variants.reduce((acc, v) => acc + v.stock, 0);
-        const minStock = product.minimumStockLevel ?? 10 * product.variants.length;
+    productsArray.forEach(product => {
+        // Ensure product has required properties
+        if (!product.id || !product.name || !product.category || !product.variants) return;
+        
+        // Ensure variants is an array
+        const variantsArray = Array.isArray(product.variants) ? product.variants : [];
+        const totalStock = variantsArray.reduce((acc, v) => acc + (v.stock || 0), 0);
+        const minStock = product.minimumStockLevel ?? 10 * variantsArray.length;
         
         if (totalStock < minStock && totalStock > 0) {
             lowStockItems.push({
@@ -158,24 +199,33 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
   };
 
   const getSalesMetrics = (dateRange?: DateRange) => {
+    // Ensure orders is an array
+    const ordersArray = Array.isArray(orders) ? orders : [];
+    const productsArray = Array.isArray(products) ? products : [];
+    
     const productSales: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
     const shopPerformance: { [key: string]: number } = {};
     const productFrequency: { [key: string]: { name: string, count: number } } = {};
     const salesByDate: { [key: string]: number } = {};
 
-    products.forEach(p => {
+    productsArray.forEach(p => {
         productSales[p.id] = { name: p.name, quantity: 0, revenue: p.price };
         productFrequency[p.id] = { name: p.name, count: 0 };
     });
 
-    const filteredOrders = orders.filter(order => {
+    const filteredOrders = ordersArray.filter(order => {
         if (!dateRange || !dateRange.from) return true;
         const to = dateRange.to || new Date();
+        // Ensure order.date is valid
+        if (!order.date) return false;
         const orderDate = parseISO(order.date);
         return orderDate >= dateRange.from && orderDate <= to;
     });
 
     filteredOrders.forEach(order => {
+        // Ensure order has required properties
+        if (!order.shopName || !order.items) return;
+        
         if (!shopPerformance[order.shopName]) {
             shopPerformance[order.shopName] = 0;
         }
@@ -185,8 +235,13 @@ export function DashboardClientPage({ products: initialProducts, orders: initial
             salesByDate[orderDate] = 0;
         }
 
-        order.items.forEach(item => {
-            const product = products.find(p => p.id === item.productId);
+        // Ensure order.items is an array
+        const orderItems = Array.isArray(order.items) ? order.items : [];
+        orderItems.forEach(item => {
+            // Ensure item has required properties
+            if (!item.productId || !item.quantity) return;
+            
+            const product = productsArray.find(p => p.id === item.productId);
             if (!product) return;
 
             const itemRevenue = product.price * item.quantity;

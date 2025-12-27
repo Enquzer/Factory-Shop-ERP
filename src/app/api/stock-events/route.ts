@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createStockEvent, getStockEventsForProduct, getStockEventsForVariant, getAllStockEvents } from '@/lib/stock-events-sqlite';
 import { StockEvent } from '@/lib/stock-events';
+import { authenticateRequest, isFactoryUser } from '@/lib/auth-middleware';
+import { NextRequest } from 'next/server';
 
 // POST /api/stock-events - Create a new stock event
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Authenticate the request
+  const user = await authenticateRequest(request);
+  
+  // If no user or not factory user, return unauthorized
+  if (!user || !isFactoryUser(user)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  
   try {
     const eventData = await request.json() as Omit<StockEvent, 'id' | 'createdAt'>;
     const newEvent = await createStockEvent(eventData);
@@ -15,7 +25,15 @@ export async function POST(request: Request) {
 }
 
 // GET /api/stock-events - Get stock events (with query parameters for filtering)
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Authenticate the request
+  const user = await authenticateRequest(request);
+  
+  // If no user or not factory user, return unauthorized
+  if (!user || !isFactoryUser(user)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  
   try {
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get('productId');

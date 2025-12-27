@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { getDb } from './db';
+import { getDb, resetDbCache } from './db';
 
 export type User = {
   id: number;
@@ -39,6 +39,9 @@ export const registerUser = async (
     `, username, hashedPassword, role);
     
     console.log('User inserted successfully, result:', result);
+    
+    // Reset the database cache to ensure subsequent queries get fresh data
+    resetDbCache();
     
     return {
       success: true,
@@ -197,11 +200,16 @@ export const updateUserProfilePicture = async (
     const db = await getDb();
     
     // Update the user's profile picture URL
-    await db.run(`
+    const result = await db.run(`
       UPDATE users SET profilePictureUrl = ? WHERE id = ?
     `, profilePictureUrl, userId);
     
-    return true;
+    // Reset the database cache to ensure subsequent queries get fresh data
+    if (result.changes > 0) {
+      resetDbCache();
+    }
+    
+    return result.changes > 0;
   } catch (error) {
     console.error('Error updating user profile picture:', error);
     return false;
@@ -219,7 +227,13 @@ export const deleteUserByUsername = async (username: string): Promise<boolean> =
       DELETE FROM users WHERE username = ?
     `, username);
     
-    return (result.changes || 0) > 0;
+    const deleted = (result.changes || 0) > 0;
+    if (deleted) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
+    }
+    
+    return deleted;
   } catch (error) {
     console.error('Error deleting user:', error);
     return false;

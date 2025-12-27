@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getShops, getPaginatedShops, getShopByUsername, updateShop, type Shop } from '@/lib/shops';
+import { getShops, getPaginatedShops, getShopByUsername, type Shop } from '@/lib/shops';
 import { registerUser } from '@/lib/auth-sqlite';
-import { createShop, getShopById } from '@/lib/shops-sqlite';
+import { createShop, getShopById, updateShop } from '@/lib/shops-sqlite';
 import { getUserById } from '@/lib/auth-sqlite';
 import { withAuth, withRoleAuth, AuthenticatedUser } from '@/lib/auth-middleware';
 import { NextRequest } from 'next/server';
@@ -15,15 +15,15 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const shopId = searchParams.get('id');
-    
+
     // If shopId is provided, return that specific shop
     if (shopId) {
       const shop = await getShopById(shopId);
-      
+
       if (!shop) {
         return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
       }
-      
+
       // Return the shop data including new fields for variant visibility control
       const cleanShop = {
         id: shop.id,
@@ -41,22 +41,23 @@ export async function GET(request: Request) {
         // New fields for variant visibility control
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
-        aiDistributionMode: shop.aiDistributionMode
+        createdAt: shop.createdAt,
+        updatedAt: shop.updatedAt
       };
-      
+
       const response = NextResponse.json(cleanShop);
-      
+
       // Add cache control headers to prevent caching
       response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       response.headers.set('Pragma', 'no-cache');
       response.headers.set('Expires', '0');
-      
+
       return response;
     }
-    
+
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    
+
     // If page and limit are not specified or are 0, return all shops
     if (page <= 0 || limit <= 0) {
       const shops = await getShops();
@@ -77,21 +78,22 @@ export async function GET(request: Request) {
         // New fields for variant visibility control
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
-        aiDistributionMode: shop.aiDistributionMode
+        createdAt: shop.createdAt,
+        updatedAt: shop.updatedAt
       }));
       const response = NextResponse.json(cleanShops);
-      
+
       // Add cache control headers to prevent caching
       response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       response.headers.set('Pragma', 'no-cache');
       response.headers.set('Expires', '0');
-      
+
       return response;
     }
-    
+
     // Return paginated results
     const paginatedShops = await getPaginatedShops(page, limit);
-    
+
     // Ensure we only return fields that match the Shop type exactly
     const cleanShops = paginatedShops.shops.map((shop: Shop) => ({
       id: shop.id,
@@ -109,9 +111,10 @@ export async function GET(request: Request) {
       // New fields for variant visibility control
       showVariantDetails: shop.showVariantDetails,
       maxVisibleVariants: shop.maxVisibleVariants,
-      aiDistributionMode: shop.aiDistributionMode
+      createdAt: shop.createdAt,
+      updatedAt: shop.updatedAt
     }));
-    
+
     const response = NextResponse.json({
       shops: cleanShops,
       totalCount: paginatedShops.totalCount,
@@ -120,12 +123,12 @@ export async function GET(request: Request) {
       hasNextPage: paginatedShops.hasNextPage,
       hasPreviousPage: paginatedShops.hasPreviousPage
     });
-    
+
     // Add cache control headers to prevent caching
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
-    
+
     return response;
   } catch (error) {
     return handleErrorResponse(error);
@@ -136,7 +139,7 @@ export async function GET(request: Request) {
 export async function POST(request: NextRequest) {
   try {
     console.log('=== Shop Registration Debug Info ===');
-    
+
     // Parse the request body
     let body;
     try {
@@ -146,11 +149,11 @@ export async function POST(request: NextRequest) {
       console.error('Error parsing request body:', parseError);
       throw new ValidationError('Invalid request body. Expected JSON data.');
     }
-    
+
     // Sanitize input data
     const sanitizedData = sanitizeInput(body);
     console.log('Sanitized data:', sanitizedData);
-    
+
     // Validate input data
     try {
       const validationResult = shopSchema.parse(sanitizedData);
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
       console.error('Validation error:', validationError.errors);
       throw new ValidationError('Invalid input data', validationError.errors);
     }
-    
+
     // Validate required fields
     if (!sanitizedData.username || !sanitizedData.password || !sanitizedData.name || !sanitizedData.contactPerson || !sanitizedData.city || !sanitizedData.exactLocation) {
       const missingFields = [];
@@ -171,7 +174,7 @@ export async function POST(request: NextRequest) {
       if (!sanitizedData.exactLocation) missingFields.push('exactLocation');
       throw new ValidationError(`Missing required fields: ${missingFields.join(', ')}`);
     }
-    
+
     // Check if username already exists
     console.log('Checking if username exists:', sanitizedData.username);
     const existingShop = await getShopByUsername(sanitizedData.username);
@@ -179,7 +182,7 @@ export async function POST(request: NextRequest) {
     if (existingShop) {
       throw new ConflictError('Username already exists');
     }
-    
+
     // Register user for authentication
     console.log('Registering user with data:', {
       username: sanitizedData.username,
@@ -187,14 +190,14 @@ export async function POST(request: NextRequest) {
     });
     const userResult = await registerUser(sanitizedData.username, sanitizedData.password, 'shop');
     console.log('User registration result:', userResult);
-    
+
     if (!userResult.success) {
       throw new Error(userResult.message || 'Failed to register user');
     }
-    
+
     // Separate password from shop data as it's handled separately
     const { password, ...shopDataWithoutPassword } = sanitizedData;
-    
+
     // Create shop record
     const shopData = {
       username: shopDataWithoutPassword.username,
@@ -206,21 +209,20 @@ export async function POST(request: NextRequest) {
       tradeLicenseNumber: shopDataWithoutPassword.tradeLicenseNumber || "",
       tinNumber: shopDataWithoutPassword.tinNumber || "",
       discount: shopDataWithoutPassword.discount || 0,
-      status: shopDataWithoutPassword.status || 'Pending', // Add default status
+      status: shopDataWithoutPassword.status || 'Active', // Default to Active status
       monthlySalesTarget: shopDataWithoutPassword.monthlySalesTarget || 0,
       // New fields for variant visibility control with proper defaults
       showVariantDetails: shopDataWithoutPassword.showVariantDetails !== undefined ? shopDataWithoutPassword.showVariantDetails : true,
-      maxVisibleVariants: shopDataWithoutPassword.maxVisibleVariants || 1000,
-      aiDistributionMode: shopDataWithoutPassword.aiDistributionMode || 'proportional'
+      maxVisibleVariants: shopDataWithoutPassword.maxVisibleVariants || 1000
     };
-    
+
     console.log('Creating shop with data:', shopData);
     const newShop = await createShop(shopData);
     console.log('Created shop:', newShop);
-    
+
     // Log audit entry (without user info since there's no authentication)
     console.log(`Created shop "${newShop.name}" with username "${newShop.username}"`);
-    
+
     // Return the created shop (excluding sensitive information)
     const cleanShop = {
       id: newShop.id,
@@ -237,10 +239,9 @@ export async function POST(request: NextRequest) {
       monthlySalesTarget: newShop.monthlySalesTarget,
       // New fields for variant visibility control
       showVariantDetails: newShop.showVariantDetails,
-      maxVisibleVariants: newShop.maxVisibleVariants,
-      aiDistributionMode: newShop.aiDistributionMode
+      maxVisibleVariants: newShop.maxVisibleVariants
     };
-    
+
     console.log('Returning clean shop data:', cleanShop);
     return NextResponse.json(cleanShop, { status: 201 });
   } catch (error: any) {
@@ -257,12 +258,12 @@ export async function PUT(request: NextRequest) {
     console.log('PUT /api/shops called');
     const { searchParams } = new URL(request.url);
     const shopId = searchParams.get('id');
-    
+
     if (!shopId) {
       console.error('Shop ID is required but not provided');
       return NextResponse.json({ error: 'Shop ID is required' }, { status: 400 });
     }
-    
+
     let body;
     try {
       body = await request.json();
@@ -271,13 +272,16 @@ export async function PUT(request: NextRequest) {
       console.error(`Error parsing request body for shop ${shopId}:`, parseError);
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
-    
+
     // Sanitize input data
     const sanitizedData = sanitizeInput(body);
     console.log(`Sanitized data for shop ${shopId}:`, sanitizedData);
-    
+
     // Validate input data (only validate provided fields)
-    if (Object.keys(sanitizedData).length > 0) {
+    // Skip validation for simple status updates to avoid schema conflicts
+    const isStatusOnlyUpdate = Object.keys(sanitizedData).length === 1 && sanitizedData.status !== undefined;
+
+    if (!isStatusOnlyUpdate && Object.keys(sanitizedData).length > 0) {
       try {
         // Create a partial schema for validation
         const partialSchema = shopSchema.partial();
@@ -287,46 +291,55 @@ export async function PUT(request: NextRequest) {
         console.error(`Validation error for shop ${shopId}:`, validationError.errors);
         return NextResponse.json({ error: 'Invalid input data', details: validationError.errors }, { status: 400 });
       }
+    } else if (isStatusOnlyUpdate) {
+      // For status-only updates, just validate the status value
+      if (!['Active', 'Inactive', 'Pending'].includes(sanitizedData.status)) {
+        return NextResponse.json({ error: 'Invalid status value. Must be Active, Inactive, or Pending' }, { status: 400 });
+      }
+      console.log(`Status-only update for shop ${shopId}: ${sanitizedData.status}`);
     }
-    
+
     // Allow all updates without authentication checks
     console.log('Updating shop:', shopId);
     console.log('Update data:', sanitizedData);
-    
+
     // Get current shop for audit logging
     const currentShop = await getShopById(shopId);
     console.log('Current shop data:', currentShop);
-    
+
     if (!currentShop) {
       console.error(`Shop ${shopId} not found`);
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
     }
-    
+
     // Update shop record
     console.log(`Calling updateShop for shop ${shopId}`);
     const updated = await updateShop(shopId, sanitizedData);
     console.log(`Update result for shop ${shopId}:`, updated);
-    
+
     if (!updated) {
       console.error(`Failed to update shop ${shopId}`);
       return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
     }
-    
+
     // Get updated shop data to verify the update
     console.log(`Fetching updated shop data for shop ${shopId}`);
     const updatedShop = await getShopById(shopId);
     console.log('Updated shop data:', updatedShop);
-    
+
     // Log update (without user info since there's no authentication)
     if (currentShop) {
       console.log(`Updated shop "${currentShop.name}" with username "${currentShop.username}"`);
     }
-    
+
     console.log(`Returning success response for shop ${shopId}`);
     return NextResponse.json({ message: 'Shop updated successfully', updatedShop });
-  } catch (error) {
-    console.error('Unexpected error in PUT /api/shops:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    console.error('=== UNEXPECTED ERROR IN PUT /api/shops ===');
+    console.error('Error:', error);
+    console.error('Error message:', error?.message);
+    console.error('Error stack:', error?.stack);
+    return NextResponse.json({ error: 'Internal server error', details: error?.message }, { status: 500 });
   }
 }
 
@@ -335,43 +348,42 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const shopId = searchParams.get('id');
-    
+
     if (!shopId) {
       throw new ValidationError('Shop ID is required');
     }
-    
+
     // Get current shop for audit logging
     const currentShop = await getShopById(shopId);
-    
+
     if (!currentShop) {
       throw new Error('Shop not found');
     }
-    
+
     // Delete shop record
     const db = await getDb();
     const result = await db.run(`DELETE FROM shops WHERE id = ?`, shopId);
     const deleted = (result.changes || 0) > 0;
-    
+
     if (!deleted) {
       throw new Error('Failed to delete shop');
     }
-    
+
     // Also delete the associated user
     const { deleteUserByUsername } = await import('@/lib/auth-sqlite');
     const userDeleted = await deleteUserByUsername(currentShop.username);
-    
+
     if (!userDeleted) {
       console.warn(`Failed to delete user with username ${currentShop.username}`);
     }
-    
+
     // Log deletion (without user info since there's no authentication)
     if (currentShop) {
       console.log(`Deleted shop "${currentShop.name}" with username "${currentShop.username}"`);
     }
-    
+
     return NextResponse.json({ message: 'Shop deleted successfully' });
   } catch (error) {
     return handleErrorResponse(error);
   }
 }
-

@@ -33,7 +33,11 @@ export function EnhancedImageUpload({
   React.useEffect(() => {
     return () => {
       if (preview && preview.startsWith('blob:')) {
-        URL.revokeObjectURL(preview);
+        try {
+          URL.revokeObjectURL(preview);
+        } catch (error) {
+          console.warn('Failed to revoke blob URL:', error);
+        }
       }
     };
   }, [preview]);
@@ -48,7 +52,11 @@ export function EnhancedImageUpload({
     // Create preview
     const newPreviewUrl = URL.createObjectURL(file);
     if (preview && preview.startsWith('blob:')) {
-      URL.revokeObjectURL(preview);
+      try {
+        URL.revokeObjectURL(preview);
+      } catch (error) {
+        console.warn('Failed to revoke previous blob URL:', error);
+      }
     }
     setPreview(newPreviewUrl);
     onImageChange(file);

@@ -285,8 +285,15 @@ export function ProductsTableView({
                             className="object-cover"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
-                              target.src = '/placeholder-product.png';
+                              // Only set fallback if not already set to avoid infinite loop
+                              if (target.src !== window.location.origin + '/placeholder-product.png') {
+                                target.src = '/placeholder-product.png';
+                              }
                             }}
+                            // Add loading strategy to prevent blob URL issues
+                            loading="lazy"
+                            // Add key to force re-render when src changes
+                            key={product.imageUrl || 'placeholder'}
                           />
                         </div>
                         <div>

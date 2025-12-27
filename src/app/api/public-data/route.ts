@@ -9,14 +9,14 @@ export async function GET() {
     // Fetch only ready-to-deliver products for public display
     const allProducts = await getProducts();
     const publicProducts = allProducts.filter(product => product.readyToDeliver === 1);
-    
+
     // Fetch only active shops for public display
     const allShops = await getAllShops();
     const publicShops = allShops.filter(shop => shop.status === 'Active');
-    
+
     // Get general inventory levels (aggregated by category)
     const inventoryLevels: Record<string, number> = {};
-    
+
     publicProducts.forEach(product => {
       if (!inventoryLevels[product.category]) {
         inventoryLevels[product.category] = 0;
@@ -24,36 +24,38 @@ export async function GET() {
       const totalStock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
       inventoryLevels[product.category] += totalStock;
     });
-    
-    // Get shop locations data (without confidential information)
+
+    // Get shop locations data (including location and contact for public display)
     const shopLocations = publicShops.map(shop => ({
       id: shop.id,
       name: shop.name,
       city: shop.city,
-      // Exclude confidential information like exactLocation, contactPerson, contactPhone, etc.
+      exactLocation: shop.exactLocation,
+      contactPhone: shop.contactPhone,
+      username: shop.username,
     }));
-    
+
     // Get company statistics
     const db = await getDb();
-    
+
     // Get total products count
     const totalProductsResult = await db.get(`
       SELECT COUNT(*) as count FROM products 
       WHERE readyToDeliver = 1
     `);
-    
+
     // Get total shops count
     const totalShopsResult = await db.get(`
       SELECT COUNT(*) as count FROM shops 
       WHERE status = 'Active'
     `);
-    
+
     // Get total orders count (completed orders only)
     const totalOrdersResult = await db.get(`
       SELECT COUNT(*) as count FROM orders 
       WHERE status = 'Delivered'
     `);
-    
+
     const publicData = {
       companyInfo: {
         name: "Carement Fashion",
@@ -66,13 +68,13 @@ export async function GET() {
       shopLocations,
       lastUpdated: new Date().toISOString()
     };
-    
+
     const response = NextResponse.json(publicData);
-    
+
     // Add cache control headers (cache for 1 hour)
     response.headers.set('Cache-Control', 'public, max-age=3600');
     response.headers.set('Expires', new Date(Date.now() + 3600000).toUTCString());
-    
+
     return response;
   } catch (error) {
     console.error('Error fetching public data:', error);

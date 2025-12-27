@@ -395,6 +395,18 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                 fill 
                                 sizes="(max-width: 768px) 100vw, 50vw"
                                 style={{objectFit: 'cover'}} 
+                                // Add error handling for blob URLs
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  // Only set fallback if not already set to avoid infinite loop
+                                  if (target.src !== window.location.origin + '/placeholder-product.png') {
+                                    target.src = '/placeholder-product.png';
+                                  }
+                                }}
+                                // Add loading strategy
+                                loading="lazy"
+                                // Add key to force re-render when src changes
+                                key={imageUrl}
                               />
                             </div>
                           <CardContent className="p-4 space-y-3">
@@ -500,6 +512,18 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                 fill 
                                 sizes="(max-width: 768px) 100vw, 50vw"
                                 style={{objectFit: 'cover'}} 
+                                // Add error handling for blob URLs
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  // Only set fallback if not already set to avoid infinite loop
+                                  if (target.src !== window.location.origin + '/placeholder-product.png') {
+                                    target.src = '/placeholder-product.png';
+                                  }
+                                }}
+                                // Add loading strategy
+                                loading="lazy"
+                                // Add key to force re-render when src changes
+                                key={imageUrl}
                               />
                             </div>
                           <CardContent className="p-4 space-y-3">

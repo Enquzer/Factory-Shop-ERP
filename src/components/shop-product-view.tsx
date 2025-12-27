@@ -22,6 +22,7 @@ import { useShopInventory } from "@/hooks/use-shop-inventory";
 import { useAuth } from "@/contexts/auth-context";
 import { SimplifiedOrderDialog } from "@/components/simplified-order-dialog";
 import { getShopById } from "@/lib/shops";
+import Image from "next/image";
 
 interface ShopProductViewProps {
   shopId: string;
@@ -198,6 +199,25 @@ export function ShopProductView({ shopId, onAddToOrder }: ShopProductViewProps) 
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="relative w-12 h-12 rounded-md overflow-hidden">
+                  <Image 
+                    src={product.imageUrl || '/placeholder-product.png'} 
+                    alt={product.name} 
+                    fill
+                    className="object-cover"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      // Only set fallback if not already set to avoid infinite loop
+                      if (target.src !== window.location.origin + '/placeholder-product.png') {
+                        target.src = '/placeholder-product.png';
+                      }
+                    }}
+                    // Add loading strategy
+                    loading="lazy"
+                    // Add key to force re-render when src changes
+                    key={product.imageUrl || 'placeholder'}
+                  />
+                </div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center text-sm text-muted-foreground">
                     <Package className="mr-1 h-4 w-4" />

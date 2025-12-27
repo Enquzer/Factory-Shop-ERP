@@ -18,7 +18,10 @@ export type Shop = {
   // New fields for variant visibility control
   showVariantDetails: boolean;
   maxVisibleVariants: number;
-  aiDistributionMode: 'proportional' | 'equal' | 'manual_override';
+  // Timestamp fields
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+  // Removed aiDistributionMode field
 };
 
 // Updated type for paginated results
@@ -32,6 +35,18 @@ export type PaginatedShops = {
 };
 
 export async function getShops(forceRefresh = false): Promise<Shop[]> {
+  // If on client side, fetch from API
+  if (typeof window !== 'undefined') {
+    try {
+      const response = await fetch('/api/shops');
+      if (!response.ok) return [];
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching shops from API:', error);
+      return [];
+    }
+  }
+
   // Always use the SQLite implementation directly to avoid SSR issues
   try {
     // Use the new getAllShops function to get all shops without pagination
@@ -47,9 +62,9 @@ export async function getPaginatedShops(page: number = 1, limit: number = 10): P
   try {
     const offset = (page - 1) * limit;
     const { shops, totalCount } = await getShopsFromSQLite(limit, offset);
-    
+
     const totalPages = Math.ceil(totalCount / limit);
-    
+
     return {
       shops,
       totalCount,
@@ -82,58 +97,58 @@ export async function getShopByUsername(username: string): Promise<Shop | null> 
 }
 
 export async function addShop(shopData: Omit<Shop, 'id'> & { password: string }): Promise<Shop> {
-    try {
-        // Get auth token from localStorage
-        const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-        
-        // Call the API endpoint to register the shop
-        const response = await fetch('/api/shops', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(authToken && { 'Authorization': `Bearer ${authToken}` })
-            },
-            body: JSON.stringify(shopData),
-        });
+  try {
+    // Get auth token from localStorage
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
-        if (!response.ok) {
-            // Try to parse error response as JSON, but handle cases where it's not JSON
-            let errorMessage = 'Failed to register shop';
-            let errorDetails = '';
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorMessage;
-                errorDetails = errorData.details ? `: ${errorData.details}` : '';
-            } catch (jsonError) {
-                // If JSON parsing fails, use the status text or a generic message
-                errorMessage = response.statusText || errorMessage;
-            }
-            throw new Error(`${errorMessage}${errorDetails} (Status: ${response.status})`);
-        }
+    // Call the API endpoint to register the shop
+    const response = await fetch('/api/shops', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` })
+      },
+      body: JSON.stringify(shopData),
+    });
 
-        // Try to parse the successful response as JSON
-        try {
-            const newShop = await response.json();
-            return newShop;
-        } catch (jsonError) {
-            throw new Error('Failed to parse response from server');
-        }
-    } catch (error: any) {
-        console.error("Error registering shop:", error);
-        throw error;
+    if (!response.ok) {
+      // Try to parse error response as JSON, but handle cases where it's not JSON
+      let errorMessage = 'Failed to register shop';
+      let errorDetails = '';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+        errorDetails = errorData.details ? `: ${errorData.details}` : '';
+      } catch (jsonError) {
+        // If JSON parsing fails, use the status text or a generic message
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(`${errorMessage}${errorDetails} (Status: ${response.status})`);
     }
+
+    // Try to parse the successful response as JSON
+    try {
+      const newShop = await response.json();
+      return newShop;
+    } catch (jsonError) {
+      throw new Error('Failed to parse response from server');
+    }
+  } catch (error: any) {
+    console.error("Error registering shop:", error);
+    throw error;
+  }
 }
 
 export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop, 'id' | 'username'>>): Promise<boolean> {
   try {
     // Use absolute URL for server-side requests, relative for client-side
-    const baseUrl = typeof window !== 'undefined' 
-      ? window.location.origin 
+    const baseUrl = typeof window !== 'undefined'
+      ? window.location.origin
       : process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const url = typeof window === 'undefined' 
+    const url = typeof window === 'undefined'
       ? `${baseUrl}/api/shops?id=${shopId}`
       : `/api/shops?id=${shopId}`;
-      
+
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
@@ -141,7 +156,7 @@ export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop
       },
       body: JSON.stringify(dataToUpdate),
     });
-    
+
     return response.ok;
   } catch (error) {
     console.error("Error updating shop:", error);
@@ -158,7 +173,7 @@ export async function deleteShop(shopId: string): Promise<boolean> {
         'Content-Type': 'application/json',
       },
     });
-    
+
     return response.ok;
   } catch (error) {
     console.error("Error deleting shop:", error);

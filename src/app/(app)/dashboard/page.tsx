@@ -1,4 +1,4 @@
-import { getOrders, type Order } from "@/lib/orders";
+import { getOrdersFromDB, type Order } from "@/lib/orders";
 import { getProducts, type Product } from "@/lib/products-sqlite";
 import { getShops, type Shop } from "@/lib/shops";
 import { DashboardClientPage } from "./_components/dashboard-client";
@@ -32,7 +32,7 @@ export default async function DashboardPage() {
     try {
         const [products, orders, shops] = await Promise.all([
           getProducts(),
-          getOrders(),
+          getOrdersFromDB(), // Use server-side function instead of client-side
           getShops()
         ]);
       

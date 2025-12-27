@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getDb, resetDbCache } from './db';
 import { ProductVariant } from './products';
 
 export type ShopInventoryItem = {
@@ -50,6 +50,9 @@ export async function addItemsToShopInventory(shopId: string, items: Omit<ShopIn
       );
     }
     
+    // Reset the database cache to ensure subsequent queries get fresh data
+    resetDbCache();
+    
     return true;
   } catch (error) {
     console.error('Error adding items to shop inventory:', error);
@@ -66,7 +69,12 @@ export async function updateShopInventoryItemStock(shopId: string, productVarian
       SET stock = ? 
       WHERE shopId = ? AND productVariantId = ?
     `, newStock, shopId, productVariantId);
-    return (result.changes || 0) > 0;
+    const updated = (result.changes || 0) > 0;
+    if (updated) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
+    }
+    return updated;
   } catch (error) {
     console.error('Error updating shop inventory item stock:', error);
     return false;
@@ -82,7 +90,12 @@ export async function removeItemsFromShopInventory(shopId: string, productVarian
       DELETE FROM shop_inventory 
       WHERE shopId = ? AND productVariantId IN (${placeholders})
     `, shopId, ...productVariantIds);
-    return (result.changes || 0) > 0;
+    const deleted = (result.changes || 0) > 0;
+    if (deleted) {
+      // Reset the database cache to ensure subsequent queries get fresh data
+      resetDbCache();
+    }
+    return deleted;
   } catch (error) {
     console.error('Error removing items from shop inventory:', error);
     return false;

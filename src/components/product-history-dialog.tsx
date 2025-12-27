@@ -68,10 +68,16 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
             setIsLoading(true);
             
             try {
+                // Get the auth token from localStorage (this is a simplified approach)
+                const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+                const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
+                
                 // Fetch Sales History from Orders API
-                const response = await fetch('/api/orders');
-                if (response.ok) {
-                    const allOrders: Order[] = await response.json();
+                const ordersResponse = await fetch('/api/orders', {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+                });
+                if (ordersResponse.ok) {
+                    const allOrders: Order[] = await ordersResponse.json();
                     const productSales: SalesHistoryItem[] = [];
                     allOrders.forEach(order => {
                         order.items.forEach(item => {
@@ -85,12 +91,38 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                             }
                         });
                     });
-                    setSalesHistory(productSales.sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
+                    // Sort by date, handling potential date format issues
+                    setSalesHistory(productSales.sort((a,b) => {
+                        const dateA = new Date(a.date);
+                        const dateB = new Date(b.date);
+                        // Check if dates are valid
+                        if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+                            return 0;
+                        }
+                        return dateB.getTime() - dateA.getTime();
+                    }));
+                } else if (ordersResponse.status === 401) {
+                    console.error("Unauthorized access to orders API");
+                } else {
+                    console.error("Failed to fetch orders:", ordersResponse.status);
                 }
                 
                 // Fetch Replenishment History
-                const stockEvents = await getStockEventsForProduct(product.id);
-                setReplenishmentHistory(stockEvents.filter(e => e.type === 'Stock In'));
+                const stockEventsResponse = await fetch(`/api/stock-events?productId=${product.id}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+                });
+                if (stockEventsResponse.ok) {
+                    const stockEvents: StockEvent[] = await stockEventsResponse.json();
+                    // Sort by createdAt date
+                    const sortedEvents = stockEvents
+                        .filter(e => e.type === 'Stock In')
+                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                    setReplenishmentHistory(sortedEvents);
+                } else if (stockEventsResponse.status === 401) {
+                    console.error("Unauthorized access to stock events API");
+                } else {
+                    console.error("Failed to fetch stock events:", stockEventsResponse.status);
+                }
             } catch (error) {
                 console.error("Error fetching history:", error);
             } finally {
@@ -102,14 +134,29 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
     }, [product]);
 
     const metrics = useMemo(() => {
-        const totalUnitsSold = salesHistory.reduce((sum, item) => sum + item.quantity, 0);
-        const totalRevenue = salesHistory.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        // Calculate total units sold
+        const totalUnitsSold = salesHistory.reduce((sum, item) => {
+            return sum + (item.quantity || 0);
+        }, 0);
+        
+        // Calculate total revenue
+        const totalRevenue = salesHistory.reduce((sum, item) => {
+            const quantity = item.quantity || 0;
+            const price = item.price || 0;
+            return sum + (quantity * price);
+        }, 0);
+        
+        // Calculate current stock
+        const currentStock = product.variants.reduce((sum, variant) => {
+            return sum + (variant.stock || 0);
+        }, 0);
         
         return {
             totalUnitsSold,
             totalRevenue,
+            currentStock
         }
-    }, [salesHistory]);
+    }, [salesHistory, product.variants]);
 
     const getVariantDetails = (variantId: string) => {
         return product.variants.find(v => v.id === variantId);
@@ -135,10 +182,10 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">ETB {metrics.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                        <div className="text-2xl font-bold">ETB {metrics.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                     </CardContent>
                 </Card>
                  <Card>
@@ -156,7 +203,7 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                         <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{product.variants.reduce((sum, v) => sum + v.stock, 0)}</div>
+                        <div className="text-2xl font-bold">{metrics.currentStock}</div>
                     </CardContent>
                 </Card>
             </div>
@@ -185,7 +232,7 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                             <TableBody>
                                 {salesHistory.length > 0 ? salesHistory.map((item, index) => (
                                     <TableRow key={`${item.orderId}-${item.variant.id}-${index}`}>
-                                        <TableCell>{format(parseISO(item.date), "dd MMM, yyyy")}</TableCell>
+                                        <TableCell>{format(new Date(item.date), "dd MMM, yyyy")}</TableCell>
                                         <TableCell>{item.shopName}</TableCell>
                                         <TableCell>{item.variant.color}, {item.variant.size}</TableCell>
                                         <TableCell className="text-right">{item.quantity}</TableCell>
@@ -193,7 +240,9 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                                     </TableRow>
                                 )) : (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center h-24">No sales recorded yet.</TableCell>
+                                        <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
+                                            No sales recorded yet for this product.
+                                        </TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>
@@ -214,7 +263,7 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                                     const variant = getVariantDetails(event.variantId);
                                     return (
                                      <TableRow key={event.id}>
-                                        <TableCell>{format(event.createdAt, "dd MMM, yyyy")}</TableCell>
+                                        <TableCell>{format(new Date(event.createdAt), "dd MMM, yyyy")}</TableCell>
                                         <TableCell>{variant ? `${variant.color}, ${variant.size}` : 'N/A'}</TableCell>
                                         <TableCell>
                                             <Badge variant="outline">{event.reason}</Badge>
@@ -223,7 +272,9 @@ export function ProductHistoryDialog({ product, open, onOpenChange }: { product:
                                     </TableRow>
                                 )}) : (
                                      <TableRow>
-                                        <TableCell colSpan={4} className="text-center h-24">No replenishments recorded yet.</TableCell>
+                                        <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                                            No replenishments recorded yet for this product.
+                                        </TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>

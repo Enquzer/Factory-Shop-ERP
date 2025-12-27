@@ -8,6 +8,7 @@ import { InventoryDashboard } from "./inventory-dashboard";
 import { InventoryFilters } from "./inventory-filters";
 import { InventoryTable } from "./inventory-table";
 import { ProductViewDialog } from "./product-view-dialog";
+import { EditProductDialog } from "@/components/edit-product-dialog"; // Add this import
 import { FileText } from "lucide-react";
 
 interface FilterOptions {
@@ -26,7 +27,9 @@ export function InventoryClientPage({ products: initialProducts }: { products: P
     maxStock: ""
   });
   const [viewProduct, setViewProduct] = useState<Product | null>(null);
+  const [editProduct, setEditProduct] = useState<Product | null>(null); // Add this state
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // Add this state
   const { toast } = useToast();
 
   // Calculate dashboard metrics
@@ -90,11 +93,8 @@ export function InventoryClientPage({ products: initialProducts }: { products: P
   };
 
   const handleEditProduct = (product: Product) => {
-    toast({
-      title: "Edit Product",
-      description: `Editing product: ${product.name}`
-    });
-    // In a real implementation, this would open an edit dialog
+    setEditProduct(product);
+    setIsEditDialogOpen(true);
   };
 
   const handleDeleteProduct = (productId: string) => {
@@ -144,6 +144,15 @@ export function InventoryClientPage({ products: initialProducts }: { products: P
     }
   };
 
+  // Handle product update callback
+  const handleProductUpdated = () => {
+    toast({
+      title: "Product Updated",
+      description: "The product has been successfully updated.",
+    });
+    // In a real implementation, you would refresh the product list
+  };
+
   return (
     <div className="space-y-6">
       <InventoryDashboard 
@@ -176,6 +185,15 @@ export function InventoryClientPage({ products: initialProducts }: { products: P
         open={isViewDialogOpen} 
         onClose={() => setIsViewDialogOpen(false)} 
       />
+      
+      {editProduct && (
+        <EditProductDialog
+          product={editProduct}
+          open={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          onProductUpdated={handleProductUpdated}
+        />
+      )}
     </div>
   );
 }

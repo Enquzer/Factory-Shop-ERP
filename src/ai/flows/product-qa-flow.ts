@@ -7,11 +7,13 @@
  * - ProductQAOutput - The return type for the productQA function.
  */
 
+
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { getProducts } from '@/lib/products';
 import { getShops } from '@/lib/shops';
 import { getOrders } from '@/lib/orders';
+import { processAssistantQuery } from '@/lib/assistant-logic';
 
 const ProductQAInputSchema = z.object({
   query: z.string().describe("The user's question about products, inventory, orders, or shops."),
@@ -25,7 +27,36 @@ export type ProductQAOutput = z.infer<typeof ProductQAOutputSchema>;
 
 
 export async function productQA(input: ProductQAInput): Promise<ProductQAOutput> {
-  return productQAFlow(input);
+  // First, try the local smart logic
+  try {
+    const result = await processAssistantQuery(input.query);
+
+    // If the local analyst found a specific answer, return it.
+    if (!result.isFallback) {
+      return { answer: result.answer };
+    }
+  } catch (error: any) {
+    console.error("Local Assistant Logic Error:", error);
+    return { answer: `DEBUG ERROR (Local Logic): ${error.message || error}` };
+  }
+
+  // Fallback to Genkit if available
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_production_api_key_here') {
+    try {
+      return await productQAFlow(input);
+    } catch (error: any) {
+      console.error("Genkit Error:", error);
+      return { answer: `DEBUG ERROR (Genkit): ${error.message || error}` };
+    }
+  }
+
+  // Final fallback (Local help message)
+  try {
+    const result = await processAssistantQuery(input.query);
+    return { answer: result.answer };
+  } catch (error: any) {
+    return { answer: `DEBUG ERROR (Final Fallback): ${error.message || error}` };
+  }
 }
 
 const getProductsTool = ai.defineTool(
@@ -79,3 +110,4 @@ const productQAFlow = ai.defineFlow(
     return output!;
   }
 );
+

@@ -1,46 +1,23 @@
 import { z } from 'zod';
 
-// Product validation schema
-export const productSchema = z.object({
-  productCode: z.string().min(1, 'Product code is required').max(50, 'Product code must be less than 50 characters'),
-  name: z.string().min(1, 'Product name is required').max(100, 'Product name must be less than 100 characters'),
-  category: z.string().min(1, 'Category is required').max(50, 'Category must be less than 50 characters'),
-  price: z.number().positive('Price must be a positive number'),
-  minimumStockLevel: z.number().min(0, 'Minimum stock level must be a non-negative number'),
-  description: z.string().max(500, 'Description must be less than 500 characters').optional(),
-  readyToDeliver: z.number().min(0).max(1, 'Ready to deliver must be 0 or 1').optional(),
-  variants: z.array(z.object({
-    id: z.string().optional(),
-    color: z.string().min(1, 'Color is required').max(30, 'Color must be less than 30 characters'),
-    size: z.string().min(1, 'Size is required').max(20, 'Size must be less than 20 characters'),
-    stock: z.number().min(0, 'Stock must be a non-negative number'),
-    imageUrl: z.string().max(200, 'Image URL must be less than 200 characters').optional().nullable(),
-  })).optional(),
-  agePricing: z.array(z.object({
-    id: z.number().optional(),
-    ageMin: z.number().min(0, 'Minimum age must be a non-negative number'),
-    ageMax: z.number().min(0, 'Maximum age must be a non-negative number'),
-    price: z.number().positive('Price must be a positive number'),
-  })).optional(),
-});
-
 // Shop validation schema
 export const shopSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(30, 'Username must be less than 30 characters'),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(100, 'Password must be less than 100 characters'),
   name: z.string().min(1, 'Shop name is required').max(100, 'Shop name must be less than 100 characters'),
   contactPerson: z.string().min(1, 'Contact person is required').max(50, 'Contact person must be less than 50 characters'),
-  contactPhone: z.string().max(20, 'Contact phone must be less than 20 characters').optional().nullable(),
+  contactPhone: z.string().min(1, 'Contact phone is required').max(20, 'Contact phone must be less than 20 characters'),
   city: z.string().min(1, 'City is required').max(50, 'City must be less than 50 characters'),
   exactLocation: z.string().min(1, 'Exact location is required').max(200, 'Exact location must be less than 200 characters'),
   tradeLicenseNumber: z.string().max(50, 'Trade license number must be less than 50 characters').optional().nullable(),
   tinNumber: z.string().max(50, 'TIN number must be less than 50 characters').optional().nullable(),
   discount: z.number().min(0, 'Discount must be a non-negative number').max(100, 'Discount must be less than or equal to 100'),
-  monthlySalesTarget: z.number().min(0, 'Monthly sales target must be a non-negative number'),
+  monthlySalesTarget: z.number().min(0, 'Monthly sales target must be a non-negative number').optional().nullable(), // Make it optional and nullable
   status: z.enum(['Active', 'Inactive', 'Pending']).optional(),
   // New fields for variant visibility control
   showVariantDetails: z.boolean().optional(),
-  maxVisibleVariants: z.number().min(1).max(1000).optional(),
-  aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).optional()
+  maxVisibleVariants: z.number().min(1).max(1000).optional()
+  // Removed aiDistributionMode field
 });
 
 // Order validation schema

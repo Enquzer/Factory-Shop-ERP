@@ -5,59 +5,60 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 import Link from "next/link";
 import Image from "next/image";
-import { Facebook, Instagram, Mail, MapPin, Phone, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Facebook, Instagram, Mail, MapPin, Phone, ChevronLeft, ChevronRight, X, Search } from "lucide-react";
 import { getShops } from "@/lib/shops";
 import { Shop } from "@/lib/shops";
 import { PublicWebsiteHeader } from "@/components/public-website-header";
 import { LoadingBar } from "@/components/loading-bar"; // Import the loading bar
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    {...props}
-  >
-    <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.23.16 1.66.51.68 1.36.92 2.2.91.8.03 1.59-.14 2.3-.5.82-.4 1.49-1.08 1.89-1.96.24-.58.4-1.25.46-1.93.02-2.65.01-5.3-.01-7.94z" />
-  </svg>
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        {...props}
+    >
+        <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.23.16 1.66.51.68 1.36.92 2.2.91.8.03 1.59-.14 2.3-.5.82-.4 1.49-1.08 1.89-1.96.24-.58.4-1.25.46-1.93.02-2.65.01-5.3-.01-7.94z" />
+    </svg>
 );
 
 // Function to get the first available image URL from a product
 const getProductImageUrl = (product: any): string => {
-  // Use product's own image if available
-  if (product?.imageUrl) {
-    return product.imageUrl;
-  }
-  
-  // Fallback to first variant's image if available
-  if (product?.variants && product.variants.length > 0 && product.variants[0]?.imageUrl) {
-    return product.variants[0].imageUrl;
-  }
-  
-  // Default placeholder
-  return '/placeholder-product.png';
+    // Use product's own image if available
+    if (product?.imageUrl) {
+        return product.imageUrl;
+    }
+
+    // Fallback to first variant's image if available
+    if (product?.variants && product.variants.length > 0 && product.variants[0]?.imageUrl) {
+        return product.variants[0].imageUrl;
+    }
+
+    // Default placeholder
+    return '/placeholder-product.png';
 };
 
 // Function to group products by category
 const groupProductsByCategory = (products: any[]) => {
-  const categories: Record<string, any[]> = {};
-  
-  products.forEach(product => {
-    const category = product?.category || 'Uncategorized';
-    if (!categories[category]) {
-      categories[category] = [];
-    }
-    categories[category].push(product);
-  });
-  
-  return categories;
+    const categories: Record<string, any[]> = {};
+
+    products.forEach(product => {
+        const category = product?.category || 'Uncategorized';
+        if (!categories[category]) {
+            categories[category] = [];
+        }
+        categories[category].push(product);
+    });
+
+    return categories;
 };
 
 export default function PublicWebsite() {
@@ -66,9 +67,11 @@ export default function PublicWebsite() {
     const [companyInfo, setCompanyInfo] = useState<any>(null);
     const [businessInsights, setBusinessInsights] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [selectedShopForMap, setSelectedShopForMap] = useState<Shop | null>(null);
     const [activeTab, setActiveTab] = useState<'products' | 'locations'>('products');
-    const [zoomedImage, setZoomedImage] = useState<{url: string, name: string, index?: number, category?: string} | null>(null);
-    const [expandedCategory, setExpandedCategory] = useState<{name: string, products: any[]} | null>(null);
+    const [zoomedImage, setZoomedImage] = useState<{ url: string, name: string, index?: number, category?: string } | null>(null);
+    const [expandedCategory, setExpandedCategory] = useState<{ name: string, products: any[] } | null>(null);
+    const [shopSearchTerm, setShopSearchTerm] = useState("");
 
     useEffect(() => {
         const fetchData = async () => {
@@ -76,12 +79,16 @@ export default function PublicWebsite() {
                 // Fetch public data from API
                 const response = await fetch('/api/public-data');
                 const data = await response.json();
-                
+
                 // Update state with fetched data
                 if (data.companyInfo) {
                     setCompanyInfo(data.companyInfo);
                 }
-                
+
+                if (data.shopLocations) {
+                    setShops(data.shopLocations);
+                }
+
                 // Fetch products directly from the products API
                 const productsResponse = await fetch('/api/products');
                 if (productsResponse.ok) {
@@ -90,12 +97,7 @@ export default function PublicWebsite() {
                     const publicProducts = productsData.filter((product: any) => product.readyToDeliver === 1);
                     setProducts(publicProducts);
                 }
-                
-                // Fetch only active shops for public display
-                const shopsData = await getShops();
-                const activeShops = shopsData.filter(shop => shop.status === 'Active');
-                setShops(activeShops);
-                
+
                 // Fetch business insights
                 const insightsResponse = await fetch('/api/reports?type=owner-kpis');
                 if (insightsResponse.ok) {
@@ -117,9 +119,9 @@ export default function PublicWebsite() {
             if (products && products[index]) {
                 return products[index];
             }
-            return { 
-                id: `placeholder-${index}`, 
-                name: 'Product', 
+            return {
+                id: `placeholder-${index}`,
+                name: 'Product',
                 imageUrl: '/placeholder-product.png',
                 variants: []
             };
@@ -135,7 +137,7 @@ export default function PublicWebsite() {
         if (!products || Object.keys(groupProductsByCategory(products)).length === 0) {
             return [];
         }
-        
+
         const categories = groupProductsByCategory(products);
         const result: any[] = [];
         Object.entries(categories).forEach(([category, categoryProducts]) => {
@@ -144,18 +146,26 @@ export default function PublicWebsite() {
         return result;
     }, [products]);
 
-    
+    const filteredShops = useMemo(() => {
+        return shops.filter(shop =>
+            shop.name.toLowerCase().includes(shopSearchTerm.toLowerCase()) ||
+            shop.city.toLowerCase().includes(shopSearchTerm.toLowerCase()) ||
+            (shop.exactLocation && shop.exactLocation.toLowerCase().includes(shopSearchTerm.toLowerCase()))
+        );
+    }, [shops, shopSearchTerm]);
+
+
 
     // Function to navigate to next/previous image
     const navigateImage = (direction: 'next' | 'prev') => {
         if (!zoomedImage) return;
-        
+
         // If we're in expanded category view
         if (zoomedImage.category && expandedCategory?.products) {
-            const currentIndex = expandedCategory.products.findIndex((p: any) => 
+            const currentIndex = expandedCategory.products.findIndex((p: any) =>
                 getProductImageUrl(p) === zoomedImage.url
             );
-            
+
             if (currentIndex !== -1) {
                 let newIndex;
                 if (direction === 'next') {
@@ -163,7 +173,7 @@ export default function PublicWebsite() {
                 } else {
                     newIndex = (currentIndex - 1 + expandedCategory.products.length) % expandedCategory.products.length;
                 }
-                
+
                 const newProduct = expandedCategory.products[newIndex];
                 setZoomedImage({
                     url: getProductImageUrl(newProduct),
@@ -182,7 +192,7 @@ export default function PublicWebsite() {
             } else {
                 newIndex = (currentIndex - 1 + displayedProducts.length) % displayedProducts.length;
             }
-            
+
             if (displayedProducts[newIndex]) {
                 setZoomedImage({
                     url: getProductImageUrl(displayedProducts[newIndex]),
@@ -201,8 +211,8 @@ export default function PublicWebsite() {
                     {/* Custom header with navigation controls */}
                     <div className="flex items-center justify-between p-4 border-b">
                         <DialogTitle className="text-lg font-medium">{zoomedImage?.name || "Product Image"}</DialogTitle>
-                        <Button 
-                            variant="ghost" 
+                        <Button
+                            variant="ghost"
                             size="icon"
                             onClick={() => setZoomedImage(null)}
                             className="h-6 w-6"
@@ -210,7 +220,7 @@ export default function PublicWebsite() {
                             <X className="h-4 w-4" />
                         </Button>
                     </div>
-                    
+
                     <div className="relative w-full h-[70vh]">
                         {zoomedImage && (
                             <>
@@ -252,7 +262,7 @@ export default function PublicWebsite() {
                     </div>
                 </DialogContent>
             </Dialog>
-            
+
             {/* Add the expanded category dialog - always rendered but controlled by open state */}
             <Dialog open={expandedCategory !== null} onOpenChange={() => {
                 setExpandedCategory(null);
@@ -263,8 +273,8 @@ export default function PublicWebsite() {
                         <DialogTitle className="text-lg font-medium">
                             {expandedCategory?.name ? `${expandedCategory.name} Products` : "Category Products"}
                         </DialogTitle>
-                        <Button 
-                            variant="ghost" 
+                        <Button
+                            variant="ghost"
                             size="icon"
                             onClick={() => {
                                 setExpandedCategory(null);
@@ -306,10 +316,10 @@ export default function PublicWebsite() {
                     </div>
                 </DialogContent>
             </Dialog>
-            
+
             <LoadingBar isLoading={isLoading} variant="public" message="Loading website..." />
             <PublicWebsiteHeader />
-            
+
             {/* Hero Section */}
             <div className="relative">
                 <div className="absolute inset-0 h-full w-full grid grid-cols-2 md:grid-cols-4">
@@ -331,7 +341,7 @@ export default function PublicWebsite() {
                     ))}
                     <div className="absolute inset-0 bg-black/50"></div>
                 </div>
-                
+
                 <div className="relative z-10 flex flex-col items-center justify-center min-h-[70vh] p-4 text-center">
                     <Logo />
                     <h1 className="text-4xl md:text-6xl font-bold text-white tracking-widest uppercase my-8" style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.7)' }}>
@@ -353,7 +363,7 @@ export default function PublicWebsite() {
                         </CardHeader>
                         <CardContent>
                             <p className="text-lg text-center mb-6">
-                                Carement Fashion is a leading Ethiopian fashion company specializing in high-quality apparel for men, women, and children. 
+                                Carement Fashion is a leading Ethiopian fashion company specializing in high-quality apparel for men, women, and children.
                                 We connect our state-of-the-art manufacturing facilities with a growing network of retail partners across the country.
                             </p>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
@@ -377,27 +387,25 @@ export default function PublicWebsite() {
                 {/* Data Dashboard */}
                 <section className="mb-16">
                     <h2 className="text-3xl font-bold text-center mb-8">Our Product Collections</h2>
-                    
+
                     <div className="flex justify-center mb-6">
                         <div className="inline-flex rounded-md shadow-sm" role="group">
                             <button
                                 type="button"
-                                className={`px-4 py-2 text-sm font-medium rounded-l-lg ${
-                                    activeTab === 'products' 
-                                        ? 'bg-primary text-primary-foreground' 
-                                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                                }`}
+                                className={`px-4 py-2 text-sm font-medium rounded-l-lg ${activeTab === 'products'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                    }`}
                                 onClick={() => setActiveTab('products')}
                             >
                                 Product Categories
                             </button>
                             <button
                                 type="button"
-                                className={`px-4 py-2 text-sm font-medium rounded-r-lg ${
-                                    activeTab === 'locations' 
-                                        ? 'bg-primary text-primary-foreground' 
-                                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                                }`}
+                                className={`px-4 py-2 text-sm font-medium rounded-r-lg ${activeTab === 'locations'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                    }`}
                                 onClick={() => setActiveTab('locations')}
                             >
                                 Shop Locations
@@ -430,10 +438,10 @@ export default function PublicWebsite() {
                                                         {categoryProducts.slice(0, 4).map((product, index) => {
                                                             // Find the index in the flattened list
                                                             const globalIndex = displayedProducts.findIndex((p: any) => p.id === product.id);
-                                                            
+
                                                             return (
-                                                                <div 
-                                                                    key={`product-${product.id}`} 
+                                                                <div
+                                                                    key={`product-${product.id}`}
                                                                     className="aspect-square relative cursor-pointer"
                                                                     onClick={() => setZoomedImage({
                                                                         url: getProductImageUrl(product),
@@ -456,8 +464,8 @@ export default function PublicWebsite() {
                                                             );
                                                         })}
                                                         {categoryProducts.length > 4 && (
-                                                            <div 
-                                                                key={`more-${category}`} 
+                                                            <div
+                                                                key={`more-${category}`}
                                                                 className="aspect-square flex flex-col items-center justify-center bg-muted rounded cursor-pointer hover:bg-muted/80 transition-colors p-2"
                                                                 onClick={() => setExpandedCategory({
                                                                     name: category,
@@ -490,11 +498,20 @@ export default function PublicWebsite() {
                                 </CardContent>
                             </Card>
                         )}
-                        
+
                         {activeTab === 'locations' && (
                             <Card key="locations-tab">
-                                <CardHeader>
+                                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                     <CardTitle>Shop Locations</CardTitle>
+                                    <div className="relative w-full sm:w-64">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search shops or cities..."
+                                            className="pl-8"
+                                            value={shopSearchTerm}
+                                            onChange={(e) => setShopSearchTerm(e.target.value)}
+                                        />
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
                                     {isLoading ? (
@@ -504,9 +521,9 @@ export default function PublicWebsite() {
                                     ) : (
                                         <div className="space-y-6">
                                             {/* Google Maps Embed */}
-                                            <div className="relative h-96 w-full rounded-lg overflow-hidden border">
+                                            <div id="map-container" className="relative h-96 w-full rounded-lg overflow-hidden border">
                                                 <iframe
-                                                    src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyC2VKJw55Q4j291lg8T2wM1E9d5J6YdJ5Y&q=Addis+Ababa,Ethiopia&maptype=satellite`}
+                                                    src={`https://maps.google.com/maps?q=${encodeURIComponent(selectedShopForMap ? `${selectedShopForMap.exactLocation}, ${selectedShopForMap.city}` : "Addis+Ababa,Ethiopia")}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
                                                     width="100%"
                                                     height="100%"
                                                     style={{ border: 0 }}
@@ -515,11 +532,11 @@ export default function PublicWebsite() {
                                                     referrerPolicy="no-referrer-when-downgrade"
                                                 ></iframe>
                                             </div>
-                                            
+
                                             {/* Shop List */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                {shops.map((shop) => (
-                                                    <div key={`shop-${shop.id}`} className="border rounded-lg p-4">
+                                                {filteredShops.map((shop) => (
+                                                    <div key={`shop-${shop.id}`} className="border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors" onClick={() => { setSelectedShopForMap(shop); document.getElementById('map-container')?.scrollIntoView({ behavior: 'smooth' }); }}>
                                                         <h3 className="font-bold text-lg mb-2">{shop.name}</h3>
                                                         <div className="space-y-1 text-sm">
                                                             <div className="flex items-center gap-2">
@@ -536,23 +553,24 @@ export default function PublicWebsite() {
                                                                 <Mail className="h-4 w-4 text-muted-foreground" />
                                                                 <span>{shop.username}</span>
                                                             </div>
-                                                            <Button 
-                                                                variant="link" 
-                                                                size="sm" 
+                                                            <Button
+                                                                variant="link"
+                                                                size="sm"
                                                                 className="p-0 h-auto mt-2"
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     const query = `${encodeURIComponent(shop.exactLocation)}, ${encodeURIComponent(shop.city)}`;
                                                                     window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
                                                                 }}
                                                             >
-                                                                View on Google Maps
+                                                                Open in Google Maps
                                                             </Button>
                                                         </div>
                                                     </div>
                                                 ))}
-                                                {shops.length === 0 && (
+                                                {filteredShops.length === 0 && (
                                                     <div className="col-span-full text-center py-8 text-muted-foreground">
-                                                        No shop locations available
+                                                        {shopSearchTerm ? "No shops match your search" : "No shop locations available"}
                                                     </div>
                                                 )}
                                             </div>
@@ -572,7 +590,7 @@ export default function PublicWebsite() {
                         </CardHeader>
                         <CardContent>
                             <p className="mb-4">
-                                Our company continues to grow with strong performance across all key metrics. 
+                                Our company continues to grow with strong performance across all key metrics.
                                 We maintain high inventory turnover rates while ensuring consistent product quality.
                             </p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -604,13 +622,13 @@ export default function PublicWebsite() {
                             <h3 className="font-bold text-lg mb-2">Contact Us</h3>
                             <ul className="space-y-2 text-sm">
                                 <li className="flex items-center justify-center md:justify-start gap-2">
-                                    <MapPin className="h-4 w-4"/> 123 Industrial Zone, Addis Ababa
+                                    <MapPin className="h-4 w-4" /> 123 Industrial Zone, Addis Ababa
                                 </li>
                                 <li className="flex items-center justify-center md:justify-start gap-2">
-                                    <Phone className="h-4 w-4"/> +251 911 123 456
+                                    <Phone className="h-4 w-4" /> +251 911 123 456
                                 </li>
                                 <li className="flex items-center justify-center md:justify-start gap-2">
-                                    <Mail className="h-4 w-4"/> contact@carement.com
+                                    <Mail className="h-4 w-4" /> contact@carement.com
                                 </li>
                             </ul>
                         </div>
@@ -624,13 +642,13 @@ export default function PublicWebsite() {
                             <h3 className="font-bold text-lg mb-2">Follow Us</h3>
                             <div className="flex justify-center md:justify-start space-x-4">
                                 <Link href="#" className="hover:text-accent transition-colors">
-                                    <Facebook className="h-6 w-6"/>
+                                    <Facebook className="h-6 w-6" />
                                 </Link>
                                 <Link href="#" className="hover:text-accent transition-colors">
-                                    <Instagram className="h-6 w-6"/>
+                                    <Instagram className="h-6 w-6" />
                                 </Link>
                                 <Link href="#" className="hover:text-accent transition-colors">
-                                    <TikTokIcon className="h-6 w-6"/>
+                                    <TikTokIcon className="h-6 w-6" />
                                 </Link>
                             </div>
                         </div>

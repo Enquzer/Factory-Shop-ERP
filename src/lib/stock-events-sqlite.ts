@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getDb, resetDbCache } from './db';
 
 export type StockEvent = {
   id: number;
@@ -24,6 +24,9 @@ export async function createStockEvent(event: Omit<StockEvent, 'id' | 'createdAt
       event.quantity,
       event.reason
     );
+    
+    // Reset the database cache to ensure subsequent queries get fresh data
+    resetDbCache();
     
     return {
       id: result.lastID ?? 0,

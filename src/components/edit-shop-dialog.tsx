@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -43,13 +43,14 @@ const editShopSchema = z.object({
     city: z.string().min(1, "City is required"),
     exactLocation: z.string().min(1, "Exact location is required"),
     discount: z.coerce.number().min(0, "Discount can't be negative").max(100, "Discount can't be over 100").default(0),
-    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a positive number").optional().nullable(),
+    monthlySalesTarget: z.coerce.number().min(0, "Sales target must be a non-negative number").default(0), // Make it required with default 0
     tradeLicenseNumber: z.string().optional().nullable(),
     tinNumber: z.string().optional().nullable(),
+    status: z.enum(['Active', 'Inactive', 'Pending']).optional(),
     // New fields for variant visibility control
     showVariantDetails: z.boolean().optional(),
-    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional().nullable(),
-    aiDistributionMode: z.enum(['proportional', 'equal', 'manual_override']).optional().nullable()
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional().nullable()
+    // Removed aiDistributionMode field
 });
 
 type EditShopFormValues = z.infer<typeof editShopSchema>;
@@ -57,6 +58,8 @@ type EditShopFormValues = z.infer<typeof editShopSchema>;
 export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRole }: { shop: Shop; open: boolean; onOpenChange: (open: boolean) => void; onShopUpdated: () => void; userRole?: 'factory' | 'shop' }) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const hasInitialized = useRef(false);
+  const prevShopRef = useRef<Shop | null>(null);
 
   const form = useForm<EditShopFormValues>({
     resolver: zodResolver(editShopSchema),
@@ -67,51 +70,65 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
       city: "",
       exactLocation: "",
       discount: 0,
-      monthlySalesTarget: undefined,
-      tradeLicenseNumber: "",
-      tinNumber: "",
+      monthlySalesTarget: 0, // Changed from null to 0
+      tradeLicenseNumber: null,
+      tinNumber: null,
+      status: "Pending",
       showVariantDetails: true,
-      maxVisibleVariants: 1000,
-      aiDistributionMode: "proportional"
+      maxVisibleVariants: 1000
+      // Removed aiDistributionMode from default values
     },
   });
 
+  // Only initialize the form once when the dialog opens and shop data is available
   useEffect(() => {
-    if (shop) {
-        // Use setTimeout to ensure the form is ready before resetting
-        setTimeout(() => {
-            form.reset({
-                name: shop.name || "",
-                contactPerson: shop.contactPerson || "",
-                contactPhone: shop.contactPhone || "",
-                city: shop.city || "",
-                exactLocation: shop.exactLocation || "",
-                discount: shop.discount ? shop.discount * 100 : 0, // Convert to percentage for display
-                monthlySalesTarget: shop.monthlySalesTarget ?? undefined,
-                tradeLicenseNumber: shop.tradeLicenseNumber ?? "",
-                tinNumber: shop.tinNumber ?? "",
-                // New fields for variant visibility control
-                showVariantDetails: shop.showVariantDetails ?? true,
-                maxVisibleVariants: shop.maxVisibleVariants ?? undefined,
-                aiDistributionMode: shop.aiDistributionMode ?? undefined
-            });
-        }, 0);
+    if (open && shop && !hasInitialized.current) {
+      // Check if shop data has actually changed to prevent unnecessary resets
+      if (!prevShopRef.current || prevShopRef.current.id !== shop.id) {
+        hasInitialized.current = true;
+        prevShopRef.current = shop;
+        
+        form.reset({
+          name: shop.name || "",
+          contactPerson: shop.contactPerson || "",
+          contactPhone: shop.contactPhone || "",
+          city: shop.city || "",
+          exactLocation: shop.exactLocation || "",
+          discount: shop.discount ? shop.discount * 100 : 0, // Convert to percentage for display
+          monthlySalesTarget: shop.monthlySalesTarget ?? 0, // Changed from null to 0
+          tradeLicenseNumber: shop.tradeLicenseNumber ?? null,
+          tinNumber: shop.tinNumber ?? null,
+          status: shop.status ?? "Pending",
+          // New fields for variant visibility control
+          showVariantDetails: shop.showVariantDetails ?? true,
+          maxVisibleVariants: shop.maxVisibleVariants ?? 1000
+          // Removed aiDistributionMode from form reset
+        });
+      }
     }
-  }, [shop, form]);
+    
+    // Reset initialization flag when dialog closes
+    if (!open) {
+      hasInitialized.current = false;
+      prevShopRef.current = null;
+    }
+  }, [open, shop?.id, form]); // Only depend on shop.id instead of the entire shop object
 
   const onSubmit = async (data: EditShopFormValues) => {
+    if (isLoading) return; // Prevent multiple submissions
+    
     setIsLoading(true);
     try {
         // Only include discount in update data if user is factory
         const updateData: any = {
             ...data,
             discount: data.discount !== undefined && data.discount !== null ? data.discount / 100 : undefined, // Convert back to decimal
-            // Handle nullable fields - convert undefined to null for API consistency
-            monthlySalesTarget: data.monthlySalesTarget !== undefined ? data.monthlySalesTarget : null,
-            tradeLicenseNumber: data.tradeLicenseNumber !== undefined ? data.tradeLicenseNumber : null,
-            tinNumber: data.tinNumber !== undefined ? data.tinNumber : null,
-            maxVisibleVariants: data.maxVisibleVariants !== undefined ? data.maxVisibleVariants : null,
-            aiDistributionMode: data.aiDistributionMode !== undefined ? data.aiDistributionMode : null
+            // Handle nullable fields - convert empty strings to null for API consistency
+            monthlySalesTarget: data.monthlySalesTarget, // No longer need to convert to null since it's required
+            tradeLicenseNumber: data.tradeLicenseNumber !== undefined && data.tradeLicenseNumber !== null && data.tradeLicenseNumber !== "" ? data.tradeLicenseNumber : null,
+            tinNumber: data.tinNumber !== undefined && data.tinNumber !== null && data.tinNumber !== "" ? data.tinNumber : null,
+            maxVisibleVariants: data.maxVisibleVariants !== undefined && data.maxVisibleVariants !== null ? data.maxVisibleVariants : null
+            // Removed aiDistributionMode from update data
         };
         
         // If user is not factory, remove discount from update data
@@ -119,19 +136,29 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
             delete updateData.discount;
         }
 
-        await updateShop(shop.id, updateData);
-
-        toast({
-            title: "Shop Updated Successfully",
-            description: `"${data.name}" has been updated.`,
-        });
+        console.log("Sending update data:", updateData);
+        const result = await updateShop(shop.id, updateData);
+        console.log("Update result:", result);
         
-        onShopUpdated();
-        // Use setTimeout to ensure proper state updates before closing
-        setTimeout(() => {
+        if (result) {
+            toast({
+                title: "Shop Updated Successfully",
+                description: `"${data.name}" has been updated.`,
+            });
+            
+            // Reset initialization flag to allow re-initialization if dialog is reopened
+            hasInitialized.current = false;
+            
+            // Close the dialog first
             onOpenChange(false);
-        }, 0);
-
+            
+            // Use setTimeout to ensure proper state updates before fetching
+            setTimeout(() => {
+                onShopUpdated();
+            }, 100);
+        } else {
+            throw new Error("Failed to update shop");
+        }
     } catch (error) {
         console.error("Error updating shop:", error);
         toast({
@@ -145,7 +172,17 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      // Only call onOpenChange if the state is actually changing
+      if (isOpen !== open) {
+        onOpenChange(isOpen);
+      }
+      // Reset initialization flag when dialog closes
+      if (!isOpen) {
+        hasInitialized.current = false;
+        prevShopRef.current = null;
+      }
+    }}>
       <DialogContent className="sm:max-w-2xl" key="edit-shop-dialog-content">
         <DialogHeader key="edit-shop-dialog-header">
           <DialogTitle key="edit-shop-dialog-title">Edit Shop: {shop.name}</DialogTitle>
@@ -218,6 +255,28 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                 <div className="space-y-4">
                      <FormField
                         control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Status</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                                <FormControl>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select status" />
+                                    </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    <SelectItem value="Active">Active</SelectItem>
+                                    <SelectItem value="Inactive">Inactive</SelectItem>
+                                    <SelectItem value="Pending">Pending</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                     <FormField
+                        control={form.control}
                         name="discount"
                         render={({ field }) => (
                             <FormItem>
@@ -250,8 +309,8 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                 <Input 
                                     type="number" 
                                     min="0" 
-                                    value={field.value ?? undefined}
-                                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                                    value={field.value}
+                                    onChange={(e) => field.onChange(Number(e.target.value))}
                                     onBlur={field.onBlur}
                                     name={field.name}
                                     ref={field.ref}
@@ -270,7 +329,7 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                             <FormControl>
                                 <Input 
                                     value={field.value ?? ""}
-                                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                                    onChange={(e) => field.onChange(e.target.value === "" ? null : e.target.value)}
                                     onBlur={field.onBlur}
                                     name={field.name}
                                     ref={field.ref}
@@ -289,7 +348,7 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                             <FormControl>
                                 <Input 
                                     value={field.value ?? ""}
-                                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                                    onChange={(e) => field.onChange(e.target.value === "" ? null : e.target.value)}
                                     onBlur={field.onBlur}
                                     name={field.name}
                                     ref={field.ref}
@@ -338,8 +397,8 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                             type="number" 
                                             min="1" 
                                             max="1000" 
-                                            value={field.value ?? undefined}
-                                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                                            value={field.value ?? ""}
+                                            onChange={(e) => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
                                             onBlur={field.onBlur}
                                             name={field.name}
                                             ref={field.ref}
@@ -352,31 +411,7 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                 </FormItem>
                             )}
                         />
-                        <FormField
-                            control={form.control}
-                            name="aiDistributionMode"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>AI Distribution Mode</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value ?? undefined}>
-                                        <FormControl>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select distribution mode" />
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                            <SelectItem value="proportional">Proportional</SelectItem>
-                                            <SelectItem value="equal">Equal Distribution</SelectItem>
-                                            <SelectItem value="manual_override">Manual Override</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                        How AI allocates orders when variants are hidden
-                                    </p>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                        {/* Removed AI Distribution Mode field */}
                     </div>
                 </div>
             </div>
