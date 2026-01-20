@@ -1,10 +1,12 @@
 import { getProducts, type Product } from "@/lib/products-sqlite";
 import { InventoryClientPage } from "./_components/inventory-client";
+import { BulkSelectionProvider } from "@/contexts/bulk-selection-context";
 
 export default async function InventoryPage() {
     const products = await getProducts();
 
     return (
+        <BulkSelectionProvider>
         <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
                 <div>
@@ -14,5 +16,6 @@ export default async function InventoryPage() {
             </div>
             <InventoryClientPage products={products} />
         </div>
+        </BulkSelectionProvider>
     );
 }

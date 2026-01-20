@@ -1,7 +1,8 @@
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing';
+  profilePictureUrl?: string;
   createdAt: Date;
 };
 
@@ -9,13 +10,14 @@ export type AuthResult = {
   success: boolean;
   user?: User;
   message?: string;
+  token?: string;
 };
 
 // Client-side functions that call the API
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing'
 ): Promise<AuthResult> => {
   try {
     const response = await fetch('/api/auth/register', {

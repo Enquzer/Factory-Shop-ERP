@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
 import { OrderStatusFlow } from "@/components/order-status-flow";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 export function OrderTracking() {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -17,7 +18,9 @@ export function OrderTracking() {
         const fetchOrders = async () => {
             setIsLoading(true);
             try {
-                const response = await fetch('/api/orders');
+                const response = await fetch('/api/orders', {
+                    headers: createAuthHeaders()
+                });
                 if (response.ok) {
                     const ordersData = await response.json();
                     setOrders(ordersData);

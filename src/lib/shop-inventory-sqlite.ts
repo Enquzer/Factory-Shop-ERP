@@ -85,6 +85,23 @@ export async function updateShopInventoryItemStock(shopId: string, productVarian
 export async function removeItemsFromShopInventory(shopId: string, productVariantIds: string[]): Promise<boolean> {
   try {
     const db = await getDb();
+    
+    // Validate inputs to prevent injection
+    if (!shopId || typeof shopId !== 'string') {
+      throw new Error('Invalid shopId');
+    }
+    
+    if (!Array.isArray(productVariantIds) || productVariantIds.length === 0) {
+      return true; // Nothing to delete
+    }
+    
+    // Validate each productVariantId
+    for (const id of productVariantIds) {
+      if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+        throw new Error(`Invalid productVariantId: ${id}`);
+      }
+    }
+    
     const placeholders = productVariantIds.map(() => '?').join(',');
     const result = await db.run(`
       DELETE FROM shop_inventory 

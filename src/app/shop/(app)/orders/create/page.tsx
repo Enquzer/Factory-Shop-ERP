@@ -60,23 +60,6 @@ export default function CreateOrderPage() {
     };
     
     const handlePlaceOrder = () => {
-        // Check if any items have 0 factory stock before placing order
-        const outOfStockItems = items.filter(item => {
-            const factoryStockForItem = visualFactoryStock[item.variant.id] !== undefined 
-                ? visualFactoryStock[item.variant.id] 
-                : 0;
-            return factoryStockForItem <= 0;
-        });
-        
-        if (outOfStockItems.length > 0) {
-            toast({
-                title: "Order Contains Out of Stock Items",
-                description: "Some items in your order are out of stock at the factory. Please remove them or reduce quantities.",
-                variant: "destructive",
-            });
-            return;
-        }
-        
         // Check if any items exceed factory stock
         const insufficientStockItems = items.filter(item => {
             const factoryStockForItem = visualFactoryStock[item.variant.id] !== undefined 
@@ -249,13 +232,14 @@ export default function CreateOrderPage() {
                             {items.map(item => {
                                 const availableStock = getRealTimeAvailableStock(item.variant.id);
                                 const isLowStock = availableStock < item.quantity;
-                                const isOutOfStock = availableStock <= 0;
                                 const factoryStockForItem = visualFactoryStock[item.variant.id] !== undefined 
                                     ? visualFactoryStock[item.variant.id] 
                                     : 'Not available';
                                 const shopStockForItem = visualShopStock[item.variant.id] !== undefined
                                     ? visualShopStock[item.variant.id]
                                     : 'Not available';
+                                // isOutOfStock should be based on factory stock availability, not shop stock
+                                const isOutOfStock = factoryStockForItem === 'Not available' || factoryStockForItem <= 0;
                                 
                                 return (
                                     <TableRow key={item.variant.id}>

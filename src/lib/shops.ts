@@ -149,10 +149,12 @@ export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop
       ? `${baseUrl}/api/shops?id=${shopId}`
       : `/api/shops?id=${shopId}`;
 
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` })
       },
       body: JSON.stringify(dataToUpdate),
     });
@@ -167,10 +169,12 @@ export async function updateShop(shopId: string, dataToUpdate: Partial<Omit<Shop
 // Add deleteShop function
 export async function deleteShop(shopId: string): Promise<boolean> {
   try {
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const response = await fetch(`/api/shops?id=${shopId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` })
       },
     });
 

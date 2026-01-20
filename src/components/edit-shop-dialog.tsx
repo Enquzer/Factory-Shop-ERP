@@ -372,16 +372,23 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                 <div className="space-y-0.5">
                                     <FormLabel className="text-base">Show Variant Details</FormLabel>
                                     <p className="text-sm text-muted-foreground">
-                                        When enabled, shops see each product variant (color/size) separately.
-                                        When disabled, shops see only aggregated product totals.
+                                        When enabled, shops see each product variant (color/size) separately. When disabled, shops see only aggregated product totals.
                                     </p>
                                 </div>
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </FormControl>
+                                <Switch
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => {
+                                        field.onChange(checked);
+                                        // Show notification about the change
+                                        if (shop) {
+                                            toast({
+                                                title: "Variant Visibility Updated",
+                                                description: `Variant details for shop "${shop.name}" have been ${checked ? 'enabled' : 'disabled'}. ${checked ? 'Shops will now see individual product variants.' : 'Shops will now see aggregated product totals only.'}`,
+                                                duration: 5000,
+                                            });
+                                        }
+                                    }}
+                                />
                             </FormItem>
                         )}
                     />

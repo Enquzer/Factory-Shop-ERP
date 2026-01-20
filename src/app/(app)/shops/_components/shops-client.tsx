@@ -5,14 +5,6 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, MoreHorizontal, MapPin, Loader2, Edit, Eye, ToggleLeft, ToggleRight, Trash2, ChevronLeft, ChevronRight, FileText, Power } from "lucide-react";
 import { RegisterShopDialog } from "@/components/register-shop-dialog";
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table"
-import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
@@ -29,6 +21,8 @@ import { EditShopDialog } from '@/components/edit-shop-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/auth-context';
 import { deleteShop } from '@/lib/shops'; // Import deleteShop function
+import { BulkSelectionTable } from "@/components/bulk-selection-table";
+import { BulkActions } from "@/components/bulk-actions";
 
 export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops: Shop[], onShopsUpdate?: (shops: Shop[]) => void }) {
     const { user } = useAuth(); // Get user context
@@ -159,6 +153,94 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
         }
     };
 
+    const handlePrint = (selectedIds: string[]) => {
+        // For printing, we can open a new window with selected shop details
+        const selectedShops = shops.filter(shop => selectedIds.includes(shop.id));
+        
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          let printContent = `
+            <html>
+              <head>
+                <title>Selected Shops</title>
+                <style>
+                  body { font-family: Arial, sans-serif; }
+                  table { border-collapse: collapse; width: 100%; }
+                  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                  th { background-color: #f2f2f2; }
+                </style>
+              </head>
+              <body>
+                <h1>Selected Shops (${selectedShops.length})</h1>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Shop Name</th>
+                      <th>Contact Person</th>
+                      <th>City</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+          `;
+          
+          selectedShops.forEach(shop => {
+            printContent += `
+              <tr>
+                <td>${shop.name}</td>
+                <td>${shop.contactPerson}</td>
+                <td>${shop.city}</td>
+                <td>${shop.status}</td>
+              </tr>
+            `;
+          });
+          
+          printContent += `
+                  </tbody>
+                </table>
+              </body>
+            </html>
+          `;
+          
+          printWindow.document.write(printContent);
+          printWindow.document.close();
+          printWindow.focus();
+          printWindow.print();
+          printWindow.close();
+        }
+    };
+    
+    const handleBulkDelete = async (selectedIds: string[]) => {
+        // Delete all selected shops
+        for (const shopId of selectedIds) {
+            try {
+                const shopToDelete = shops.find(shop => shop.id === shopId);
+                if (!shopToDelete) continue;
+                
+                const success = await deleteShop(shopId);
+                if (!success) {
+                    throw new Error(`Failed to delete shop ${shopId}`);
+                }
+            } catch (error) {
+                console.error(`Error deleting shop ${shopId}:`, error);
+                toast({
+                    title: "Error",
+                    description: `Failed to delete shop ${shopId}. Please try again.`,
+                    variant: "destructive",
+                });
+                return; // Stop if any deletion fails
+            }
+        }
+        
+        // Refresh the shop list
+        await fetchShops(currentPage);
+        
+        toast({
+            title: "Success",
+            description: `${selectedIds.length} shop(s) deleted successfully.`,
+        });
+    };
+    
     const toggleShopStatus = async (shop: Shop, newStatus: 'Active' | 'Inactive' | 'Pending') => {
         try {
             const response = await fetch(`/api/shops?id=${shop.id}`, {
@@ -225,139 +307,135 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
                 </div>
             ) : (
                 <>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Shop Name</TableHead>
-                                <TableHead className="hidden md:table-cell">Contact Person</TableHead>
-                                <TableHead className="hidden lg:table-cell">Location</TableHead>
-                                <TableHead className="hidden sm:table-cell">Status</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {shops.length > 0 ? (
-                                shops.map((shop) => (
-                                    <TableRow key={`shop-row-${shop.id}`}>
-                                        <TableCell className="font-medium">
-                                            <div className="flex items-center gap-2">
-                                                <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16" />
-                                                <div>
-                                                    <div>{shop.name}</div>
-                                                    <div className="text-sm text-muted-foreground">@{shop.username}</div>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="hidden md:table-cell">{shop.contactPerson}</TableCell>
-                                        <TableCell className="hidden lg:table-cell">
-                                            <Link
-                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.exactLocation}, ${shop.city}`)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex items-center gap-2 hover:underline"
+                    <BulkSelectionTable
+                        headers={[ 
+                            { key: 'shopName', title: 'Shop Name', mobileTitle: 'Shop' },
+                            { key: 'contactPerson', title: 'Contact Person', mobileTitle: 'Contact', className: 'hidden md:table-cell' },
+                            { key: 'location', title: 'Location', mobileTitle: 'Location', className: 'hidden lg:table-cell' },
+                            { key: 'status', title: 'Status', mobileTitle: 'Status', className: 'hidden sm:table-cell' },
+                            { key: 'actions', title: 'Actions', mobileTitle: 'Actions', className: 'text-right' },
+                        ]}
+                        data={shops.map(shop => ({
+                            id: shop.id,
+                            shopName: (
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-gray-200 border-2 border-dashed rounded-xl w-10 h-10 flex-shrink-0" />
+                                    <div>
+                                        <div className="font-medium">{shop.name}</div>
+                                        <div className="text-sm text-muted-foreground">@{shop.username}</div>
+                                    </div>
+                                </div>
+                            ),
+                            contactPerson: (
+                                <div className="text-sm">
+                                    {shop.contactPerson}
+                                </div>
+                            ),
+                            location: (
+                                <div className="text-sm">
+                                    <Link
+                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.exactLocation}, ${shop.city}`)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 hover:underline"
+                                    >
+                                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                                        {shop.city}, {shop.exactLocation}
+                                    </Link>
+                                </div>
+                            ),
+                            status: (
+                                <Badge
+                                    variant={
+                                        shop.status === 'Active' ? 'default' :
+                                            shop.status === 'Inactive' ? 'secondary' :
+                                                'outline'
+                                    }
+                                    className={
+                                        shop.status === 'Active' ? 'bg-green-500 hover:bg-green-600' :
+                                            shop.status === 'Inactive' ? 'bg-gray-500 hover:bg-gray-600' :
+                                                'bg-yellow-500 hover:bg-yellow-600'
+                                    }
+                                >
+                                    {shop.status}
+                                </Badge>
+                            ),
+                            actions: (
+                                <div className="flex justify-end">
+                                    <DropdownMenu key={`dropdown-${shop.id}`}>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="sm">
+                                                <MoreHorizontal className="h-4 w-4" />
+                                                <span className="sr-only">Shop Actions</span>
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                            <DropdownMenuItem onClick={() => {
+                                                // Use setTimeout to ensure proper state updates
+                                                setTimeout(() => {
+                                                    setShopToView(shop);
+                                                }, 0);
+                                            }}>
+                                                <Eye className="mr-2 h-4 w-4" /> View Details
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => {
+                                                // Use setTimeout to ensure proper state updates
+                                                setTimeout(() => {
+                                                    setShopToEdit(shop);
+                                                    setIsEditDialogOpen(true); // Open the dialog
+                                                }, 0);
+                                            }}>
+                                                <Edit className="mr-2 h-4 w-4" /> Edit
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuLabel>Status Control</DropdownMenuLabel>
+                                            <DropdownMenuItem
+                                                onClick={() => toggleShopStatus(shop, 'Active')}
+                                                disabled={shop.status === 'Active'}
                                             >
-                                                <MapPin className="h-4 w-4 text-muted-foreground" />
-                                                {shop.city}
-                                            </Link>
-                                            <div className="text-sm text-muted-foreground">{shop.exactLocation}</div>
-                                        </TableCell>
-                                        <TableCell className="hidden sm:table-cell">
-                                            <Badge
-                                                variant={
-                                                    shop.status === 'Active' ? 'default' :
-                                                        shop.status === 'Inactive' ? 'secondary' :
-                                                            'outline'
-                                                }
-                                                className={
-                                                    shop.status === 'Active' ? 'bg-green-500 hover:bg-green-600' :
-                                                        shop.status === 'Inactive' ? 'bg-gray-500 hover:bg-gray-600' :
-                                                            'bg-yellow-500 hover:bg-yellow-600'
-                                                }
+                                                <Power className="mr-2 h-4 w-4 text-green-500" /> Set Active
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => toggleShopStatus(shop, 'Inactive')}
+                                                disabled={shop.status === 'Inactive'}
                                             >
-                                                {shop.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu key={`dropdown-${shop.id}`}>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon">
-                                                        <MoreHorizontal className="h-4 w-4" />
-                                                        <span className="sr-only">Shop Actions</span>
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                    <DropdownMenuItem onClick={() => {
-                                                        // Use setTimeout to ensure proper state updates
-                                                        setTimeout(() => {
-                                                            setShopToView(shop);
-                                                        }, 0);
-                                                    }}>
-                                                        <Eye className="mr-2 h-4 w-4" /> View Details
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => {
-                                                        // Use setTimeout to ensure proper state updates
-                                                        setTimeout(() => {
-                                                            setShopToEdit(shop);
-                                                            setIsEditDialogOpen(true); // Open the dialog
-                                                        }, 0);
-                                                    }}>
-                                                        <Edit className="mr-2 h-4 w-4" /> Edit
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuLabel>Status Control</DropdownMenuLabel>
-                                                    <DropdownMenuItem
-                                                        onClick={() => toggleShopStatus(shop, 'Active')}
-                                                        disabled={shop.status === 'Active'}
-                                                    >
-                                                        <Power className="mr-2 h-4 w-4 text-green-500" /> Set Active
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        onClick={() => toggleShopStatus(shop, 'Inactive')}
-                                                        disabled={shop.status === 'Inactive'}
-                                                    >
-                                                        <Power className="mr-2 h-4 w-4 text-gray-500" /> Set Inactive
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        onClick={() => toggleShopStatus(shop, 'Pending')}
-                                                        disabled={shop.status === 'Pending'}
-                                                    >
-                                                        <Power className="mr-2 h-4 w-4 text-yellow-500" /> Set Pending
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem
-                                                        onClick={() => {
-                                                            // Use setTimeout to ensure proper state updates
-                                                            setTimeout(() => {
-                                                                setShopToDelete(shop);
-                                                            }, 0);
-                                                        }}
-                                                        className="text-destructive"
-                                                    >
-                                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow key="no-shops-row">
-                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                                        No shops found. <Button variant="link" onClick={() => {
-                                            // Use setTimeout to ensure proper state updates
-                                            setTimeout(() => {
-                                                const registerButton = document.querySelector('[data-register-shop-button]');
-                                                if (registerButton) {
-                                                    (registerButton as HTMLButtonElement).click();
-                                                }
-                                            }, 0);
-                                        }}>Register your first shop</Button>
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                                                <Power className="mr-2 h-4 w-4 text-gray-500" /> Set Inactive
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => toggleShopStatus(shop, 'Pending')}
+                                                disabled={shop.status === 'Pending'}
+                                            >
+                                                <Power className="mr-2 h-4 w-4 text-yellow-500" /> Set Pending
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                onClick={() => {
+                                                    // Use setTimeout to ensure proper state updates
+                                                    setTimeout(() => {
+                                                        setShopToDelete(shop);
+                                                    }, 0);
+                                                }}
+                                                className="text-destructive"
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            )
+                        }))}
+                        idKey="id"
+                        actions={
+                            <BulkActions 
+                                onPrint={handlePrint}
+                                onDelete={handleBulkDelete}
+                                printLabel="Print Selected"
+                                deleteLabel="Delete Selected"
+                                itemType="shops"
+                            />
+                        }
+                    />
 
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between py-4">

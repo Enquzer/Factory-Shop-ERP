@@ -1,57 +1,52 @@
+
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import { join } from 'path';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 export async function POST(request: NextRequest) {
   try {
-    // Check if the request has a body
-    if (!request.body) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    // Authenticate the user
+    const authResult = await authenticateRequest(request);
+    if (!authResult) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const filename = formData.get('filename') as string;
-    
+    const file = formData.get('file') as File | null;
+
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
-    
-    // Ensure the public/uploads directory exists
-    const uploadsDir = join(process.cwd(), 'public', 'uploads');
-    try {
-      await mkdir(uploadsDir, { recursive: true });
-    } catch (error) {
-      console.error('Error creating uploads directory:', error);
-      return NextResponse.json({ error: 'Failed to create uploads directory' }, { status: 500 });
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      return NextResponse.json({ error: 'Invalid file type. Allowed types: JPEG, PNG, GIF, PDF' }, { status: 400 });
     }
-    
-    // Convert the file to a Buffer
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+
+    // Generate unique filename
+    // specific formatting to avoid potential path traversal
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const filename = `${timestamp}-${random}-${originalName}`;
     
-    // Validate filename
-    if (!filename) {
-      return NextResponse.json({ error: 'Filename is required' }, { status: 400 });
-    }
+    // Save to public/uploads
+    const uploadDir = join(process.cwd(), 'public', 'uploads');
+    const filepath = join(uploadDir, filename);
+
+    await writeFile(filepath, buffer);
+
+    // Return the URL
+    const fileUrl = `/uploads/${filename}`;
     
-    // Sanitize filename to prevent directory traversal
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    
-    // Save the file to the public/uploads directory
-    const filePath = join(uploadsDir, sanitizedFilename);
-    await writeFile(filePath, buffer);
-    
-    // Return the URL path that can be used to access the image
-    const imageUrl = `/uploads/${sanitizedFilename}`;
-    
-    return NextResponse.json({ imageUrl });
-  } catch (error: any) {
+    return NextResponse.json({ url: fileUrl, filename: filename, type: file.type });
+  } catch (error) {
     console.error('Error uploading file:', error);
-    // Return a more specific error message based on the error type
-    if (error instanceof Error) {
-      return NextResponse.json({ error: `Failed to upload file: ${error.message}` }, { status: 500 });
-    }
-    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error during file upload' }, { status: 500 });
   }
 }

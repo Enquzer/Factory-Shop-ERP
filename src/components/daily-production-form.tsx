@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { MarketingOrderItem, MarketingOrderStatus } from '@/lib/marketing-orders';
+import { VelocityProductionGrid } from './velocity-production-grid';
 
 interface DailyProductionFormProps {
   orderId: string;
@@ -22,9 +23,11 @@ interface DailyProductionFormProps {
   totalQuantity: number;
   onStatusUpdate: () => void;
   orderStatus?: MarketingOrderStatus; // Add order status prop
+  userRole?: string;
+  piecesPerSet?: number;
 }
 
-export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpdate, orderStatus }: DailyProductionFormProps) {
+export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpdate, orderStatus, userRole, piecesPerSet = 1 }: DailyProductionFormProps) {
   const { toast } = useToast();
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [mode, setMode] = useState<'breakdown' | 'total'>('breakdown');
@@ -34,6 +37,8 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     quantity: 0, 
     status: 'In Progress' 
   });
+  const [isVelocityGridSaving, setIsVelocityGridSaving] = useState(false);
+  const [dailyProductionStatus, setDailyProductionStatus] = useState<any[]>([]);
   
   // Fetch total produced quantity
   useEffect(() => {
@@ -51,6 +56,25 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     
     fetchTotalProduced();
   }, [orderId, onStatusUpdate]);
+  
+  // Fetch daily production status for breakdown calculations
+  useEffect(() => {
+    const fetchDailyStatus = async () => {
+      try {
+        const response = await fetch(`/api/marketing-orders/daily-status?orderId=${orderId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setDailyProductionStatus(data);
+        }
+      } catch (error) {
+        console.error('Error fetching daily production status:', error);
+      }
+    };
+    
+    if (orderId) {
+      fetchDailyStatus();
+    }
+  }, [orderId]);
   
   // Initialize status updates with default values
   useEffect(() => {
@@ -153,6 +177,13 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
   const handleModeChange = (value: string) => {
     setMode(value as 'breakdown' | 'total');
   };
+  
+  // Calculate current department total for an item based on daily production status
+  const getCurrentDepartmentTotal = (size: string, color: string) => {
+    return dailyProductionStatus
+      .filter(status => status.size === size && status.color === color)
+      .reduce((sum, status) => sum + status.quantity, 0);
+  };
 
   // Validate process stage dependency rules
   const validateProcessStage = (selectedStage: string): boolean => {
@@ -162,8 +193,12 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     // Define the process sequence
     const processSequence: MarketingOrderStatus[] = [
       'Placed Order',
+      'Planning',
+      'Sample Making',
       'Cutting', 
-      'Production', 
+      'Sewing', 
+      'Finishing',
+      'Quality Inspection',
       'Packing', 
       'Delivery'
     ];
@@ -407,6 +442,9 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                 <div className="text-xs font-medium mt-1">
                   Remaining: {totalQuantity - totalProduced} units
                 </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Based on order total vs produced
+                </div>
               </div>
             </div>
             
@@ -421,10 +459,14 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                         <SelectValue placeholder="Select process stage" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Cutting">Cutting</SelectItem>
-                        <SelectItem value="Production">Production</SelectItem>
-                        <SelectItem value="Packing">Packing</SelectItem>
-                        <SelectItem value="Delivery">Delivery</SelectItem>
+                        {(!userRole || userRole === 'factory' || userRole === 'planning') && <SelectItem value="Planning">Planning</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'sample_maker') && <SelectItem value="Sample Making">Sample Making</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'cutting') && <SelectItem value="Cutting">Cutting</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'sewing' || userRole === 'finishing') && <SelectItem value="Sewing">Sewing</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'finishing' || userRole === 'packing') && <SelectItem value="Finishing">Finishing</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'quality_inspection' || userRole === 'packing') && <SelectItem value="Quality Inspection">Quality Inspection</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'packing') && <SelectItem value="Packing">Packing</SelectItem>}
+                        {(!userRole || userRole === 'factory') && <SelectItem value="Delivery">Delivery</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>
@@ -474,63 +516,56 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                         <SelectValue placeholder="Select process stage" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Cutting">Cutting</SelectItem>
-                        <SelectItem value="Production">Production</SelectItem>
-                        <SelectItem value="Packing">Packing</SelectItem>
-                        <SelectItem value="Delivery">Delivery</SelectItem>
+                        {(!userRole || userRole === 'factory' || userRole === 'planning') && <SelectItem value="Planning">Planning</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'sample_maker') && <SelectItem value="Sample Making">Sample Making</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'cutting') && <SelectItem value="Cutting">Cutting</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'sewing' || userRole === 'finishing') && <SelectItem value="Sewing">Sewing</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'finishing' || userRole === 'packing') && <SelectItem value="Finishing">Finishing</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'quality_inspection' || userRole === 'packing') && <SelectItem value="Quality Inspection">Quality Inspection</SelectItem>}
+                        {(!userRole || userRole === 'factory' || userRole === 'packing') && <SelectItem value="Packing">Packing</SelectItem>}
+                        {(!userRole || userRole === 'factory') && <SelectItem value="Delivery">Delivery</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Size</TableHead>
-                        <TableHead>Color</TableHead>
-                        <TableHead>Planned Quantity</TableHead>
-                        <TableHead>Produced Quantity (Today)</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((item) => {
-                        const key = `${item.size}-${item.color}`;
-                        const update = statusUpdates[key] || { quantity: 0, status: 'Pending' };
+                  {totalUpdate.processStage && (
+                    <VelocityProductionGrid
+                      orderId={orderId}
+                      orderNumber={orderId}
+                      styleCode="G-90"
+                      totalOrderQty={totalQuantity}
+                      items={items.map(item => ({
+                        id: `${item.size}-${item.color}`,
+                        size: item.size,
+                        color: item.color,
+                        plannedQuantity: item.quantity,
+                        previousDepartmentTotal: item.quantity, // For now, using planned quantity as previous department total
+                        currentDepartmentTotal: getCurrentDepartmentTotal(item.size, item.color)
+                      }))}
+                      userRole={userRole as any || 'cutting'}
+                      onSave={(updates) => {
+                        setIsVelocityGridSaving(true);
                         
-                        return (
-                          <TableRow key={key}>
-                            <TableCell>{item.size}</TableCell>
-                            <TableCell>{item.color}</TableCell>
-                            <TableCell>{item.quantity}</TableCell>
-                            <TableCell>
-                              <Input
-                                type="number"
-                                min="0"
-                                max={item.quantity}
-                                value={update.quantity}
-                                onChange={(e) => handleQuantityChange(item.size, item.color, parseInt(e.target.value) || 0)}
-                                className="w-24 border-accent focus:ring-accent"
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Max: {item.quantity}
-                              </p>
-                            </TableCell>
-                            <TableCell>
-                              <select
-                                value={update.status}
-                                onChange={(e) => handleStatusChange(item.size, item.color, e.target.value)}
-                                className="border rounded p-2"
-                              >
-                                <option value="Pending">Pending</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Completed">Completed</option>
-                                <option value="On Hold">On Hold</option>
-                              </select>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                        // Update the statusUpdates state with new values
+                        const newStatusUpdates: Record<string, { quantity: number; status: string }> = {};
+                        updates.forEach(update => {
+                          const [size, color] = update.id.split('-');
+                          const key = `${size}-${color}`;
+                          newStatusUpdates[key] = {
+                            quantity: update.quantity,
+                            status: statusUpdates[key]?.status || 'In Progress'
+                          };
+                        });
+                        
+                        setStatusUpdates(newStatusUpdates);
+                        
+                        // Simulate API call delay then reset saving state
+                        setTimeout(() => {
+                          setIsVelocityGridSaving(false);
+                        }, 500);
+                      }}
+                      isLoading={isVelocityGridSaving}
+                    />
+                  )}
                 </div>
               </div>
             )}

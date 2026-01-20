@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { Product, ProductVariant } from "@/lib/products";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,27 +12,45 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import Image from "next/image";
 import { useOrder } from "@/hooks/use-order";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, MinusCircle, ShoppingCart, Package, Factory, Store, Plus } from "lucide-react";
+import { 
+  PlusCircle, 
+  MinusCircle, 
+  ShoppingCart, 
+  Package, 
+  Factory, 
+  Store, 
+  Plus, 
+  Check, 
+  ChevronsUpDown, 
+  Search, 
+  Trash2, 
+  ArrowLeft, 
+  Upload, 
+  Image as ImageIcon 
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from '@/contexts/auth-context';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog as DialogPrimitive,
-  DialogContent as DialogContentPrimitive,
-  DialogHeader as DialogHeaderPrimitive,
-  DialogTitle as DialogTitlePrimitive,
-  DialogDescription as DialogDescriptionPrimitive,
-  DialogFooter as DialogFooterPrimitive,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { StockDistributionToggle } from "@/components/stock-distribution-toggle";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { getProducts } from "@/lib/products";
+import { calculateDemandWeights } from "@/lib/variant-demand";
 import { useShopInventory } from "@/hooks/use-shop-inventory";
+import { StockDistributionToggle } from "@/components/stock-distribution-toggle";
 
 // Fixed TypeScript error with useShopInventory hook usage
 
@@ -58,11 +76,119 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
     
     // Marketing order state
     const [isMarketingOrderDialogOpen, setIsMarketingOrderDialogOpen] = useState(false);
+    const [allProducts, setAllProducts] = useState<Product[]>([]);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+    const [isNewProduct, setIsNewProduct] = useState(false);
+    const [selectedMarketingProduct, setSelectedMarketingProduct] = useState<Product | null>(product);
+    
+    // Marketing order form fields
+    const [marketingProductName, setMarketingProductName] = useState(product.name);
+    const [marketingProductCode, setMarketingProductCode] = useState(product.productCode);
+    const [marketingCategory, setMarketingCategory] = useState(product.category);
+    const [marketingPrice, setMarketingPrice] = useState(product.price);
+    const [marketingMainImage, setMarketingMainImage] = useState<File | null>(null);
+    const [marketingMainImagePreview, setMarketingMainImagePreview] = useState<string | null>(product.imageUrl || null);
+    
     const [marketingOrderData, setMarketingOrderData] = useState({
         description: '',
         orderPlacementDate: new Date().toISOString().split('T')[0],
         plannedDeliveryDate: ''
     });
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    
+    // Manual items for new product registration
+    const [manualItems, setManualItems] = useState<{size: string, color: string, quantity: number}[]>([]);
+    const [newItemSize, setNewItemSize] = useState("");
+    const [newItemColor, setNewItemColor] = useState("");
+    const [newItemQuantity, setNewItemQuantity] = useState(0);
+
+    // Fetch all products for the searchable dropdown
+    useEffect(() => {
+        if (isMarketingOrderDialogOpen) {
+            const fetchAllProducts = async () => {
+                try {
+                    const fetched = await getProducts();
+                    setAllProducts(fetched);
+                } catch (error) {
+                    console.error("Error fetching all products:", error);
+                }
+            };
+            fetchAllProducts();
+        }
+    }, [isMarketingOrderDialogOpen]);
+
+    // Handle product selection in marketing order
+    const handleMarketingProductSelect = (selectedId: string) => {
+        const prod = allProducts.find(p => p.id === selectedId) || null;
+        setSelectedMarketingProduct(prod);
+        
+        if (prod) {
+            setMarketingProductName(prod.name);
+            setMarketingProductCode(prod.productCode);
+            setMarketingCategory(prod.category);
+            setMarketingPrice(prod.price);
+            setMarketingMainImagePreview(prod.imageUrl || null);
+            setIsNewProduct(false);
+            
+            // If the selected product is the one we started with, stay with current quantities
+            // Otherwise, we might want to clear them? 
+            // For now, let's keep it simple: if changing products, clear quantities unless it's the same
+            if (prod.id !== product.id) {
+                setQuantities({});
+                setManualItems([]);
+            }
+        } else {
+            // New product registration
+            setIsNewProduct(true);
+            setMarketingProductName("");
+            setMarketingProductCode("");
+            setMarketingCategory("");
+            setMarketingPrice(0);
+            setMarketingMainImagePreview(null);
+            setQuantities({});
+            setManualItems([]);
+        }
+    };
+
+    // Auto-find product by code
+    useEffect(() => {
+        if (marketingProductCode && !isNewProduct) {
+            const match = allProducts.find(p => p.productCode.toUpperCase() === marketingProductCode.toUpperCase());
+            if (match && (!selectedMarketingProduct || match.id !== selectedMarketingProduct.id)) {
+                handleMarketingProductSelect(match.id);
+            }
+        }
+    }, [marketingProductCode, isNewProduct, allProducts]);
+
+    const filteredMarketingProducts = allProducts.filter(p => 
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        p.productCode.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const handleMarketingImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setMarketingMainImage(file);
+        const previewUrl = URL.createObjectURL(file);
+        setMarketingMainImagePreview(previewUrl);
+    };
+
+    const addManualItem = () => {
+        if (!newItemSize || !newItemColor || newItemQuantity <= 0) {
+            toast({
+                title: "Validation Error",
+                description: "Please fill in all item fields.",
+                variant: "destructive",
+            });
+            return;
+        }
+        setManualItems([...manualItems, { size: newItemSize, color: newItemColor, quantity: newItemQuantity }]);
+        setNewItemSize("");
+        setNewItemColor("");
+        setNewItemQuantity(0);
+    };
 
     // Fallback functions for when orderContext is not available (factory context)
     const getAvailableStock = orderContext?.getAvailableStock || ((variantId: string) => {
@@ -234,83 +360,96 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
     };
     
     const handlePlaceMarketingOrder = async () => {
+        // Validation
+        const newErrors: Record<string, string> = {};
+        if (!marketingProductName.trim()) newErrors.productName = "Required";
+        if (!marketingProductCode.trim()) newErrors.productCode = "Required";
+        else if (!/^[A-Z]{2}(-[A-Z]{2})?-\d{3,}([/-]\d{2,})?$/i.test(marketingProductCode)) {
+            newErrors.productCode = "Invalid format";
+        }
+        
+        if (isNewProduct) {
+            if (!marketingCategory) newErrors.category = "Required";
+            if (marketingPrice <= 0) newErrors.price = "Required";
+            if (!marketingMainImage) newErrors.mainImage = "Image required";
+        }
+
+        const totalItems = isNewProduct 
+            ? manualItems.reduce((sum, item) => sum + item.quantity, 0)
+            : Object.values(quantities).reduce((sum, q) => sum + q, 0);
+            
+        if (totalItems <= 0) {
+            toast({
+                title: "No Items Selected",
+                description: "Please add items to your order.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            return;
+        }
+
         try {
-            // Prepare items for the marketing order
-            const orderItems = Object.entries(quantities)
-                .filter(([_, quantity]) => quantity > 0)
-                .map(([variantId, quantity]) => {
-                    const variant = product.variants.find(v => v.id === variantId);
-                    return {
-                        size: variant?.size || '',
-                        color: variant?.color || '',
-                        quantity: quantity
-                    };
-                })
-                .filter(item => item.size && item.color); // Filter out invalid items
-            
-            if (orderItems.length === 0) {
-                toast({
-                    title: "No Items Selected",
-                    description: "Please specify a quantity for the items you wish to order.",
-                    variant: "destructive",
-                });
-                return;
-            }
-            
-            // Calculate total quantity
-            const totalQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0);
-            
-            // Create the marketing order data
-            const orderData = {
-                productName: product.name,
-                productCode: product.productCode,
+            // Prepare items
+            const finalItems = isNewProduct 
+                ? manualItems 
+                : Object.entries(quantities)
+                    .filter(([_, q]) => q > 0)
+                    .map(([vid, q]) => {
+                        const v = (selectedMarketingProduct || product).variants.find(v => v.id === vid);
+                        return { size: v?.size || '', color: v?.color || '', quantity: q };
+                    });
+
+            const orderData: any = {
+                productName: marketingProductName,
+                productCode: marketingProductCode,
                 description: marketingOrderData.description,
-                quantity: totalQuantity,
+                quantity: totalItems,
                 status: 'Placed Order',
                 isCompleted: false,
                 createdBy: user?.username || 'Factory User',
                 orderPlacementDate: marketingOrderData.orderPlacementDate,
                 plannedDeliveryDate: marketingOrderData.plannedDeliveryDate || undefined,
-                items: orderItems
+                items: finalItems
             };
-            
-            // Call the API to create the marketing order
+
+            if (isNewProduct) {
+                orderData.isNewProduct = true;
+                orderData.category = marketingCategory;
+                orderData.price = marketingPrice;
+                
+                if (marketingMainImage) {
+                    const formData = new FormData();
+                    formData.append('file', marketingMainImage);
+                    const mainImageName = `${marketingProductCode.toUpperCase()}_main.${marketingMainImage.name.split('.').pop()}`;
+                    formData.append('filename', mainImageName);
+                    
+                    const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+                    if (uploadRes.ok) {
+                        const res = await uploadRes.json();
+                        orderData.imageUrl = res.imageUrl;
+                    }
+                }
+            } else if (selectedMarketingProduct?.imageUrl) {
+                orderData.imageUrl = selectedMarketingProduct.imageUrl;
+            }
+
             const response = await fetch('/api/marketing-orders', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orderData),
             });
             
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.details || errorData.error || 'Failed to create marketing order');
-            }
+            if (!response.ok) throw new Error('Failed to create marketing order');
             
-            const newOrder = await response.json();
-            
-            toast({
-                title: "Marketing Order Created",
-                description: `Marketing order ${newOrder.orderNumber} has been created successfully.`,
-            });
-            
-            // Reset the form and close dialogs
-            setQuantities({});
-            setMarketingOrderData({
-                description: '',
-                orderPlacementDate: new Date().toISOString().split('T')[0],
-                plannedDeliveryDate: ''
-            });
+            toast({ title: "Success", description: "Marketing order created successfully." });
             setIsMarketingOrderDialogOpen(false);
             onOpenChange(false);
         } catch (error: any) {
-            console.error('Error creating marketing order:', error);
-            toast({
-                title: "Error",
-                description: error.message || "Failed to create marketing order. Please try again.",
-                variant: "destructive",
-            });
+            toast({ title: "Error", description: error.message, variant: "destructive" });
         }
     };
     
@@ -677,65 +816,292 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div>
-              <h3 className="font-medium mb-2">Selected Items</h3>
-              <div className="max-h-40 overflow-y-auto border rounded-md p-2">
-                {Object.entries(quantities)
-                  .filter(([_, quantity]) => quantity > 0)
-                  .map(([variantId, quantity]) => {
-                    const variant = product.variants.find(v => v.id === variantId);
-                    return variant ? (
-                      <div key={variantId} className="flex justify-between py-1 border-b last:border-b-0">
-                        <span>{variant.color} - {variant.size}</span>
-                        <span className="font-medium">{quantity} units</span>
+          <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
+            {/* Product Selection */}
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">Product Selection</Label>
+              <div className="flex flex-col gap-4">
+                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between shadow-sm border-primary/20 hover:border-primary/50"
+                    >
+                      <span className="truncate">
+                        {selectedMarketingProduct
+                          ? `${selectedMarketingProduct.name} (${selectedMarketingProduct.productCode})`
+                          : isNewProduct ? "Registering New Product..." : "Search catalog or start new..."}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0" align="start">
+                    <div className="flex items-center border-b px-3 bg-muted/20">
+                      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                      <input
+                        className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                        placeholder="Type product code or name to search..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto p-1">
+                      <div
+                        className={cn(
+                          "flex cursor-pointer select-none items-center rounded-md px-2 py-2.5 text-sm transition-colors mb-1",
+                          isNewProduct ? "bg-primary/10 text-primary font-medium" : "hover:bg-accent"
+                        )}
+                        onClick={() => {
+                            setIsNewProduct(true);
+                            setSelectedMarketingProduct(null);
+                            setMarketingProductName("");
+                            setMarketingProductCode("");
+                            setMarketingCategory("");
+                            setMarketingPrice(0);
+                            setMarketingMainImagePreview(null);
+                            setQuantities({});
+                            setManualItems([]);
+                            setIsPopoverOpen(false);
+                        }}
+                      >
+                        <PlusCircle className={cn("mr-2 h-4 w-4", isNewProduct ? "text-primary" : "text-muted-foreground")} />
+                        <span>Register New Product</span>
+                        {isNewProduct && <Check className="ml-auto h-4 w-4" />}
                       </div>
-                    ) : null;
-                  })}
+                      
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-sm mb-1">
+                        Existing Products
+                      </div>
+                      
+                      {filteredMarketingProducts.length === 0 ? (
+                        <div className="py-8 text-center text-sm text-muted-foreground">
+                          No matching products found.
+                        </div>
+                      ) : (
+                        filteredMarketingProducts.map((p) => (
+                          <div
+                            key={p.id}
+                            className={cn(
+                              "relative flex cursor-pointer select-none items-center rounded-md px-2 py-2 text-sm transition-colors",
+                              selectedMarketingProduct?.id === p.id ? "bg-accent" : "hover:bg-accent/50"
+                            )}
+                            onClick={() => {
+                              handleMarketingProductSelect(p.id);
+                              setIsPopoverOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", selectedMarketingProduct?.id === p.id ? "opacity-100" : "opacity-0")} />
+                            <div className="flex flex-col min-w-0">
+                              <span className="truncate">{p.name}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono">{p.productCode}</span>
+                            </div>
+                            {p.imageUrl && (
+                              <div className="ml-auto h-8 w-8 rounded overflow-hidden border">
+                                <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
-              <div className="flex justify-between font-bold mt-2">
+            </div>
+
+            {/* Product Details & Preview */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-muted/30 p-4 rounded-lg">
+                <div className="space-y-2">
+                    <Label className="text-xs">Preview</Label>
+                    <div className="relative aspect-square w-full rounded-md overflow-hidden border bg-background flex items-center justify-center">
+                        {marketingMainImagePreview ? (
+                            <Image 
+                                src={marketingMainImagePreview} 
+                                alt="Preview" 
+                                fill 
+                                style={{ objectFit: 'cover' }}
+                                key={marketingMainImagePreview}
+                            />
+                        ) : (
+                            <ImageIcon className="h-8 w-8 opacity-20" />
+                        )}
+                    </div>
+                    {isNewProduct && (
+                        <div className="pt-1">
+                            <Input type="file" accept="image/*" onChange={handleMarketingImageChange} className="text-[10px] h-7 px-1" />
+                            {errors.mainImage && <p className="text-[10px] text-red-500">{errors.mainImage}</p>}
+                        </div>
+                    )}
+                </div>
+                
+                <div className="md:col-span-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <Label className="text-xs">Name</Label>
+                            <Input 
+                                size={1} 
+                                value={marketingProductName} 
+                                onChange={e => setMarketingProductName(e.target.value)} 
+                                className={cn("h-8 text-sm", errors.productName && "border-red-500")}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Code</Label>
+                            <Input 
+                                size={1}
+                                value={marketingProductCode} 
+                                onChange={e => setMarketingProductCode(e.target.value.toUpperCase())}
+                                className={cn("h-8 text-sm font-mono", errors.productCode && "border-red-500", selectedMarketingProduct && "border-green-500 bg-green-50/50")}
+                            />
+                            {selectedMarketingProduct && (
+                                <div className="text-[10px] text-green-600 font-medium flex items-center gap-0.5 mt-0.5">
+                                    <Check className="h-2 w-2" /> Linked to existing product database
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {isNewProduct && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <Label className="text-xs">Category</Label>
+                                <Select value={marketingCategory} onValueChange={setMarketingCategory}>
+                                    <SelectTrigger className="h-8 text-sm">
+                                        <SelectValue placeholder="Cat..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Men">Men</SelectItem>
+                                        <SelectItem value="Women">Women</SelectItem>
+                                        <SelectItem value="Kids">Kids</SelectItem>
+                                        <SelectItem value="Unisex">Unisex</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Price (ETB)</Label>
+                                <Input 
+                                    type="number" 
+                                    value={marketingPrice || ""} 
+                                    onChange={e => setMarketingPrice(Number(e.target.value))} 
+                                    className="h-8 text-sm"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Items Breakdown */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Order Breakdown</Label>
+              
+              {!isNewProduct ? (
+                /* Existing Product Breakdown */
+                <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
+                    {Object.entries(quantities)
+                      .filter(([_, q]) => q > 0)
+                      .map(([vid, q]) => {
+                        const v = (selectedMarketingProduct || product).variants.find(v => v.id === vid);
+                        return v ? (
+                          <div key={vid} className="flex justify-between items-center p-2 text-sm">
+                            <span>{v.color} - {v.size}</span>
+                            <div className="flex items-center gap-2">
+                                <Input 
+                                    type="number" 
+                                    value={q} 
+                                    onChange={e => {
+                                        const val = Math.max(0, parseInt(e.target.value) || 0);
+                                        setQuantities(prev => ({ ...prev, [vid]: val }));
+                                    }}
+                                    className="h-7 w-16 text-center"
+                                />
+                                <span className="text-muted-foreground">units</span>
+                            </div>
+                          </div>
+                        ) : null;
+                      })}
+                    {Object.values(quantities).filter(q => q > 0).length === 0 && (
+                        <div className="p-4 text-center text-sm text-muted-foreground">
+                            No variants selected. Go back to pick items or add manual below.
+                        </div>
+                    )}
+                </div>
+              ) : (
+                /* New Product Manual Items */
+                <div className="space-y-2">
+                    <div className="grid grid-cols-4 gap-2">
+                        <Input placeholder="Size" value={newItemSize} onChange={e => setNewItemSize(e.target.value)} className="h-8 text-xs" />
+                        <Input placeholder="Color" value={newItemColor} onChange={e => setNewItemColor(e.target.value)} className="h-8 text-xs" />
+                        <Input type="number" placeholder="Qty" value={newItemQuantity || ""} onChange={e => setNewItemQuantity(Number(e.target.value))} className="h-8 text-xs" />
+                        <Button size="sm" onClick={addManualItem} className="h-8"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                    </div>
+                    <div className="max-h-32 overflow-y-auto border rounded-md">
+                        <table className="w-full text-xs">
+                            <thead className="bg-muted px-2">
+                                <tr>
+                                    <th className="text-left p-1">Size</th>
+                                    <th className="text-left p-1">Color</th>
+                                    <th className="text-right p-1">Qty</th>
+                                    <th className="w-8"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {manualItems.map((item, i) => (
+                                    <tr key={i} className="border-t">
+                                        <td className="p-1">{item.size}</td>
+                                        <td className="p-1">{item.color}</td>
+                                        <td className="p-1 text-right">{item.quantity}</td>
+                                        <td className="p-1">
+                                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setManualItems(manualItems.filter((_, idx) => idx !== i))}>
+                                                <Trash2 className="h-3 w-3 text-destructive" />
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center text-sm font-bold bg-muted/20 p-2 rounded">
                 <span>Total Quantity:</span>
-                <span>{totalSelected} units</span>
+                <span className="text-lg">{isNewProduct ? manualItems.reduce((s, i) => s + i.quantity, 0) : Object.values(quantities).reduce((s, q) => s + q, 0)} units</span>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="orderPlacementDate">Order Placement Date</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="orderPlacementDate" className="text-xs">Order Date</Label>
                 <Input
                   id="orderPlacementDate"
                   type="date"
+                  className="h-8 text-sm"
                   value={marketingOrderData.orderPlacementDate}
-                  onChange={(e) => setMarketingOrderData({
-                    ...marketingOrderData,
-                    orderPlacementDate: e.target.value
-                  })}
+                  onChange={(e) => setMarketingOrderData({ ...marketingOrderData, orderPlacementDate: e.target.value })}
                 />
               </div>
-              <div>
-                <Label htmlFor="plannedDeliveryDate">Planned Delivery Date (Optional)</Label>
+              <div className="space-y-1">
+                <Label htmlFor="plannedDeliveryDate" className="text-xs">Delivery Date (Est.)</Label>
                 <Input
                   id="plannedDeliveryDate"
                   type="date"
+                  className="h-8 text-sm"
                   value={marketingOrderData.plannedDeliveryDate}
-                  onChange={(e) => setMarketingOrderData({
-                    ...marketingOrderData,
-                    plannedDeliveryDate: e.target.value
-                  })}
+                  onChange={(e) => setMarketingOrderData({ ...marketingOrderData, plannedDeliveryDate: e.target.value })}
                 />
               </div>
             </div>
             
-            <div>
-              <Label htmlFor="description">Description (Optional)</Label>
+            <div className="space-y-1">
+              <Label htmlFor="description" className="text-xs">Description / Notes</Label>
               <Textarea
                 id="description"
+                className="text-sm min-h-[60px]"
                 value={marketingOrderData.description}
-                onChange={(e) => setMarketingOrderData({
-                  ...marketingOrderData,
-                  description: e.target.value
-                })}
-                placeholder="Add any special instructions or notes for this order..."
+                onChange={(e) => setMarketingOrderData({ ...marketingOrderData, description: e.target.value })}
+                placeholder="Special instructions..."
               />
             </div>
           </div>

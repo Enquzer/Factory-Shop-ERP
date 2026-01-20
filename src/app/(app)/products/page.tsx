@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, PlusCircle, Loader2, FileText, Filter, ChevronDown, Grid, List } from "lucide-react";
+import { Search, PlusCircle, Loader2, FileText, Filter, ChevronDown, Grid, List, Upload } from "lucide-react";
 import Link from "next/link";
 import { Product, getProducts } from '@/lib/products';
 import { ProductList } from './_components/product-list';
@@ -27,6 +27,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { CalendarIcon } from "lucide-react";
+import { BulkSelectionProvider } from "@/contexts/bulk-selection-context";
 
 export default function ProductsPage({
     searchParams
@@ -47,6 +48,9 @@ export default function ProductsPage({
         to: undefined
     });
     const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+    const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
+    const [excelFile, setExcelFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
     
     // Get unique categories for filter
     const categories = useMemo(() => {
@@ -92,6 +96,99 @@ export default function ProductsPage({
             });
         }
     };
+
+    const handleExcelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        if (file) {
+            // Check if the file is an Excel file
+            if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+                file.type === 'application/vnd.ms-excel' ||
+                file.name.endsWith('.xlsx') ||
+                file.name.endsWith('.xls')) {
+                setExcelFile(file);
+            } else {
+                toast({
+                    title: "Error",
+                    description: "Please select a valid Excel file (.xlsx or .xls)",
+                    variant: "destructive",
+                });
+            }
+        }
+    };
+
+    const handleUploadExcel = async () => {
+        if (!excelFile) {
+            toast({
+                title: "Error",
+                description: "Please select an Excel file to upload",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', excelFile);
+            
+            const response = await fetch('/api/products/upload-excel', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                toast({
+                    title: "Success",
+                    description: `Successfully processed ${result.processed} products. ${result.created} created, ${result.updated} updated.`,
+                });
+                // Refresh the product list
+                const productsData = await getProducts(true);
+                setProducts(productsData);
+                setIsExcelUploadOpen(false);
+                setExcelFile(null);
+            } else {
+                toast({
+                    title: "Error",
+                    description: result.error || "Failed to upload Excel file",
+                    variant: "destructive",
+                });
+            }
+        } catch (error) {
+            console.error("Error uploading Excel:", error);
+            toast({
+                title: "Error",
+                description: "An error occurred while uploading the Excel file",
+                variant: "destructive",
+            });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleDownloadTemplate = () => {
+        // Create a CSV template with sample data using the new product code formats
+        const csvContent = "productCode,sellingPrice,image,name,category,description\n"
+            + "CK-008/01,29.99,https://example.com/image1.jpg,Product Name 1,Men,A description for product 1\n"
+            + "CK-0002,39.99,https://example.com/image2.jpg,Product Name 2,Women,A description for product 2\n"
+            + "CK-pn-11/01,49.99,https://example.com/image3.jpg,Product Name 3,Kids,A description for product 3";
+        
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'product_import_template.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        toast({
+            title: "Template Downloaded",
+            description: "CSV template downloaded successfully. Fill in your product data and upload it.",
+        });
+    };
     
     if (loading) {
         return (
@@ -102,6 +199,7 @@ export default function ProductsPage({
     }
     
     return (
+        <BulkSelectionProvider>
         <div className="flex flex-col gap-6">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex-1">
@@ -254,6 +352,85 @@ export default function ProductsPage({
                         <FileText className="mr-2 h-4 w-4" />
                         Export PDF
                     </Button>
+                    
+                    {/* Excel Upload Button */}
+                    <Popover open={isExcelUploadOpen} onOpenChange={setIsExcelUploadOpen}>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline">
+                                <Upload className="mr-2 h-4 w-4" />
+                                Upload Excel
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-4" align="end">
+                            <div className="space-y-4">
+                                <h4 className="font-medium leading-none">Upload Excel/CSV File</h4>
+                                <p className="text-sm text-muted-foreground">Upload product data with codes, prices, and images</p>
+                                
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Download Template</label>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={handleDownloadTemplate}
+                                            className="w-full"
+                                        >
+                                            Download CSV Template
+                                        </Button>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Use this template to format your data correctly
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="pt-2">
+                                        <label htmlFor="excel-upload" className="block text-sm font-medium mb-1">Select File</label>
+                                        <Input
+                                            id="excel-upload"
+                                            type="file"
+                                            accept=".xlsx,.xls,.csv"
+                                            onChange={handleExcelFileChange}
+                                            disabled={uploading}
+                                        />
+                                        {excelFile && (
+                                            <p className="text-sm text-muted-foreground truncate mt-1">Selected: {excelFile.name}</p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                            Note: For Excel files with multiple sheets (Kids, Ladies), export each sheet as a separate CSV file or combine data into one CSV file.
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex justify-end gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setIsExcelUploadOpen(false);
+                                            setExcelFile(null);
+                                        }}
+                                        disabled={uploading}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleUploadExcel}
+                                        disabled={!excelFile || uploading}
+                                    >
+                                        {uploading ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Uploading...
+                                            </>
+                                        ) : (
+                                            "Upload"
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                    
                     <Button asChild>
                         <Link href="/products/new">
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -278,6 +455,10 @@ export default function ProductsPage({
                         selectedStatus={selectedStatus}
                         stockFilter={stockFilter}
                         dateRange={dateRange}
+                        onProductsDeleted={async () => {
+                            const productsData = await getProducts(true);
+                            setProducts(productsData);
+                        }}
                     />
                 ) : (
                     <ProductsTableView 
@@ -287,9 +468,14 @@ export default function ProductsPage({
                         selectedStatus={selectedStatus}
                         stockFilter={stockFilter}
                         dateRange={dateRange}
+                        onProductsDeleted={async () => {
+                            const productsData = await getProducts(true);
+                            setProducts(productsData);
+                        }}
                     />
                 )}
             </Suspense>
         </div>
+        </BulkSelectionProvider>
     );
 }

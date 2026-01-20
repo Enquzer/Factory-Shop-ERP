@@ -8,10 +8,14 @@ export default function ShopLoginPage() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
 
-  // Redirect authenticated users to the dashboard
+  // Handle redirects based on authentication status
   useEffect(() => {
-    if (!isLoading && user && user.role === 'shop') {
-      router.replace("/shop/dashboard");
+    if (!isLoading) {
+      if (user && user.role === 'shop') {
+        router.replace("/shop/dashboard");
+      } else {
+        router.replace("/");
+      }
     }
   }, [user, isLoading, router]);
 
@@ -27,16 +31,19 @@ export default function ShopLoginPage() {
     );
   }
 
-  // If user is already authenticated, don't show the login page
+  // If user is authenticated as shop, show loading while redirecting
   if (user && user.role === 'shop') {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4">Redirecting to dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
-  // Redirect to homepage for non-authenticated users
-  useEffect(() => {
-    router.replace("/");
-  }, [router]);
-
+  // For non-authenticated users, show loading while redirecting to homepage
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="text-center">

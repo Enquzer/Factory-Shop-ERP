@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getShops, type Shop } from "@/lib/shops";
 import { ShopsPageClient } from "./_components/shops-page-client";
+import { BulkSelectionProvider } from "@/contexts/bulk-selection-context";
 
 export const dynamic = 'force-dynamic';
 
@@ -14,5 +15,9 @@ export default async function ShopsPage() {
         shops = [];
     }
     
-    return <ShopsPageClient initialShops={shops} />;
+    return (
+        <BulkSelectionProvider>
+            <ShopsPageClient initialShops={shops} />
+        </BulkSelectionProvider>
+    );
 }

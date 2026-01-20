@@ -24,7 +24,7 @@ interface GanttTask {
 }
 
 interface GanttChartProps {
-  orders: any[]; // MarketingOrder[]
+  orders: any[]; // MarketingOrder[] or ShopOrder[]
 }
 
 export function GanttChart({ orders }: GanttChartProps) {
@@ -67,11 +67,13 @@ export function GanttChart({ orders }: GanttChartProps) {
         }
         
         // Calculate start and end dates
-        const startDate = order.orderPlacementDate 
+        const startDate = order.orderPlacementDate && !isNaN(Date.parse(order.orderPlacementDate))
           ? new Date(order.orderPlacementDate) 
-          : new Date(order.createdAt);
+          : order.createdAt && !isNaN(Date.parse(order.createdAt))
+          ? new Date(order.createdAt)
+          : new Date(); // Default to current date
           
-        const endDate = order.plannedDeliveryDate 
+        const endDate = order.plannedDeliveryDate && !isNaN(Date.parse(order.plannedDeliveryDate))
           ? new Date(order.plannedDeliveryDate) 
           : new Date(startDate.getTime() + 14 * 24 * 60 * 60 * 1000); // Default to 14 days
         
@@ -98,12 +100,15 @@ export function GanttChart({ orders }: GanttChartProps) {
       
       // Calculate overall timeframe
       if (ganttTasks.length > 0) {
-        const startDates = ganttTasks.map(task => task.startDate);
-        const endDates = ganttTasks.map(task => task.endDate);
-        const minStart = new Date(Math.min(...startDates.map(date => date.getTime())));
-        const maxEnd = new Date(Math.max(...endDates.map(date => date.getTime())));
-        
-        setTimeframe({ start: minStart, end: maxEnd });
+        const validStartDates = ganttTasks.filter(task => !isNaN(task.startDate.getTime())).map(task => task.startDate);
+        const validEndDates = ganttTasks.filter(task => !isNaN(task.endDate.getTime())).map(task => task.endDate);
+            
+        if (validStartDates.length > 0 && validEndDates.length > 0) {
+          const minStart = new Date(Math.min(...validStartDates.map(date => date.getTime())));
+          const maxEnd = new Date(Math.max(...validEndDates.map(date => date.getTime())));
+              
+          setTimeframe({ start: minStart, end: maxEnd });
+        }
       }
     }
   }, [orders]);
@@ -115,6 +120,11 @@ export function GanttChart({ orders }: GanttChartProps) {
 
   // Calculate position and width for a task
   const getTaskPosition = (startDate: Date, endDate: Date) => {
+    // Check if dates are valid
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || isNaN(timeframe.start.getTime())) {
+      return { left: '0%', width: '0%' };
+    }
+    
     const totalDays = getTotalDays();
     const startOffset = Math.ceil((startDate.getTime() - timeframe.start.getTime()) / (1000 * 60 * 60 * 24));
     const duration = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -127,9 +137,14 @@ export function GanttChart({ orders }: GanttChartProps) {
 
   // Generate date headers
   const generateDateHeaders = () => {
-    const headers = [];
+    const headers: JSX.Element[] = [];
     const totalDays = getTotalDays();
     const daysToShow = Math.min(totalDays, 30); // Limit to 30 days for better display
+    
+    // Check if timeframe dates are valid
+    if (isNaN(timeframe.start.getTime()) || isNaN(timeframe.end.getTime())) {
+      return headers; // Return empty headers if dates are invalid
+    }
     
     for (let i = 0; i < daysToShow; i++) {
       const date = new Date(timeframe.start);
@@ -252,7 +267,7 @@ export function GanttChart({ orders }: GanttChartProps) {
                 </div>
               </div>
               <div className="text-xs text-gray-500">
-                {timeframe.start.toLocaleDateString()} - {timeframe.end.toLocaleDateString()}
+                {timeframe.start && !isNaN(timeframe.start.getTime()) ? timeframe.start.toLocaleDateString() : 'Invalid Date'} - {timeframe.end && !isNaN(timeframe.end.getTime()) ? timeframe.end.toLocaleDateString() : 'Invalid Date'}
               </div>
             </div>
           </div>

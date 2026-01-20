@@ -8,9 +8,25 @@ import { type ShopInventoryItem } from '@/lib/shop-inventory';
 import { InventoryClientPage } from './_components/inventory-client';
 import { Loader2 } from "lucide-react";
 
+// Define a type for aggregated inventory items
+type AggregatedInventoryItem = {
+  productId: string;
+  name: string;
+  price: number;
+  totalStock: number;
+  variants: Array<{
+    color: string;
+    size: string;
+    stock: number;
+  }>;
+  imageUrl?: string;
+};
+
+type InventoryItem = ShopInventoryItem | AggregatedInventoryItem;
+
 export default function ShopInventoryPage() {
     const { user, isLoading: authLoading } = useAuth();
-    const [inventory, setInventory] = useState<ShopInventoryItem[]>([]);
+    const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [totalInventoryValue, setTotalInventoryValue] = useState(0);
@@ -33,8 +49,8 @@ export default function ShopInventoryPage() {
             
             const shop = await shopResponse.json();
             
-            // Fetch inventory data
-            const inventoryResponse = await fetch(`/api/shop-inventory?username=${user.username}`);
+            // Fetch inventory data with variant visibility settings based on shop preference
+            const inventoryResponse = await fetch(`/api/shop-inventory?username=${user.username}&withVariantVisibility=true&shopId=${shop.id}`);
             if (!inventoryResponse.ok) {
                 throw new Error('Failed to fetch inventory data');
             }
@@ -42,9 +58,26 @@ export default function ShopInventoryPage() {
             const inventoryData = await inventoryResponse.json();
             setInventory(inventoryData);
             
-            // Calculate totals
-            const value = inventoryData.reduce((sum: number, item: ShopInventoryItem) => sum + (item.price * item.stock), 0);
-            const amount = inventoryData.reduce((sum: number, item: ShopInventoryItem) => sum + item.stock, 0);
+            // Calculate totals - handle both regular and aggregated inventory items
+            const value = inventoryData.reduce((sum: number, item: InventoryItem) => {
+              if ('totalStock' in item) {
+                // Aggregated item
+                return sum + (item.price * item.totalStock);
+              } else {
+                // Regular inventory item
+                return sum + (item.price * item.stock);
+              }
+            }, 0);
+            
+            const amount = inventoryData.reduce((sum: number, item: InventoryItem) => {
+              if ('totalStock' in item) {
+                // Aggregated item
+                return sum + item.totalStock;
+              } else {
+                // Regular inventory item
+                return sum + item.stock;
+              }
+            }, 0);
             
             setTotalInventoryValue(value);
             setTotalInventoryAmount(amount);

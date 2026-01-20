@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ShopAnalyticsClientPage } from './_components/analytics-client';
 import { type Shop } from '@/lib/shops';
 import { type Order } from '@/lib/orders';
+import { createAuthHeaders } from '@/lib/auth-helpers';
 
 export default function ShopAnalyticsPage() {
     const { user } = useAuth();
@@ -33,7 +34,9 @@ export default function ShopAnalyticsPage() {
                 setShop(shopData);
 
                 // Fetch orders through API
-                const ordersResponse = await fetch(`/api/orders?shopId=${shopData.id}`);
+                const ordersResponse = await fetch(`/api/orders?shopId=${shopData.id}`, {
+                    headers: createAuthHeaders()
+                });
                 if (ordersResponse.ok) {
                     const ordersData: Order[] = await ordersResponse.json();
                     setOrders(ordersData);

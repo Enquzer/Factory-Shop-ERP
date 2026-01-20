@@ -29,7 +29,8 @@ export async function GET(
       exactLocation: shop.exactLocation,
       discount: shop.discount,
       status: shop.status,
-      monthlySalesTarget: shop.monthlySalesTarget
+      monthlySalesTarget: shop.monthlySalesTarget,
+      showVariantDetails: shop.showVariantDetails
     };
     
     const response = NextResponse.json(cleanShop);

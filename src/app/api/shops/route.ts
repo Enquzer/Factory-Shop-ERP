@@ -252,138 +252,131 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT /api/shops - Update a shop (protected - factory only for discount changes, shops can update their own info)
+// PUT /api/shops - Update a shop (protected)
 export async function PUT(request: NextRequest) {
-  try {
-    console.log('PUT /api/shops called');
-    const { searchParams } = new URL(request.url);
-    const shopId = searchParams.get('id');
-
-    if (!shopId) {
-      console.error('Shop ID is required but not provided');
-      return NextResponse.json({ error: 'Shop ID is required' }, { status: 400 });
-    }
-
-    let body;
+  const handler = withRoleAuth(async (req, user) => {
     try {
-      body = await request.json();
+      console.log('PUT /api/shops called by user:', user.username, user.role);
+      const { searchParams } = new URL(req.url);
+      const shopId = searchParams.get('id');
+
+      if (!shopId) {
+        console.error('Shop ID is required but not provided');
+        return NextResponse.json({ error: 'Shop ID is required' }, { status: 400 });
+      }
+
+      const body = await req.json();
       console.log(`PUT request received for shop ${shopId} with body:`, body);
-    } catch (parseError) {
-      console.error(`Error parsing request body for shop ${shopId}:`, parseError);
-      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
-    }
 
-    // Sanitize input data
-    const sanitizedData = sanitizeInput(body);
-    console.log(`Sanitized data for shop ${shopId}:`, sanitizedData);
+      // Sanitize input data
+      const sanitizedData = sanitizeInput(body);
+      console.log(`Sanitized data for shop ${shopId}:`, sanitizedData);
 
-    // Validate input data (only validate provided fields)
-    // Skip validation for simple status updates to avoid schema conflicts
-    const isStatusOnlyUpdate = Object.keys(sanitizedData).length === 1 && sanitizedData.status !== undefined;
+      // Validate input data (only validate provided fields)
+      const isStatusOnlyUpdate = Object.keys(sanitizedData).length === 1 && sanitizedData.status !== undefined;
 
-    if (!isStatusOnlyUpdate && Object.keys(sanitizedData).length > 0) {
-      try {
-        // Create a partial schema for validation
-        const partialSchema = shopSchema.partial();
-        const validationResult = partialSchema.parse(sanitizedData);
-        console.log(`Validation result for shop ${shopId}:`, validationResult);
-      } catch (validationError: any) {
-        console.error(`Validation error for shop ${shopId}:`, validationError.errors);
-        return NextResponse.json({ error: 'Invalid input data', details: validationError.errors }, { status: 400 });
+      if (!isStatusOnlyUpdate && Object.keys(sanitizedData).length > 0) {
+        try {
+          const partialSchema = shopSchema.partial();
+          partialSchema.parse(sanitizedData);
+        } catch (validationError: any) {
+          return NextResponse.json({ error: 'Invalid input data', details: validationError.errors }, { status: 400 });
+        }
       }
-    } else if (isStatusOnlyUpdate) {
-      // For status-only updates, just validate the status value
-      if (!['Active', 'Inactive', 'Pending'].includes(sanitizedData.status)) {
-        return NextResponse.json({ error: 'Invalid status value. Must be Active, Inactive, or Pending' }, { status: 400 });
+
+      // Check permissions
+      // Factory can update any shop. Shops can only update their own.
+      const currentShop = await getShopById(shopId);
+      if (!currentShop) {
+        return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
       }
-      console.log(`Status-only update for shop ${shopId}: ${sanitizedData.status}`);
+
+      // Normalized role check
+      const isFactory = user.role === 'factory';
+      const isOwner = user.role === 'shop' && user.username === currentShop.username;
+
+      if (!isFactory && !isOwner) {
+        throw new AuthorizationError('You do not have permission to update this shop');
+      }
+
+      // Update shop record
+      const updated = await updateShop(shopId, sanitizedData);
+      
+      if (!updated) {
+        return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
+      }
+
+      const updatedShop = await getShopById(shopId);
+      
+      // Log audit entry
+      await logAuditEntry({
+        userId: user.id,
+        username: user.username,
+        action: 'UPDATE',
+        resourceType: 'SHOP',
+        resourceId: shopId,
+        details: `Updated shop information: ${Object.keys(sanitizedData).join(', ')}`
+      });
+
+      return NextResponse.json({ message: 'Shop updated successfully', updatedShop });
+    } catch (error: any) {
+      return handleErrorResponse(error);
     }
+  }, ['factory', 'shop']);
 
-    // Allow all updates without authentication checks
-    console.log('Updating shop:', shopId);
-    console.log('Update data:', sanitizedData);
-
-    // Get current shop for audit logging
-    const currentShop = await getShopById(shopId);
-    console.log('Current shop data:', currentShop);
-
-    if (!currentShop) {
-      console.error(`Shop ${shopId} not found`);
-      return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
-    }
-
-    // Update shop record
-    console.log(`Calling updateShop for shop ${shopId}`);
-    const updated = await updateShop(shopId, sanitizedData);
-    console.log(`Update result for shop ${shopId}:`, updated);
-
-    if (!updated) {
-      console.error(`Failed to update shop ${shopId}`);
-      return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
-    }
-
-    // Get updated shop data to verify the update
-    console.log(`Fetching updated shop data for shop ${shopId}`);
-    const updatedShop = await getShopById(shopId);
-    console.log('Updated shop data:', updatedShop);
-
-    // Log update (without user info since there's no authentication)
-    if (currentShop) {
-      console.log(`Updated shop "${currentShop.name}" with username "${currentShop.username}"`);
-    }
-
-    console.log(`Returning success response for shop ${shopId}`);
-    return NextResponse.json({ message: 'Shop updated successfully', updatedShop });
-  } catch (error: any) {
-    console.error('=== UNEXPECTED ERROR IN PUT /api/shops ===');
-    console.error('Error:', error);
-    console.error('Error message:', error?.message);
-    console.error('Error stack:', error?.stack);
-    return NextResponse.json({ error: 'Internal server error', details: error?.message }, { status: 500 });
-  }
+  return handler(request);
 }
 
 // DELETE /api/shops - Delete a shop (protected - factory only)
 export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const shopId = searchParams.get('id');
+  const handler = withRoleAuth(async (req, user) => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const shopId = searchParams.get('id');
 
-    if (!shopId) {
-      throw new ValidationError('Shop ID is required');
+      if (!shopId) {
+        throw new ValidationError('Shop ID is required');
+      }
+
+      // Get current shop for audit logging
+      const currentShop = await getShopById(shopId);
+
+      if (!currentShop) {
+        throw new Error('Shop not found');
+      }
+
+      // Delete shop record
+      const db = await getDb();
+      const result = await db.run(`DELETE FROM shops WHERE id = ?`, shopId);
+      const deleted = (result.changes || 0) > 0;
+
+      if (!deleted) {
+        throw new Error('Failed to delete shop');
+      }
+
+      // Also delete the associated user
+      const { deleteUserByUsername } = await import('@/lib/auth-sqlite');
+      const userDeleted = await deleteUserByUsername(currentShop.username);
+
+      if (!userDeleted) {
+        console.warn(`Failed to delete user with username ${currentShop.username}`);
+      }
+
+      // Log audit entry
+      await logAuditEntry({
+        userId: user.id,
+        username: user.username,
+        action: 'DELETE',
+        resourceType: 'SHOP',
+        resourceId: shopId,
+        details: `Deleted shop "${currentShop.name}"`
+      });
+
+      return NextResponse.json({ message: 'Shop deleted successfully' });
+    } catch (error) {
+      return handleErrorResponse(error);
     }
+  }, 'factory');
 
-    // Get current shop for audit logging
-    const currentShop = await getShopById(shopId);
-
-    if (!currentShop) {
-      throw new Error('Shop not found');
-    }
-
-    // Delete shop record
-    const db = await getDb();
-    const result = await db.run(`DELETE FROM shops WHERE id = ?`, shopId);
-    const deleted = (result.changes || 0) > 0;
-
-    if (!deleted) {
-      throw new Error('Failed to delete shop');
-    }
-
-    // Also delete the associated user
-    const { deleteUserByUsername } = await import('@/lib/auth-sqlite');
-    const userDeleted = await deleteUserByUsername(currentShop.username);
-
-    if (!userDeleted) {
-      console.warn(`Failed to delete user with username ${currentShop.username}`);
-    }
-
-    // Log deletion (without user info since there's no authentication)
-    if (currentShop) {
-      console.log(`Deleted shop "${currentShop.name}" with username "${currentShop.username}"`);
-    }
-
-    return NextResponse.json({ message: 'Shop deleted successfully' });
-  } catch (error) {
-    return handleErrorResponse(error);
-  }
+  return handler(request);
 }

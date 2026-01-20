@@ -11,6 +11,7 @@ const ORDER_STATUS_FLOW: StatusStep[] = [
   { status: 'Pending', label: 'Order Placed' },
   { status: 'Awaiting Payment', label: 'Payment Awaiting' },
   { status: 'Paid', label: 'Payment Confirmed' },
+  { status: 'Released', label: 'Released to Store' },
   { status: 'Dispatched', label: 'Order Dispatched' },
   { status: 'Delivered', label: 'Order Delivered' },
   { status: 'Cancelled', label: 'Order Cancelled' }

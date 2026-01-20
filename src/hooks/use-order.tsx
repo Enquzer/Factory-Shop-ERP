@@ -10,6 +10,7 @@ import { getShopById, getShopByUsername, type Shop } from "@/lib/shops";
 import { useAuth } from '@/contexts/auth-context';
 import { type ShopInventoryItem } from "@/lib/shop-inventory-sqlite";
 import { getProducts } from "@/lib/products";
+import { recordVariantDemand } from "@/lib/variant-demand";
 
 export type OrderItem = { 
   productId: string;
@@ -167,10 +168,20 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       
       try {
-        const response = await fetch('/api/orders');
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(`/api/orders?shopId=${shop.id}`, {
+          headers: token ? headers : undefined
+        });
         if (response.ok) {
-          const allOrders = await response.json();
-          const shopOrders = allOrders.filter((o: any) => o.shopId === shop.id);
+          const shopOrders = await response.json();
           setOrders(shopOrders);
         }
       } catch (error) {
@@ -234,46 +245,35 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   };
 
   const addItem = async (product: Product, variant: ProductVariant, quantity: number = 1) => {
-    // Always check factory stock first - shops should be able to order based on factory availability
+    // Check factory stock before adding item to cart
     const factoryStock = await getFactoryStock(variant.id);
-    
-    // If factory has no stock, prevent ordering
-    if (factoryStock <= 0) {
-      toast({
-        title: "Out of Stock",
-        description: `${product.name} is currently out of stock at the factory.`,
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // If factory has some stock but not enough for the requested quantity
     if (factoryStock < quantity) {
       toast({
         title: "Insufficient Factory Stock",
-        description: `Only ${factoryStock} units available in factory stock. Please reduce quantity.`,
+        description: `Not enough stock for ${product.name} (${variant.color}, ${variant.size}). Available: ${factoryStock}, Requested: ${quantity}`,
         variant: "destructive",
       });
       return;
     }
     
-    // If factory has enough stock, allow the order regardless of shop inventory levels
+    // Add item to cart
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.variant.id === variant.id);
       if (existingItem) {
-        const newQuantity = existingItem.quantity + quantity;
-        // Check if the new quantity exceeds factory stock
-        if (newQuantity > factoryStock) {
+        // Check if the new total quantity would exceed factory stock
+        const newTotalQuantity = existingItem.quantity + quantity;
+        if (factoryStock < newTotalQuantity) {
           toast({
             title: "Insufficient Factory Stock",
-            description: `Only ${factoryStock} units available in factory stock. Please reduce quantity.`,
+            description: `Not enough stock for ${product.name} (${variant.color}, ${variant.size}). Available: ${factoryStock}, Requested: ${newTotalQuantity}`,
             variant: "destructive",
           });
-          return prevItems;
+          return prevItems; // Don't update items
         }
+        
         return prevItems.map((item) =>
           item.variant.id === variant.id
-            ? { ...item, quantity: newQuantity }
+            ? { ...item, quantity: newTotalQuantity }
             : item
         );
       }
@@ -288,10 +288,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       }];
     });
   
-    toast({
-      title: "Item Added",
-      description: `${product.name} added to your order. (Will be fulfilled from factory stock)`,
-    });
+    if (factoryStock >= quantity) {
+      toast({
+        title: "Item Added",
+        description: `${product.name} added to your order. (Factory stock: ${factoryStock})`,
+      });
+    }
   };
 
   const removeItem = (variantId: string) => {
@@ -311,43 +313,25 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Always check factory stock - shops should be able to order based on factory availability
+    // Find the item to get its variant ID for stock check
+    const item = items.find((item) => item.variant.id === variantId);
+    if (!item) return;
+    
+    // Check factory stock before updating quantity
     const factoryStock = await getFactoryStock(variantId);
-    
-    // If factory has no stock, prevent ordering
-    if (factoryStock <= 0) {
-      const itemToUpdate = items.find((item) => item.variant.id === variantId);
-      if (itemToUpdate) {
-        toast({
-          title: "Out of Stock",
-          description: `${itemToUpdate.name} is currently out of stock at the factory.`,
-          variant: "destructive",
-        });
-      }
-      return;
-    }
-    
-    // If factory has some stock but not enough for the requested quantity
     if (factoryStock < quantity) {
-      const itemToUpdate = items.find((item) => item.variant.id === variantId);
-      if (itemToUpdate) {
-        toast({
-          title: "Insufficient Factory Stock",
-          description: `Only ${factoryStock} units available in factory stock. Please reduce quantity.`,
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Insufficient Factory Stock",
+        description: `Not enough stock for ${item.name} (${item.variant.color}, ${item.variant.size}). Available: ${factoryStock}, Requested: ${quantity}`,
+        variant: "destructive",
+      });
       return;
     }
     
-    // If factory has stock, allow the update regardless of shop inventory levels
-    const itemToUpdate = items.find((item) => item.variant.id === variantId);
-    if (itemToUpdate) {
-      toast({
-        title: "Quantity Updated",
-        description: `Quantity for ${itemToUpdate.name} updated to ${quantity}. (Will be fulfilled from factory stock)`,
-      });
-    }
+    toast({
+      title: "Quantity Updated",
+      description: `Quantity for ${item.name} updated to ${quantity}. (Factory stock: ${factoryStock})`,
+    });
     
     setItems((prevItems) =>
       prevItems.map((item) =>
@@ -384,10 +368,20 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     
     try {
-      const response = await fetch('/api/orders');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+            
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+            
+      const response = await fetch(`/api/orders?shopId=${shop.id}`, {
+        headers: token ? headers : undefined
+      });
       if (response.ok) {
-        const allOrders = await response.json();
-        const shopOrders = allOrders.filter((o: any) => o.shopId === shop.id);
+        const shopOrders = await response.json();
         setOrders(shopOrders);
       }
     } catch (error) {
@@ -420,11 +414,18 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         console.log('Total amount:', finalAmountAfterDiscount);
 
         // Use API call instead of ordersStore
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
         const response = await fetch('/api/orders', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: token ? headers : undefined,
           body: JSON.stringify({
             shopId: shop.id,
             shopName: shop.name,
@@ -434,13 +435,34 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Order API error response:', errorText);
-          throw new Error(`Failed to place order: ${response.status} ${response.statusText}`);
+          let errorMessage = `Failed to place order: ${response.status} ${response.statusText}`;
+          try {
+            // Try to parse the error response as JSON to get the specific error message
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+            // If JSON parsing fails, use the text response
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+          console.error('Order API error response:', errorMessage);
+          throw new Error(errorMessage);
         }
 
         const newOrder = await response.json();
         console.log('Order placed successfully:', newOrder);
+        
+        // Record variant demand for each item in the order
+        for (const item of items) {
+          try {
+            await recordVariantDemand(item.variant.id, item.productId, shop.id, item.quantity);
+          } catch (error) {
+            console.error('Error recording variant demand for item:', item, error);
+          }
+        }
+        
+        // Update the local orders state to include the new order
+        setOrders(prevOrders => [...prevOrders, newOrder]);
         
         clearOrder();
 
@@ -448,6 +470,11 @@ export function OrderProvider({ children }: { children: ReactNode }) {
             title: "Order Placed Successfully!",
             description: `Your order #${newOrder.id} has been sent for processing.`,
         });
+
+        // Refresh orders to ensure the new order appears in the history
+        if (refreshOrders) {
+            await refreshOrders();
+        }
 
         // Create notification for factory
         try {
@@ -479,11 +506,11 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         }
 
         router.push('/shop/orders');
-      } catch (error) {
+      } catch (error: any) {
          console.error("Failed to place order:", error);
          toast({
             title: "Order Failed",
-            description: "There was an issue placing your order. It might be due to insufficient stock. Please try again.",
+            description: error.message || "There was an issue placing your order. Please check your order quantities against available factory stock.",
             variant: "destructive",
          });
       }

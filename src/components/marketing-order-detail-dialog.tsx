@@ -31,13 +31,17 @@ import {
   Truck,
   Calendar,
   Flag,
-  BarChart3
+  ClipboardList,
+  FlaskConical,
+  BarChart3,
+  AlertTriangle
 } from "lucide-react";
 import Image from "next/image";
 import { DailyProductionForm } from "@/components/daily-production-form";
 import { DailyProductionChart } from "@/components/daily-production-chart";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 
 interface MarketingOrderDetailDialogProps {
   order: MarketingOrder;
@@ -61,26 +65,36 @@ export function MarketingOrderDetailDialog({
   onExportToPdf
 }: MarketingOrderDetailDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'progress'>('details');
   const [totalProduced, setTotalProduced] = useState<number>(0);
   
+  const userRole = user?.role;
+  const canEdit = userRole === 'factory' || userRole === 'marketing';
+  
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'Planning':
+        return 'bg-blue-100 text-blue-800';
+      case 'Sample Making':
+        return 'bg-pink-100 text-pink-800';
+      case 'Cutting':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'Sewing':
+        return 'bg-purple-100 text-purple-800';
+      case 'Finishing':
+        return 'bg-teal-100 text-teal-800';
+      case 'Quality Inspection':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'Packing':
+        return 'bg-gray-100 text-gray-800';
+      case 'Delivery':
+        return 'bg-orange-100 text-orange-800';
       case 'Completed':
         return 'bg-green-100 text-green-800';
       case 'Cancelled':
         return 'bg-red-100 text-red-800';
-      case 'Placed Order':
-        return 'bg-blue-100 text-blue-800';
-      case 'Cutting':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Production':
-        return 'bg-purple-100 text-purple-800';
-      case 'Packing':
-        return 'bg-indigo-100 text-indigo-800';
-      case 'Delivery':
-        return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -121,13 +135,17 @@ export function MarketingOrderDetailDialog({
   
   const handleCompleteOrder = async () => {
     // Check if all production stages are completed
-    const requiredStages = ['Placed Order', 'Cutting', 'Production', 'Packing', 'Delivery'];
+    const requiredStages = ['Placed Order', 'Planning', 'Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection', 'Packing', 'Delivery'];
     const completedStages = [
       'Placed Order',
-      order.status === 'Cutting' ? 'Cutting' : null,
-      order.status === 'Production' ? 'Production' : null,
-      order.status === 'Packing' ? 'Packing' : null,
-      order.status === 'Delivery' ? 'Delivery' : null,
+      order.planningCompletionDate ? 'Planning' : null,
+      order.sampleCompletionDate ? 'Sample Making' : null,
+      order.cuttingCompletionDate ? 'Cutting' : null,
+      order.sewingCompletionDate ? 'Sewing' : null,
+      order.finishingCompletionDate ? 'Finishing' : null,
+      order.qualityInspectionCompletionDate ? 'Quality Inspection' : null,
+      order.packingCompletionDate ? 'Packing' : null,
+      order.deliveryCompletionDate ? 'Delivery' : null,
     ].filter(Boolean);
     
     const allStagesCompleted = requiredStages.every(stage => completedStages.includes(stage));
@@ -135,7 +153,7 @@ export function MarketingOrderDetailDialog({
     if (!allStagesCompleted) {
       toast({
         title: "Cannot Complete Order",
-        description: "All production stages (Placed Order, Cutting, Production, Packing, Delivery) must be completed before marking the order as finished.",
+        description: "All production stages (Planning, Sample Making, Cutting, Sewing, Finishing, Quality, Packing, Delivery) must be completed before marking the order as finished.",
         variant: "destructive",
       });
       return;
@@ -211,7 +229,15 @@ export function MarketingOrderDetailDialog({
                       totalQuantity={order.quantity}
                       onStatusUpdate={handleStatusUpdate} 
                       orderStatus={order.status} // Pass order status
+                      userRole={userRole}
                     />
+                    
+                    {!order.isPlanningApproved && userRole !== 'factory' && userRole !== 'planning' && (
+                      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-3 text-amber-800 text-sm">
+                        <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+                        <p>Planning "Go-ahead" is pending. Full system access for this order is restricted until approved by Planning.</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -318,41 +344,74 @@ export function MarketingOrderDetailDialog({
                   )}
                   
                   {/* Process completion dates */}
-                  {order.cuttingCompletionDate && (
-                    <div className="flex justify-between">
+                  {order.planningCompletionDate && (
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground flex items-center">
-                        <Scissors className="mr-1 h-4 w-4" />
-                        Cutting Completion:
+                        <ClipboardList className="mr-1 h-3 w-3" />
+                        Planning:
+                      </span>
+                      <span>{new Date(order.planningCompletionDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {order.sampleCompletionDate && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center">
+                        <FlaskConical className="mr-1 h-3 w-3" />
+                        Sample:
+                      </span>
+                      <span>{new Date(order.sampleCompletionDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {order.cuttingCompletionDate && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center">
+                        <Scissors className="mr-1 h-3 w-3" />
+                        Cutting:
                       </span>
                       <span>{new Date(order.cuttingCompletionDate).toLocaleDateString()}</span>
                     </div>
                   )}
-                  
-                  {order.productionCompletionDate && (
-                    <div className="flex justify-between">
+                  {order.sewingCompletionDate && (
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground flex items-center">
-                        <Factory className="mr-1 h-4 w-4" />
-                        Production Completion:
+                        <Factory className="mr-1 h-3 w-3" />
+                        Sewing:
                       </span>
-                      <span>{new Date(order.productionCompletionDate).toLocaleDateString()}</span>
+                      <span>{new Date(order.sewingCompletionDate).toLocaleDateString()}</span>
                     </div>
                   )}
-                  
-                  {order.packingCompletionDate && (
-                    <div className="flex justify-between">
+                  {order.finishingCompletionDate && (
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground flex items-center">
-                        <Package className="mr-1 h-4 w-4" />
-                        Packing Completion:
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                        Finishing:
+                      </span>
+                      <span>{new Date(order.finishingCompletionDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {order.qualityInspectionCompletionDate && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center">
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                        Quality:
+                      </span>
+                      <span>{new Date(order.qualityInspectionCompletionDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {order.packingCompletionDate && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center">
+                        <Package className="mr-1 h-3 w-3" />
+                        Packing:
                       </span>
                       <span>{new Date(order.packingCompletionDate).toLocaleDateString()}</span>
                     </div>
                   )}
-                  
                   {order.deliveryCompletionDate && (
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground flex items-center">
-                        <Truck className="mr-1 h-4 w-4" />
-                        Delivery Completion:
+                        <Truck className="mr-1 h-3 w-3" />
+                        Delivery:
                       </span>
                       <span>{new Date(order.deliveryCompletionDate).toLocaleDateString()}</span>
                     </div>
@@ -392,37 +451,39 @@ export function MarketingOrderDetailDialog({
           <div className="mt-6 pr-6">
             <h3 className="font-semibold text-lg mb-2">Production Progress</h3>
             <div className="flex items-center justify-between">
-              {['Placed Order', 'Cutting', 'Production', 'Packing', 'Delivery', 'Completed'].map((status, index) => (
-                <div key={status} className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    order.status === status || 
-                    (order.status === 'Cutting' && ['Placed Order'].includes(status)) ||
-                    (order.status === 'Production' && ['Placed Order', 'Cutting'].includes(status)) ||
-                    (order.status === 'Packing' && ['Placed Order', 'Cutting', 'Production'].includes(status)) ||
-                    (order.status === 'Delivery' && ['Placed Order', 'Cutting', 'Production', 'Packing'].includes(status)) ||
-                    (order.status === 'Completed' && ['Placed Order', 'Cutting', 'Production', 'Packing', 'Delivery'].includes(status))
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {index + 1}
+              {['Placed Order', 'Planning', 'Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection', 'Packing', 'Delivery', 'Completed'].map((status, index) => {
+                const statusList = ['Placed Order', 'Planning', 'Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection', 'Packing', 'Delivery', 'Completed'];
+                const currentStatusIndex = statusList.indexOf(order.status as string);
+                const stepIndex = statusList.indexOf(status);
+                const isCompleted = stepIndex <= currentStatusIndex;
+
+                return (
+                  <div key={status} className="flex flex-col items-center">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] ${
+                      isCompleted ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <span className="text-[10px] mt-1 text-center whitespace-nowrap">{status}</span>
                   </div>
-                  <span className="text-xs mt-1 text-center">{status}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           
           {/* Actions */}
           <div className="mt-6 pr-6 flex flex-wrap gap-2">
-            <Button onClick={() => onEdit(order)}>
-              <Edit className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
+            {canEdit && (
+              <Button onClick={() => onEdit(order)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+            )}
             <Button variant="outline" onClick={() => onExportToPdf(order.id)}>
-              <FileText className="mr-2 h-4 w-4" />
-              Export to PDF
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Download Report
             </Button>
-            {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && (
+            {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && canEdit && (
               <>
                 <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Cutting' as MarketingOrderStatus)}>
                   <Scissors className="mr-2 h-4 w-4" />
@@ -450,10 +511,12 @@ export function MarketingOrderDetailDialog({
                 </Button>
               </>
             )}
-            <Button variant="destructive" onClick={openDeleteDialog}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
+            {canEdit && (
+              <Button variant="destructive" onClick={openDeleteDialog}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

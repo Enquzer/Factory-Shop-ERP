@@ -16,7 +16,7 @@ export type OrderItem = {
   quantity: number;
 };
 
-export type OrderStatus = 'Pending' | 'Awaiting Payment' | 'Paid' | 'Dispatched' | 'Delivered' | 'Cancelled';
+export type OrderStatus = 'Pending' | 'Awaiting Payment' | 'Paid' | 'Released' | 'Dispatched' | 'Delivered' | 'Cancelled';
 
 export type Order = {
     id: string;
@@ -45,6 +45,7 @@ export type Order = {
     expectedReceiptDate?: string;   // Shop's expected receipt date
     actualDispatchDate?: string;    // Factory's actual dispatch date
     confirmationDate?: string;      // Shop's confirmation date
+    paymentRequested?: boolean;     // Whether finance has requested payment
 }
 
 // Client-side function to fetch orders from API
@@ -88,6 +89,36 @@ export async function getOrders(): Promise<Order[]> {
   }
 }
 
+// Client-side function to get a single order
+export async function getOrder(id: string): Promise<Order | null> {
+  try {
+    const url = `/api/orders/${id}`;
+      
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(url, {
+      headers: token ? headers : undefined
+    });
+    
+    if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error('Failed to fetch order');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error(`Error fetching order ${id}:`, error);
+    return null;
+  }
+}
+
 // Server-side function to get all orders from database
 export async function getOrdersFromDB(): Promise<Order[]> {
     try {
@@ -114,6 +145,7 @@ export async function getOrdersFromDB(): Promise<Order[]> {
             expectedReceiptDate: order.expectedReceiptDate,
             actualDispatchDate: order.actualDispatchDate,
             confirmationDate: order.confirmationDate,
+            paymentRequested: order.paymentRequested === 1,
             createdAt: new Date(order.created_at)
         }));
     } catch (error) {
@@ -130,7 +162,7 @@ export async function getOrdersForShop(shopId: string): Promise<Order[]> {
           SELECT * FROM orders 
           WHERE shopId = ?
           ORDER BY created_at DESC
-        `, shopId);
+        `, [shopId]);
         
         return orders.map((order: any) => ({
             id: order.id,
@@ -223,13 +255,13 @@ class OrdersManager {
               INSERT INTO orders (id, shopId, shopName, date, status, amount, items)
               VALUES (?, ?, ?, ?, ?, ?, ?)
             `,
-                orderId,
+                [orderId,
                 order.shopId,
                 order.shopName,
                 orderData.date,
                 orderData.status,
                 order.amount,
-                orderData.items
+                orderData.items]
             );
             
             const newOrder: Order = {
@@ -262,7 +294,7 @@ class OrdersManager {
               UPDATE orders 
               SET status = ? 
               WHERE id = ?
-            `, newStatus, orderId);
+            `, [newStatus, orderId]);
             
             if (result.changes > 0) {
               // Reset the database cache to ensure subsequent queries get fresh data
@@ -286,7 +318,7 @@ class OrdersManager {
             const db = await getDb();
             const result = await db.run(`
                 DELETE FROM orders WHERE id = ?
-            `, orderId);
+            `, [orderId]);
             
             const deleted = (result.changes || 0) > 0;
             if (deleted) {
@@ -312,13 +344,52 @@ class OrdersManager {
 // Only export the ordersStore instance on the server side
 export const ordersStore = typeof window === 'undefined' ? new OrdersManager() : null;
 
+// Server-side function to get a single order by ID from database
+export async function getOrderByIdFromDB(orderId: string): Promise<Order | null> {
+  try {
+    const db = await getDb();
+    const order = await db.get(`
+      SELECT * FROM orders
+      WHERE id = ?
+    `, [orderId]);
+    
+    if (!order) {
+      return null;
+    }
+    
+    return {
+      id: order.id,
+      shopId: order.shopId,
+      shopName: order.shopName,
+      date: order.date,
+      status: order.status,
+      amount: order.amount,
+      items: JSON.parse(order.items),
+      paymentSlipUrl: order.paymentSlipUrl,
+      dispatchInfo: order.dispatchInfo ? JSON.parse(order.dispatchInfo) : undefined,
+      deliveryDate: order.deliveryDate,
+      isClosed: order.isClosed === 1,
+      feedback: order.feedback,
+      requestedDeliveryDate: order.requestedDeliveryDate,
+      expectedReceiptDate: order.expectedReceiptDate,
+      actualDispatchDate: order.actualDispatchDate,
+      confirmationDate: order.confirmationDate,
+      paymentRequested: order.paymentRequested === 1,
+      createdAt: new Date(order.created_at)
+    };
+  } catch (error) {
+    console.error('Error fetching order by ID:', error);
+    return null;
+  }
+}
+
 // Server-side function to delete an order from database
 export async function deleteOrderFromDB(id: string): Promise<boolean> {
     try {
         const db = await getDb();
         const result = await db.run(`
             DELETE FROM orders WHERE id = ?
-        `, id);
+        `, [id]);
         
         const deleted = (result.changes || 0) > 0;
         if (deleted) {

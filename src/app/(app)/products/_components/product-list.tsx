@@ -28,14 +28,16 @@ export function ProductList({
   selectedCategory,
   selectedStatus,
   stockFilter,
-  dateRange
+  dateRange,
+  onProductsDeleted
 }: { 
   products: Product[], 
   query: string,
   selectedCategory?: string | null,
   selectedStatus?: string | null,
   stockFilter?: string | null,
-  dateRange?: DateRange
+  dateRange?: DateRange,
+  onProductsDeleted?: () => void
 }) {
     const { user } = useAuth();
     const { toast } = useToast();
@@ -141,8 +143,12 @@ export function ProductList({
         }
 
         try {
+            const token = localStorage.getItem('authToken');
             const response = await fetch(`/api/products?id=${product.id}`, {
                 method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
             });
 
             if (response.ok) {
@@ -152,6 +158,7 @@ export function ProductList({
                     title: "Product Deleted",
                     description: `"${product.name}" has been deleted successfully.`,
                 });
+                if (onProductsDeleted) onProductsDeleted();
             } else {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Failed to delete product');

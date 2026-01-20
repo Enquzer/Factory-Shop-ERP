@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
@@ -19,6 +18,9 @@ import { OrderStatusIndicator } from "@/app/(app)/orders/_components/order-statu
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
+import { createAuthHeaders } from "@/lib/auth-helpers";
+import { BulkSelectionTable } from "@/components/bulk-selection-table";
+import { BulkActions } from "@/components/bulk-actions";
 
 export default function ShopOrdersPage() {
     const { orders, isLoading, refreshOrders } = useOrder();
@@ -165,6 +167,7 @@ export default function ShopOrdersPage() {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...createAuthHeaders()
                 },
                 body: JSON.stringify({ paymentSlipUrl: imageUrl }),
             });
@@ -203,6 +206,7 @@ export default function ShopOrdersPage() {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...createAuthHeaders()
                 },
                 body: JSON.stringify({ deliveryDate, isClosed, feedback }),
             });
@@ -288,6 +292,69 @@ export default function ShopOrdersPage() {
                 setSelectedOrder(null);
             }, 0);
         }
+    };
+
+    const handlePrint = (selectedIds: string[]) => {
+        // For printing, we can open a new window with selected order details
+        const selectedOrders = orders.filter(order => selectedIds.includes(order.id));
+        
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          let printContent = `
+            <html>
+              <head>
+                <title>Selected Orders</title>
+                <style>
+                  body { font-family: Arial, sans-serif; }
+                  table { border-collapse: collapse; width: 100%; }
+                  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                  th { background-color: #f2f2f2; }
+                </style>
+              </head>
+              <body>
+                <h1>Selected Orders (${selectedOrders.length})</h1>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+          `;
+          
+          selectedOrders.forEach(order => {
+            printContent += `
+              <tr>
+                <td>${order.id}</td>
+                <td>${order.date}</td>
+                <td>${order.status}</td>
+                <td>ETB ${order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              </tr>
+            `;
+          });
+          
+          printContent += `
+                  </tbody>
+                </table>
+              </body>
+            </html>
+          `;
+          
+          printWindow.document.write(printContent);
+          printWindow.document.close();
+          printWindow.focus();
+          printWindow.print();
+          printWindow.close();
+        }
+    };
+    
+    const handleBulkDelete = (selectedIds: string[]) => {
+        // For shop users, we can only delete unpublished orders
+        // In this case, we'll show a message since shop users typically can't delete orders
+        alert(`Bulk delete requested for orders: ${selectedIds.join(', ')}.\n\nNote: Shop users typically cannot delete orders that are already processed.`);
     };
 
     return (
@@ -478,44 +545,51 @@ export default function ShopOrdersPage() {
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Order ID</TableHead>
-                                    <TableHead className="hidden sm:table-cell">Date</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="hidden lg:table-cell">Progress</TableHead>
-                                    <TableHead className="text-right">Amount</TableHead>
-                                    <TableHead className="text-center">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredOrders.length > 0 ? (
-                                    filteredOrders.map((order) => (
-                                        <TableRow key={order.id}>
-                                            <TableCell className="font-medium">{order.id}</TableCell>
-                                            <TableCell className="hidden sm:table-cell">{order.date}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={statusVariants[order.status]}>{order.status}</Badge>
-                                            </TableCell>
-                                            <TableCell className="hidden lg:table-cell">
-                                                <OrderStatusIndicator status={order.status} />
-                                            </TableCell>
-                                            <TableCell className="text-right">ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                                            <TableCell className="text-center">
-                                                {getShopActions(order)}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                                            No orders found matching your filters.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
+                        <BulkSelectionTable
+                            headers={[ 
+                                { key: 'orderId', title: 'Order ID', mobileTitle: 'Order' },
+                                { key: 'date', title: 'Date', mobileTitle: 'Date', className: 'hidden sm:table-cell' },
+                                { key: 'status', title: 'Status', mobileTitle: 'Status' },
+                                { key: 'progress', title: 'Progress', mobileTitle: 'Progress', className: 'hidden lg:table-cell' },
+                                { key: 'amount', title: 'Amount', mobileTitle: 'Amount', className: 'text-right' },
+                                { key: 'actions', title: 'Actions', mobileTitle: 'Actions', className: 'text-center' },
+                            ]}
+                            data={filteredOrders.map((order) => ({
+                                id: order.id,
+                                orderId: (
+                                    <div className="font-medium">{order.id}</div>
+                                ),
+                                date: (
+                                    <div className="text-sm">{order.date}</div>
+                                ),
+                                status: (
+                                    <Badge variant={statusVariants[order.status]}>{order.status}</Badge>
+                                ),
+                                progress: (
+                                    <OrderStatusIndicator status={order.status} />
+                                ),
+                                amount: (
+                                    <div className="text-right">
+                                        ETB {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                ),
+                                actions: (
+                                    <div className="text-center">
+                                        {getShopActions(order)}
+                                    </div>
+                                ),
+                            }))}
+                            idKey="id"
+                            actions={
+                                <BulkActions 
+                                    onPrint={handlePrint}
+                                    onDelete={handleBulkDelete}
+                                    printLabel="Print Selected"
+                                    deleteLabel="Delete Selected"
+                                    itemType="orders"
+                                />
+                            }
+                        />
                     )}
                 </CardContent>
             </Card>

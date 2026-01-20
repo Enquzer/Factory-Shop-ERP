@@ -6,6 +6,61 @@ import { Product } from './products';
 import { Order } from './orders';
 import { Shop } from './shops';
 
+// Function to decode HTML entities and fix text rendering issues
+function decodeHTMLEntities(text: string): string {
+  if (!text) return text;
+  
+  // First decode HTML entities
+  let decoded = text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&amp;/g, '&'); // This must be last to avoid double decoding
+  
+  // Address potential character spacing issues
+  // If text appears to have been split character by character with spaces
+  // (like "O r d e r" instead of "Order"), try to reconstruct it
+  // This is a heuristic approach that looks for patterns of single letters
+  // separated by spaces in a consistent pattern
+  if (hasCharacterSpacing(decoded)) {
+    decoded = reconstructSpacedText(decoded);
+  }
+  
+  return decoded;
+}
+
+// Helper function to detect if text has character spacing issue
+function hasCharacterSpacing(text: string): boolean {
+  // Look for patterns where single characters are separated by spaces
+  // This is a heuristic that checks if there are many single-letter words
+  const words = text.split(/\s+/).filter(word => word.length > 0);
+  const singleCharWords = words.filter(word => word.length === 1);
+  
+  // If more than 50% of the words are single characters, it might have spacing issue
+  return words.length > 2 && (singleCharWords.length / words.length) > 0.5;
+}
+
+// Helper function to reconstruct text that was split character by character
+function reconstructSpacedText(text: string): string {
+  // Simple approach: if we have single letters separated by single spaces,
+  // join them back together. For example: "O r d e r" -> "Order"
+  // Split the text by spaces and process each segment
+  const segments = text.split(' ');
+  
+  // Check if this looks like spaced-out characters
+  const allSingleChars = segments.every(seg => seg.length === 1 && /[a-zA-Z]/.test(seg));
+  
+  if (allSingleChars && segments.length > 1) {
+    // Join all single characters together
+    return segments.join('');
+  }
+  
+  // If not all single characters, return original text
+  return text;
+}
+
 // Function to convert image to base64
 async function imageToBase64(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -95,8 +150,98 @@ async function imageUrlToBase64(url: string): Promise<string> {
   }
 }
 
+// Function to generate a production planning PDF
+export async function generateProductionPlanningPDF(orders: MarketingOrder[], ganttImageData?: string): Promise<string> {
+  try {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    await addHeaderAndLogo(doc, 'Production Planning Report');
+    
+    // Add table
+    const tableData = orders.map((order, idx) => [
+      (idx + 1).toString(),
+      order.orderNumber || '',
+      order.productCode || '',
+      order.quantity?.toString() || '0',
+      (order.piecesPerSet || 1).toString(),
+      (order.smv || 0).toFixed(2),
+      (order.manpower || 0).toString(),
+      `${(order.efficiency || 70).toFixed(1)}%`,
+      (order.sewingOutputPerDay || 0).toString(),
+      (order.operationDays || 0).toString(),
+      order.sewingStartDate || '',
+      order.sewingFinishDate || '',
+      (order.remarks || '').substring(0, 30)
+    ]);
+
+    (doc as any).autoTable({
+      startY: 55,
+      head: [['SEQ', 'ORDER NO', 'CODE', 'QTY', 'PCS/SET', 'SMV', 'MP', 'EFF%', 'O/P', 'DAYS', 'START', 'FINISH', 'REMARKS']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [22, 160, 133],
+        textColor: 255,
+        fontSize: 8,
+        halign: 'center'
+      },
+      styles: {
+        fontSize: 7,
+        cellPadding: 1,
+        overflow: 'linebreak'
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'right' },
+        7: { halign: 'right' },
+        8: { halign: 'right' },
+        9: { halign: 'right' }
+      }
+    });
+
+    let currentY = (doc as any).lastAutoTable.finalY + 10;
+
+    // Add Gantt Chart Image if provided
+    if (ganttImageData) {
+      // Check if we need a new page for the chart
+      if (currentY > 140) {
+        doc.addPage();
+        currentY = 20;
+        doc.setFontSize(14);
+        doc.text('Production Timeline', 148, currentY, { align: 'center' });
+        currentY += 10;
+      } else {
+        doc.setFontSize(14);
+        doc.text('Production Timeline', 148, currentY, { align: 'center' });
+        currentY += 5;
+      }
+
+      // Add the image
+      // Landscape A4 is 297mm wide. Margin 10mm each side -> 277mm available.
+      const imgWidth = 277;
+      const imgHeight = 100; // Adjusted height
+      doc.addImage(ganttImageData, 'PNG', 10, currentY, imgWidth, imgHeight);
+      currentY += imgHeight + 10;
+    }
+
+    addFooter(doc, currentY);
+    
+    return URL.createObjectURL(doc.output('blob'));
+  } catch (error) {
+    console.error('Error generating production planning PDF:', error);
+    throw new Error('Failed to generate production planning PDF');
+  }
+}
+
 // Function to add logo and header to PDF
-async function addHeaderAndLogo(doc: jsPDF, title: string) {
+export async function addHeaderAndLogo(doc: jsPDF, title: string) {
   // Add company logo on top left
   try {
     if (typeof window === 'undefined') {
@@ -175,28 +320,28 @@ async function addHeaderAndLogo(doc: jsPDF, title: string) {
   // Add company header
   doc.setFontSize(22);
   doc.setTextColor(0, 0, 0);
-  doc.text('Carement Fashion', 105, 20, { align: 'center' });
+  doc.text(decodeHTMLEntities('Carement Fashion'), 105, 20, { align: 'center' });
   
   doc.setFontSize(12);
-  doc.text('Addis Ababa, Ethiopia', 105, 27, { align: 'center' });
-  doc.text('Phone: +251 11 123 4567 | Email: info@carementfashion.com', 105, 33, { align: 'center' });
+  doc.text(decodeHTMLEntities('Addis Ababa, Ethiopia'), 105, 27, { align: 'center' });
+  doc.text(decodeHTMLEntities('Phone: +251 11 123 4567 | Email: info@carementfashion.com'), 105, 33, { align: 'center' });
   
   // Add document title
   doc.setFontSize(18);
-  doc.text(title, 105, 45, { align: 'center' });
+  doc.text(decodeHTMLEntities(title), 105, 45, { align: 'center' });
   
   // Add a line separator
   doc.line(20, 50, 190, 50);
 }
 
 // Function to add footer to PDF
-function addFooter(doc: jsPDF, finalY: number) {
+export function addFooter(doc: jsPDF, finalY: number) {
   // Add "For internal use only" at the bottom
   const pageHeight = doc.internal.pageSize.height;
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100); // Gray color
-  doc.text('This document is generated automatically by the Carement Fashion ERP system.', 105, pageHeight - 15, { align: 'center' });
-  doc.text('Confidential - For internal use only.', 105, pageHeight - 10, { align: 'center' });
+  doc.text(decodeHTMLEntities('This document is generated automatically by the Carement Fashion ERP system.'), 105, pageHeight - 15, { align: 'center' });
+  doc.text(decodeHTMLEntities('Confidential - For internal use only.'), 105, pageHeight - 10, { align: 'center' });
   doc.setTextColor(0, 0, 0); // Reset to black
 }
 
@@ -235,21 +380,21 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
     // Add order information
     const startY = order.imageUrl ? 100 : 60;
     doc.setFontSize(12);
-    doc.text(`Order Number: ${order.orderNumber}`, 20, startY);
-    doc.text(`Product Name: ${order.productName}`, 20, startY + 7);
-    doc.text(`Product Code: ${order.productCode}`, 20, startY + 14);
-    doc.text(`Total Quantity: ${order.quantity}`, 20, startY + 21);
-    doc.text(`Status: ${order.status}`, 20, startY + 28);
-    doc.text(`Created By: ${order.createdBy}`, 20, startY + 35);
-    doc.text(`Created Date: ${new Date(order.createdAt).toLocaleDateString()}`, 20, startY + 42);
+    doc.text(decodeHTMLEntities(`Order Number: ${order.orderNumber}`), 20, startY);
+    doc.text(decodeHTMLEntities(`Product Name: ${order.productName}`), 20, startY + 7);
+    doc.text(decodeHTMLEntities(`Product Code: ${order.productCode}`), 20, startY + 14);
+    doc.text(decodeHTMLEntities(`Total Quantity: ${order.quantity}`), 20, startY + 21);
+    doc.text(decodeHTMLEntities(`Status: ${order.status}`), 20, startY + 28);
+    doc.text(decodeHTMLEntities(`Created By: ${order.createdBy}`), 20, startY + 35);
+    doc.text(decodeHTMLEntities(`Created Date: ${new Date(order.createdAt).toLocaleDateString()}`), 20, startY + 42);
     
     // Add new date fields
     if (order.orderPlacementDate) {
-      doc.text(`Order Placement Date: ${new Date(order.orderPlacementDate).toLocaleDateString()}`, 20, startY + 49);
+      doc.text(decodeHTMLEntities(`Order Placement Date: ${new Date(order.orderPlacementDate).toLocaleDateString()}`), 20, startY + 49);
     }
     
     if (order.plannedDeliveryDate) {
-      doc.text(`Planned Delivery Date: ${new Date(order.plannedDeliveryDate).toLocaleDateString()}`, 20, startY + 56);
+      doc.text(decodeHTMLEntities(`Planned Delivery Date: ${new Date(order.plannedDeliveryDate).toLocaleDateString()}`), 20, startY + 56);
     }
     
     // Add sample status tracking fields
@@ -258,22 +403,22 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
     if (order.plannedDeliveryDate) currentY += 7;
     
     if (order.sizeSetSampleApproved) {
-      doc.text(`Size Set Sample Approved: ${new Date(order.sizeSetSampleApproved).toLocaleDateString()}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Size Set Sample Approved: ${new Date(order.sizeSetSampleApproved).toLocaleDateString()}`), 20, currentY);
       currentY += 7;
     }
     
     if (order.productionStartDate) {
-      doc.text(`Production Start Date: ${new Date(order.productionStartDate).toLocaleDateString()}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Production Start Date: ${new Date(order.productionStartDate).toLocaleDateString()}`), 20, currentY);
       currentY += 7;
     }
     
     if (order.productionFinishedDate) {
-      doc.text(`Production Finished Date: ${new Date(order.productionFinishedDate).toLocaleDateString()}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Production Finished Date: ${new Date(order.productionFinishedDate).toLocaleDateString()}`), 20, currentY);
       currentY += 7;
     }
     
     if (order.description) {
-      doc.text(`Description: ${order.description}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Description: ${order.description}`), 20, currentY);
       currentY += 7;
     }
     
@@ -288,7 +433,7 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
     (doc as any).autoTable({
       startY: currentY + 20,
       head: [['Size', 'Color', 'Quantity']],
-      body: order.items.map(item => [item.size, item.color, item.quantity]),
+      body: order.items.map(item => [decodeHTMLEntities(item.size), decodeHTMLEntities(item.color), item.quantity]),
       theme: 'grid',
       headStyles: {
         fillColor: [22, 160, 133],
@@ -332,66 +477,66 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     
     // Add order information
     doc.setFontSize(12);
-    doc.text(`Order ID: ${order.id}`, 20, 60);
-    doc.text(`Shop Name: ${order.shopName}`, 20, 67);
-    doc.text(`Order Date: ${new Date(order.date).toLocaleDateString()}`, 20, 74);
-    doc.text(`Status: ${order.status}`, 20, 81);
+    doc.text(decodeHTMLEntities(`Order ID: ${order.id}`), 20, 60);
+    doc.text(decodeHTMLEntities(`Shop Name: ${order.shopName}`), 20, 67);
+    doc.text(decodeHTMLEntities(`Order Date: ${new Date(order.date).toLocaleDateString()}`), 20, 74);
+    doc.text(decodeHTMLEntities(`Status: ${order.status}`), 20, 81);
     
     // Enhanced Order Summary
     const uniqueDesigns = new Set(order.items.map(item => item.productId)).size;
     const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
-    doc.text(`Unique Designs: ${uniqueDesigns}`, 20, 88);
-    doc.text(`Total Items: ${totalItems}`, 20, 95);
-    doc.text(`Total Amount: ETB ${order.amount.toLocaleString()}`, 20, 102);
+    doc.text(decodeHTMLEntities(`Unique Designs: ${uniqueDesigns}`), 20, 88);
+    doc.text(decodeHTMLEntities(`Total Items: ${totalItems}`), 20, 95);
+    doc.text(decodeHTMLEntities(`Total Amount: ETB ${order.amount.toLocaleString()}`), 20, 102);
     
     // Add delivery date if available
     let currentY = 109;
     if (order.deliveryDate) {
-      doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`), 20, currentY);
       currentY += 7;
     }
     
     // Add delivery performance metrics if available
     if (order.requestedDeliveryDate || order.expectedReceiptDate || order.actualDispatchDate || order.confirmationDate) {
-      doc.text('Delivery Performance:', 20, currentY);
+      doc.text(decodeHTMLEntities('Delivery Performance:'), 20, currentY);
       currentY += 7;
       
       if (order.requestedDeliveryDate) {
-        doc.text(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
       if (order.expectedReceiptDate) {
-        doc.text(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
       if (order.actualDispatchDate) {
-        doc.text(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
       if (order.confirmationDate) {
-        doc.text(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
     }
     
     // Add dispatch information if available
     if (order.dispatchInfo) {
-      doc.text('Dispatch Information:', 20, currentY);
+      doc.text(decodeHTMLEntities('Dispatch Information:'), 20, currentY);
       currentY += 7;
-      doc.text(`  Shop Name: ${order.dispatchInfo.shopName}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Shop Name: ${order.dispatchInfo.shopName}`), 20, currentY);
       currentY += 7;
-      doc.text(`  Transport License Plate: ${order.dispatchInfo.transportLicensePlate}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Transport License Plate: ${order.dispatchInfo.transportLicensePlate}`), 20, currentY);
       currentY += 7;
-      doc.text(`  Contact Person: ${order.dispatchInfo.contactPerson}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Contact Person: ${order.dispatchInfo.contactPerson}`), 20, currentY);
       currentY += 7;
-      doc.text(`  Dispatch Date: ${order.dispatchInfo.dispatchDate}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Dispatch Date: ${order.dispatchInfo.dispatchDate}`), 20, currentY);
       if (order.dispatchInfo.driverName) {
         currentY += 7;
-        doc.text(`  Driver Name: ${order.dispatchInfo.driverName}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Driver Name: ${order.dispatchInfo.driverName}`), 20, currentY);
       }
       if (order.dispatchInfo.attachments && order.dispatchInfo.attachments.length > 0) {
         currentY += 7;
-        doc.text(`  Attachments: ${order.dispatchInfo.attachments.join(', ')}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Attachments: ${order.dispatchInfo.attachments.join(', ')}`), 20, currentY);
       }
     }
     
@@ -401,7 +546,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     
     // Add table title
     doc.setFontSize(14);
-    doc.text('Order Items', 105, currentY, { align: 'center' });
+    doc.text(decodeHTMLEntities('Order Items'), 105, currentY, { align: 'center' });
     
     // Create table data with image placeholders
     const imagePromises = [];
@@ -443,8 +588,8 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
             }
           },
           item.productId, // Add product ID
-          item.name,
-          `${item.variant.color}, ${item.variant.size}`,
+          decodeHTMLEntities(item.name),
+          decodeHTMLEntities(`${item.variant.color}, ${item.variant.size}`),
           item.quantity,
           item.price.toLocaleString(),
           (item.quantity * item.price).toLocaleString()
@@ -487,7 +632,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
             doc.rect(data.cell.x + 2, data.cell.y + 2, 26, 16, 'F');
             doc.setTextColor(150);
             doc.setFontSize(8);
-            doc.text('No Image', data.cell.x + 15, data.cell.y + 10, { align: 'center' });
+            doc.text(decodeHTMLEntities('No Image'), data.cell.x + 15, data.cell.y + 10, { align: 'center' });
             doc.setTextColor(0, 0, 0);
           }
         }
@@ -500,14 +645,14 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     
     if (order.paymentSlipUrl) {
       doc.setFontSize(14);
-      doc.text('Payment Information', 20, finalY);
+      doc.text(decodeHTMLEntities('Payment Information'), 20, finalY);
       finalY += 10;
       
       doc.setFontSize(12);
-      doc.text('Payment Status: Payment Confirmed', 20, finalY);
+      doc.text(decodeHTMLEntities('Payment Status: Payment Confirmed'), 20, finalY);
       finalY += 10; // Increased spacing
       
-      doc.text('Payment Slip:', 20, finalY);
+      doc.text(decodeHTMLEntities('Payment Slip:'), 20, finalY);
       finalY += 10; // Increased spacing
       
       // Try to add payment slip image
@@ -535,7 +680,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     }
     
     doc.setFontSize(14);
-    doc.text('Order Progress', 20, finalY);
+    doc.text(decodeHTMLEntities('Order Progress'), 20, finalY);
     finalY += 10;
     
     // Add status flow information
@@ -560,13 +705,13 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
       doc.setFontSize(10);
       if (isCurrent) {
         doc.setTextColor(22, 160, 133); // Carement green
-        doc.text(`${status} ← Current`, 25, finalY);
+        doc.text(decodeHTMLEntities(status + ' <- Current'), 25, finalY);
       } else if (isCompleted) {
         doc.setTextColor(0, 150, 0); // Dark green
-        doc.text(`${status} ✓`, 25, finalY);
+        doc.text(decodeHTMLEntities(status + ' ✓'), 25, finalY);
       } else {
         doc.setTextColor(150, 150, 150); // Gray
-        doc.text(status, 25, finalY);
+        doc.text(decodeHTMLEntities(status), 25, finalY);
       }
       finalY += 7;
     });
@@ -574,7 +719,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     // Add current status description
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
-    doc.text('Current Status', 20, finalY);
+    doc.text(decodeHTMLEntities('Current Status'), 20, finalY);
     finalY += 7;
     
     let statusDescription = '';
@@ -602,7 +747,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     }
     
     doc.setFontSize(10);
-    doc.text(statusDescription, 25, finalY);
+    doc.text(decodeHTMLEntities(statusDescription), 25, finalY);
     finalY += 15; // Increased spacing
     
     // Add inventory update information
@@ -613,14 +758,14 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     }
     
     doc.setFontSize(14);
-    doc.text('Inventory Update', 20, finalY);
+    doc.text(decodeHTMLEntities('Inventory Update'), 20, finalY);
     finalY += 10;
     
     doc.setFontSize(10);
     if (order.status === 'Paid' || order.status === 'Dispatched' || order.status === 'Delivered') {
-      doc.text('Status: Inventory has been updated. Shop inventory increased and factory stock reduced when payment was confirmed.', 25, finalY);
+      doc.text(decodeHTMLEntities('Status: Inventory has been updated. Shop inventory increased and factory stock reduced when payment was confirmed.'), 25, finalY);
     } else {
-      doc.text('Status: Inventory update pending.', 25, finalY);
+      doc.text(decodeHTMLEntities('Status: Inventory update pending.'), 25, finalY);
     }
     finalY += 15; // Increased spacing
     
@@ -650,66 +795,66 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     
     // Add order information
     doc.setFontSize(12);
-    doc.text(`Order ID: ${order.id}`, 20, 60);
-    doc.text(`Shop Name: ${order.shopName}`, 20, 67);
-    doc.text(`Order Date: ${new Date(order.date).toLocaleDateString()}`, 20, 74);
-    doc.text(`Status: ${order.status}`, 20, 81);
+    doc.text(decodeHTMLEntities(`Order ID: ${order.id}`), 20, 60);
+    doc.text(decodeHTMLEntities(`Shop Name: ${order.shopName}`), 20, 67);
+    doc.text(decodeHTMLEntities(`Order Date: ${new Date(order.date).toLocaleDateString()}`), 20, 74);
+    doc.text(decodeHTMLEntities(`Status: ${order.status}`), 20, 81);
     
     // Enhanced Order Summary
     const uniqueDesigns = new Set(order.items.map(item => item.productId)).size;
     const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
-    doc.text(`Unique Designs: ${uniqueDesigns}`, 20, 88);
-    doc.text(`Total Items: ${totalItems}`, 20, 95);
-    doc.text(`Total Amount: ETB ${order.amount.toLocaleString()}`, 20, 102);
+    doc.text(decodeHTMLEntities(`Unique Designs: ${uniqueDesigns}`), 20, 88);
+    doc.text(decodeHTMLEntities(`Total Items: ${totalItems}`), 20, 95);
+    doc.text(decodeHTMLEntities(`Total Amount: ETB ${order.amount.toLocaleString()}`), 20, 102);
     
     // Add delivery date if available
     let currentY = 109;
     if (order.deliveryDate) {
-      doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`), 20, currentY);
       currentY += 7;
     }
     
     // Add delivery performance metrics if available
     if (order.requestedDeliveryDate || order.expectedReceiptDate || order.actualDispatchDate || order.confirmationDate) {
-      doc.text('Delivery Performance:', 20, currentY);
+      doc.text(decodeHTMLEntities('Delivery Performance:'), 20, currentY);
       currentY += 7;
       
       if (order.requestedDeliveryDate) {
-        doc.text(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
       if (order.expectedReceiptDate) {
-        doc.text(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
       if (order.actualDispatchDate) {
-        doc.text(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
       if (order.confirmationDate) {
-        doc.text(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`), 20, currentY);
         currentY += 7;
       }
     }
     
     // Add dispatch information if available
     if (order.dispatchInfo) {
-      doc.text('Dispatch Information:', 20, currentY);
+      doc.text(decodeHTMLEntities('Dispatch Information:'), 20, currentY);
       currentY += 7;
-      doc.text(`  Shop Name: ${order.dispatchInfo.shopName}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Shop Name: ${order.dispatchInfo.shopName}`), 20, currentY);
       currentY += 7;
-      doc.text(`  Transport License Plate: ${order.dispatchInfo.transportLicensePlate}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Transport License Plate: ${order.dispatchInfo.transportLicensePlate}`), 20, currentY);
       currentY += 7;
-      doc.text(`  Contact Person: ${order.dispatchInfo.contactPerson}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Contact Person: ${order.dispatchInfo.contactPerson}`), 20, currentY);
       currentY += 7;
-      doc.text(`  Dispatch Date: ${order.dispatchInfo.dispatchDate}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`  Dispatch Date: ${order.dispatchInfo.dispatchDate}`), 20, currentY);
       if (order.dispatchInfo.driverName) {
         currentY += 7;
-        doc.text(`  Driver Name: ${order.dispatchInfo.driverName}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Driver Name: ${order.dispatchInfo.driverName}`), 20, currentY);
       }
       if (order.dispatchInfo.attachments && order.dispatchInfo.attachments.length > 0) {
         currentY += 7;
-        doc.text(`  Attachments: ${order.dispatchInfo.attachments.join(', ')}`, 20, currentY);
+        doc.text(decodeHTMLEntities(`  Attachments: ${order.dispatchInfo.attachments.join(', ')}`), 20, currentY);
       }
     }
     
@@ -719,7 +864,7 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     
     // Add table title
     doc.setFontSize(14);
-    doc.text('Order Items', 105, currentY, { align: 'center' });
+    doc.text(decodeHTMLEntities('Order Items'), 105, currentY, { align: 'center' });
     
     // Create table data with image placeholders
     const imagePromises = [];
@@ -761,8 +906,8 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
             }
           },
           item.productId, // Add product ID
-          item.name,
-          `${item.variant.color}, ${item.variant.size}`,
+          decodeHTMLEntities(item.name),
+          decodeHTMLEntities(`${item.variant.color}, ${item.variant.size}`),
           item.quantity,
           item.price.toLocaleString(),
           (item.quantity * item.price).toLocaleString()
@@ -805,7 +950,7 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
             doc.rect(data.cell.x + 2, data.cell.y + 2, 26, 16, 'F');
             doc.setTextColor(150);
             doc.setFontSize(8);
-            doc.text('No Image', data.cell.x + 15, data.cell.y + 10, { align: 'center' });
+            doc.text(decodeHTMLEntities('No Image'), data.cell.x + 15, data.cell.y + 10, { align: 'center' });
             doc.setTextColor(0, 0, 0);
           }
         }
@@ -867,13 +1012,13 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
       doc.setFontSize(10);
       if (isCurrent) {
         doc.setTextColor(22, 160, 133); // Carement green
-        doc.text(`${status} ← Current`, 25, finalY);
+        doc.text(decodeHTMLEntities(status + ' <- Current'), 25, finalY);
       } else if (isCompleted) {
         doc.setTextColor(0, 150, 0); // Dark green
-        doc.text(`${status} ✓`, 25, finalY);
+        doc.text(decodeHTMLEntities(status + ' ✓'), 25, finalY);
       } else {
         doc.setTextColor(150, 150, 150); // Gray
-        doc.text(status, 25, finalY);
+        doc.text(decodeHTMLEntities(status), 25, finalY);
       }
       finalY += 7;
     });
@@ -881,7 +1026,7 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     // Add current status description
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
-    doc.text('Current Status', 20, finalY);
+    doc.text(decodeHTMLEntities('Current Status'), 20, finalY);
     finalY += 7;
     
     let statusDescription = '';
@@ -909,7 +1054,7 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     }
     
     doc.setFontSize(10);
-    doc.text(statusDescription, 25, finalY);
+    doc.text(decodeHTMLEntities(statusDescription), 25, finalY);
     finalY += 10;
     
     // Add inventory update information
@@ -969,7 +1114,7 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     
     // Add report date
     doc.setFontSize(12);
-    doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, 148, 55, { align: 'center' });
+    doc.text(decodeHTMLEntities(`Report Generated: ${new Date().toLocaleDateString()}`), 148, 55, { align: 'center' });
     
     // Add a line separator
     doc.line(20, 60, 276, 60);
@@ -980,16 +1125,16 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     const inProgressOrders = orders.filter(o => !o.isCompleted).length;
     
     doc.setFontSize(14);
-    doc.text('Summary Statistics', 20, 70);
+    doc.text(decodeHTMLEntities('Summary Statistics'), 20, 70);
     
     doc.setFontSize(12);
-    doc.text(`Total Orders: ${totalOrders}`, 20, 80);
-    doc.text(`Completed Orders: ${completedOrders}`, 20, 87);
-    doc.text(`In Progress Orders: ${inProgressOrders}`, 20, 94);
+    doc.text(decodeHTMLEntities(`Total Orders: ${totalOrders}`), 20, 80);
+    doc.text(decodeHTMLEntities(`Completed Orders: ${completedOrders}`), 20, 87);
+    doc.text(decodeHTMLEntities(`In Progress Orders: ${inProgressOrders}`), 20, 94);
     
     // Add status breakdown
     doc.setFontSize(14);
-    doc.text('Status Breakdown', 20, 107);
+    doc.text(decodeHTMLEntities('Status Breakdown'), 20, 107);
     
     doc.setFontSize(12);
     const statusCounts: Record<string, number> = {};
@@ -999,7 +1144,7 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     
     let statusY = 117;
     Object.entries(statusCounts).forEach(([status, count]) => {
-      doc.text(`${status}: ${count}`, 20, statusY);
+      doc.text(decodeHTMLEntities(`${status}: ${count}`), 20, statusY);
       statusY += 7;
     });
     
@@ -1008,15 +1153,15 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     
     // Add orders table
     doc.setFontSize(14);
-    doc.text('Order Details', 20, statusY + 15);
+    doc.text(decodeHTMLEntities('Order Details'), 20, statusY + 15);
     
     // Prepare table data
     const tableData = orders.map(order => [
-      order.orderNumber,
-      order.productName,
-      order.productCode,
+      decodeHTMLEntities(order.orderNumber),
+      decodeHTMLEntities(order.productName),
+      decodeHTMLEntities(order.productCode),
       order.quantity.toString(),
-      order.status,
+      decodeHTMLEntities(order.status),
       order.orderPlacementDate ? new Date(order.orderPlacementDate).toLocaleDateString() : '',
       order.plannedDeliveryDate ? new Date(order.plannedDeliveryDate).toLocaleDateString() : ''
     ]);
@@ -1068,7 +1213,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
     
     // Add report date
     doc.setFontSize(12);
-    doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, 148, 55, { align: 'center' });
+    doc.text(decodeHTMLEntities(`Report Generated: ${new Date().toLocaleDateString()}`), 148, 55, { align: 'center' });
     
     // Add a line separator
     doc.line(20, 60, 276, 60);
@@ -1083,19 +1228,19 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
     );
     
     doc.setFontSize(14);
-    doc.text('Inventory Summary', 20, 70);
+    doc.text(decodeHTMLEntities('Inventory Summary'), 20, 70);
     
     doc.setFontSize(12);
-    doc.text(`Total Products: ${totalProducts}`, 20, 80);
-    doc.text(`Total Variants: ${totalVariants}`, 20, 87);
-    doc.text(`Total Inventory Value: ETB ${totalValue.toLocaleString()}`, 20, 94);
+    doc.text(decodeHTMLEntities(`Total Products: ${totalProducts}`), 20, 80);
+    doc.text(decodeHTMLEntities(`Total Variants: ${totalVariants}`), 20, 87);
+    doc.text(decodeHTMLEntities(`Total Inventory Value: ETB ${totalValue.toLocaleString()}`), 20, 94);
     
     // Add a line separator
     doc.line(20, 100, 276, 100);
     
     // Add products table
     doc.setFontSize(14);
-    doc.text('Product Inventory Details', 20, 110);
+    doc.text(decodeHTMLEntities('Product Inventory Details'), 20, 110);
     
     // Prepare table data
     const tableData: (string | number)[][] = [];
@@ -1105,9 +1250,9 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
       
       // Add main product row
       tableData.push([
-        product.name,
-        product.productCode,
-        product.category,
+        decodeHTMLEntities(product.name),
+        decodeHTMLEntities(product.productCode),
+        decodeHTMLEntities(product.category),
         `ETB ${product.price.toLocaleString()}`,
         totalStock.toString(),
         `ETB ${totalVariantValue.toLocaleString()}`
@@ -1116,7 +1261,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
       // Add variant rows
       product.variants.forEach(variant => {
         tableData.push([
-          `  ${variant.color}, ${variant.size}`,
+          decodeHTMLEntities(`  ${variant.color}, ${variant.size}`),
           '',
           '',
           '',
@@ -1148,7 +1293,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
     currentY += 10;
     
     doc.setFontSize(14);
-    doc.text('Product Images', 148, currentY, { align: 'center' });
+    doc.text(decodeHTMLEntities('Product Images'), 148, currentY, { align: 'center' });
     currentY += 10;
     
     // Add images for each product
@@ -1161,7 +1306,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
       
       // Add product name
       doc.setFontSize(12);
-      doc.text(`${product.name}`, 20, currentY);
+      doc.text(decodeHTMLEntities(product.name), 20, currentY);
       currentY += 8;
       
       // Try to add product image
@@ -1183,7 +1328,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
         doc.rect(20, currentY, 30, 30, 'F');
         doc.setTextColor(150);
         doc.setFontSize(8);
-        doc.text('No Image', 35, currentY + 15, { align: 'center' });
+        doc.text(decodeHTMLEntities('No Image'), 35, currentY + 15, { align: 'center' });
         doc.setTextColor(0, 0, 0);
       }
       
@@ -1221,7 +1366,7 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
     
     // Add report date
     doc.setFontSize(12);
-    doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, 148, 55, { align: 'center' });
+    doc.text(decodeHTMLEntities(`Report Generated: ${new Date().toLocaleDateString()}`), 148, 55, { align: 'center' });
     
     // Add a line separator
     doc.line(20, 60, 276, 60);
@@ -1240,20 +1385,20 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
     }).length;
     
     doc.setFontSize(14);
-    doc.text('Products Summary', 20, 70);
+    doc.text(decodeHTMLEntities('Products Summary'), 20, 70);
     
     doc.setFontSize(12);
-    doc.text(`Total Products: ${totalProducts}`, 20, 80);
-    doc.text(`Total Variants: ${totalVariants}`, 20, 87);
-    doc.text(`Total Inventory Value: ETB ${totalValue.toLocaleString()}`, 20, 94);
-    doc.text(`Low Stock Items: ${lowStockItems}`, 20, 101);
+    doc.text(decodeHTMLEntities(`Total Products: ${totalProducts}`), 20, 80);
+    doc.text(decodeHTMLEntities(`Total Variants: ${totalVariants}`), 20, 87);
+    doc.text(decodeHTMLEntities(`Total Inventory Value: ETB ${totalValue.toLocaleString()}`), 20, 94);
+    doc.text(decodeHTMLEntities(`Low Stock Items: ${lowStockItems}`), 20, 101);
     
     // Add a line separator
     doc.line(20, 107, 276, 107);
     
     // Add products table
     doc.setFontSize(14);
-    doc.text('Product Details', 20, 117);
+    doc.text(decodeHTMLEntities('Product Details'), 20, 117);
     
     // Prepare table data
     const tableData: (string | number)[][] = [];
@@ -1263,9 +1408,9 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
       
       // Add main product row
       tableData.push([
-        product.name,
-        product.productCode,
-        product.category,
+        decodeHTMLEntities(product.name),
+        decodeHTMLEntities(product.productCode),
+        decodeHTMLEntities(product.category),
         `ETB ${product.price.toLocaleString()}`,
         totalStock.toString(),
         product.readyToDeliver === 1 ? 'Available' : 'Unavailable',
@@ -1295,7 +1440,7 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
     currentY += 10;
     
     doc.setFontSize(14);
-    doc.text('Product Images', 148, currentY, { align: 'center' });
+    doc.text(decodeHTMLEntities('Product Images'), 148, currentY, { align: 'center' });
     currentY += 10;
     
     // Add images for each product
@@ -1308,7 +1453,7 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
       
       // Add product name
       doc.setFontSize(12);
-      doc.text(`${product.name}`, 20, currentY);
+      doc.text(decodeHTMLEntities(product.name), 20, currentY);
       currentY += 8;
       
       // Try to add product image
@@ -1330,7 +1475,7 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
         doc.rect(20, currentY, 30, 30, 'F');
         doc.setTextColor(150);
         doc.setFontSize(8);
-        doc.text('No Image', 35, currentY + 15, { align: 'center' });
+        doc.text(decodeHTMLEntities('No Image'), 35, currentY + 15, { align: 'center' });
         doc.setTextColor(0, 0, 0);
       }
       
@@ -1368,7 +1513,7 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
     
     // Add report date
     doc.setFontSize(12);
-    doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, 148, 55, { align: 'center' });
+    doc.text(decodeHTMLEntities(`Report Generated: ${new Date().toLocaleDateString()}`), 148, 55, { align: 'center' });
     
     // Add a line separator
     doc.line(20, 60, 276, 60);
@@ -1388,30 +1533,30 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
     );
     
     doc.setFontSize(14);
-    doc.text('Orders Summary', 20, 70);
+    doc.text(decodeHTMLEntities('Orders Summary'), 20, 70);
     
     doc.setFontSize(12);
-    doc.text(`Total Orders: ${totalOrders}`, 20, 80);
-    doc.text(`Pending Orders: ${pendingOrders}`, 20, 87);
-    doc.text(`Completed Orders: ${completedOrders}`, 20, 94);
-    doc.text(`Total Revenue: ETB ${totalRevenue.toLocaleString()}`, 20, 101);
-    doc.text(`Unique Designs: ${totalUniqueDesigns}`, 20, 108);
-    doc.text(`Total Items Ordered: ${totalItemsOrdered}`, 20, 115);
+    doc.text(decodeHTMLEntities(`Total Orders: ${totalOrders}`), 20, 80);
+    doc.text(decodeHTMLEntities(`Pending Orders: ${pendingOrders}`), 20, 87);
+    doc.text(decodeHTMLEntities(`Completed Orders: ${completedOrders}`), 20, 94);
+    doc.text(decodeHTMLEntities(`Total Revenue: ETB ${totalRevenue.toLocaleString()}`), 20, 101);
+    doc.text(decodeHTMLEntities(`Unique Designs: ${totalUniqueDesigns}`), 20, 108);
+    doc.text(decodeHTMLEntities(`Total Items Ordered: ${totalItemsOrdered}`), 20, 115);
     
     // Add a line separator
     doc.line(20, 107, 276, 107);
     
     // Add orders table
     doc.setFontSize(14);
-    doc.text('Order Details', 20, 117);
+    doc.text(decodeHTMLEntities('Order Details'), 20, 117);
     
     // Prepare table data with delivery dates
     const tableData: (string | number)[][] = orders.map(order => [
-      order.id,
-      order.shopName,
+      decodeHTMLEntities(order.id),
+      decodeHTMLEntities(order.shopName),
       new Date(order.date).toLocaleDateString(),
       order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString() : 'Not set',
-      order.status,
+      decodeHTMLEntities(order.status),
       `ETB ${order.amount.toLocaleString()}`
     ]);
     
@@ -1447,12 +1592,12 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
       
       // Add order title
       doc.setFontSize(14);
-      doc.text(`Order: ${order.id}`, 20, currentY);
+      doc.text(decodeHTMLEntities(`Order: ${order.id}`), 20, currentY);
       
       // Add delivery date if available
       if (order.deliveryDate) {
         doc.setFontSize(12);
-        doc.text(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`, 20, currentY + 7);
+        doc.text(decodeHTMLEntities(`Delivery Date: ${new Date(order.deliveryDate).toLocaleDateString()}`), 20, currentY + 7);
         currentY += 14;
       } else {
         currentY += 7;
@@ -1461,23 +1606,23 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
       // Add delivery performance metrics if available
       if (order.requestedDeliveryDate || order.expectedReceiptDate || order.actualDispatchDate || order.confirmationDate) {
         doc.setFontSize(12);
-        doc.text('Delivery Performance:', 20, currentY);
+        doc.text(decodeHTMLEntities('Delivery Performance:'), 20, currentY);
         currentY += 7;
         
         if (order.requestedDeliveryDate) {
-          doc.text(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`, 20, currentY);
+          doc.text(decodeHTMLEntities(`  Requested Delivery: ${new Date(order.requestedDeliveryDate).toLocaleDateString()}`), 20, currentY);
           currentY += 7;
         }
         if (order.expectedReceiptDate) {
-          doc.text(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`, 20, currentY);
+          doc.text(decodeHTMLEntities(`  Expected Receipt: ${new Date(order.expectedReceiptDate).toLocaleDateString()}`), 20, currentY);
           currentY += 7;
         }
         if (order.actualDispatchDate) {
-          doc.text(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`, 20, currentY);
+          doc.text(decodeHTMLEntities(`  Actual Dispatch: ${new Date(order.actualDispatchDate).toLocaleDateString()}`), 20, currentY);
           currentY += 7;
         }
         if (order.confirmationDate) {
-          doc.text(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`, 20, currentY);
+          doc.text(decodeHTMLEntities(`  Confirmation Date: ${new Date(order.confirmationDate).toLocaleDateString()}`), 20, currentY);
           currentY += 7;
         }
         currentY += 7;
@@ -1519,11 +1664,11 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
         
         // Add item details
         doc.setFontSize(10);
-        doc.text(`${item.name}`, 20, currentY + 5);
-        doc.text(`${item.variant?.color}, ${item.variant?.size}`, 20, currentY + 12);
-        doc.text(`Quantity: ${item.quantity}`, 20, currentY + 19);
-        doc.text(`Price: ETB ${item.price.toLocaleString()}`, 20, currentY + 26);
-        doc.text(`Total: ETB ${(item.quantity * item.price).toLocaleString()}`, 20, currentY + 33);
+        doc.text(decodeHTMLEntities(item.name), 20, currentY + 5);
+        doc.text(decodeHTMLEntities(`${item.variant?.color}, ${item.variant?.size}`), 20, currentY + 12);
+        doc.text(decodeHTMLEntities(`Quantity: ${item.quantity}`), 20, currentY + 19);
+        doc.text(decodeHTMLEntities(`Price: ETB ${item.price.toLocaleString()}`), 20, currentY + 26);
+        doc.text(decodeHTMLEntities(`Total: ETB ${(item.quantity * item.price).toLocaleString()}`), 20, currentY + 33);
         
         currentY += 40;
       }
@@ -1560,7 +1705,7 @@ export async function generateShopsReport(shops: Shop[]): Promise<Blob> {
     
     // Add report date
     doc.setFontSize(12);
-    doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, 148, 55, { align: 'center' });
+    doc.text(decodeHTMLEntities(`Report Generated: ${new Date().toLocaleDateString()}`), 148, 55, { align: 'center' });
     
     // Add a line separator
     doc.line(20, 60, 276, 60);
@@ -1572,29 +1717,29 @@ export async function generateShopsReport(shops: Shop[]): Promise<Blob> {
     const cities = new Set(shops.map(shop => shop.city)).size;
     
     doc.setFontSize(14);
-    doc.text('Shops Summary', 20, 70);
+    doc.text(decodeHTMLEntities('Shops Summary'), 20, 70);
     
     doc.setFontSize(12);
-    doc.text(`Total Shops: ${totalShops}`, 20, 80);
-    doc.text(`Active Shops: ${activeShops}`, 20, 87);
-    doc.text(`Inactive Shops: ${inactiveShops}`, 20, 94);
-    doc.text(`Cities Covered: ${cities}`, 20, 101);
+    doc.text(decodeHTMLEntities(`Total Shops: ${totalShops}`), 20, 80);
+    doc.text(decodeHTMLEntities(`Active Shops: ${activeShops}`), 20, 87);
+    doc.text(decodeHTMLEntities(`Inactive Shops: ${inactiveShops}`), 20, 94);
+    doc.text(decodeHTMLEntities(`Cities Covered: ${cities}`), 20, 101);
     
     // Add a line separator
     doc.line(20, 107, 276, 107);
     
     // Add shops table
     doc.setFontSize(14);
-    doc.text('Shop Details', 20, 117);
+    doc.text(decodeHTMLEntities('Shop Details'), 20, 117);
     
     // Prepare table data
     const tableData: (string | number)[][] = shops.map(shop => [
-      shop.name,
-      shop.username,
-      shop.contactPerson,
-      shop.contactPhone,
-      shop.city,
-      shop.status,
+      decodeHTMLEntities(shop.name),
+      decodeHTMLEntities(shop.username),
+      decodeHTMLEntities(shop.contactPerson),
+      decodeHTMLEntities(shop.contactPhone),
+      decodeHTMLEntities(shop.city),
+      decodeHTMLEntities(shop.status),
       shop.discount ? `${(shop.discount * 100).toFixed(1)}%` : '0%',
       shop.monthlySalesTarget ? `ETB ${shop.monthlySalesTarget.toLocaleString()}` : 'Not set'
     ]);
@@ -1644,35 +1789,35 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
     // Add report generation date and filters
     const generationDate = new Date().toLocaleDateString();
     doc.setFontSize(12);
-    doc.text(`Report Generated: ${generationDate}`, 20, 60);
+    doc.text(decodeHTMLEntities(`Report Generated: ${generationDate}`), 20, 60);
     
     // Add filters used
     let currentY = 67;
-    doc.text('Filters Applied:', 20, currentY);
+    doc.text(decodeHTMLEntities('Filters Applied:'), 20, currentY);
     currentY += 7;
     
     if (filters.startDate && filters.endDate) {
-      doc.text(`Date Range: ${filters.startDate} to ${filters.endDate}`, 25, currentY);
+      doc.text(decodeHTMLEntities(`Date Range: ${filters.startDate} to ${filters.endDate}`), 25, currentY);
       currentY += 7;
     }
     
     if (filters.shopId) {
-      doc.text(`Shop ID: ${filters.shopId}`, 25, currentY);
+      doc.text(decodeHTMLEntities(`Shop ID: ${filters.shopId}`), 25, currentY);
       currentY += 7;
     }
     
     if (filters.category) {
-      doc.text(`Category: ${filters.category}`, 25, currentY);
+      doc.text(decodeHTMLEntities(`Category: ${filters.category}`), 25, currentY);
       currentY += 7;
     }
     
     if (filters.region) {
-      doc.text(`Region: ${filters.region}`, 25, currentY);
+      doc.text(decodeHTMLEntities(`Region: ${filters.region}`), 25, currentY);
       currentY += 7;
     }
     
     if (filters.orderStatus) {
-      doc.text(`Order Status: ${filters.orderStatus}`, 25, currentY);
+      doc.text(decodeHTMLEntities(`Order Status: ${filters.orderStatus}`), 25, currentY);
       currentY += 7;
     }
     
@@ -1682,30 +1827,33 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
     
     // Add KPI summary table
     doc.setFontSize(16);
-    doc.text('Key Performance Indicators', 105, currentY, { align: 'center' });
+    doc.text(decodeHTMLEntities('Key Performance Indicators'), 105, currentY, { align: 'center' });
     currentY += 10;
     
     doc.setFontSize(12);
     
+    const bestSellingProduct = kpis.bestSellingProduct || (kpis.bestSellingProducts && kpis.bestSellingProducts[0]) || { name: 'N/A', quantity: 0 };
+    const topShop = kpis.topPerformingShop || (kpis.shopRanking && kpis.shopRanking[0]) || { name: 'N/A', sales: 0 };
+
     // Core KPIs
     const coreKPIs = [
-      ['Total Sales Value', `ETB ${kpis.totalSalesValue.toLocaleString()}`],
-      ['Total Orders', kpis.totalOrders.toString()],
-      ['Units Produced', kpis.unitsProduced.toString()],
-      ['Active Shops', `${kpis.activeShops} of ${kpis.registeredShops}`],
-      ['Average Order Value', `ETB ${kpis.averageOrderValue.toFixed(2)}`],
-      ['Units per Transaction', kpis.unitsPerTransaction.toFixed(1)],
-      ['Customer Retention Rate', `${kpis.customerRetentionRate.toFixed(1)}%`],
-      ['Order Fulfillment Rate', `${kpis.orderFulfillmentRate.toFixed(1)}%`],
-      ['On-Time Delivery Rate', `${kpis.onTimeDeliveryRate.toFixed(1)}%`],
-      ['Marketing Order Completion Rate', `${kpis.marketingOrderCompletionRate.toFixed(1)}%`],
-      ['Best Selling Product', `${kpis.bestSellingProduct.name} (${kpis.bestSellingProduct.quantity} units)`],
-      ['Top Performing Shop', `${kpis.topPerformingShop.name} (ETB ${kpis.topPerformingShop.sales?.toLocaleString() || '0.00'})`],
-      ['Sales Growth (MoM)', `${kpis.salesGrowthMoM.toFixed(1)}%`],
-      ['Total Stock Quantity', kpis.totalStockQuantity.toString()],
-      ['Total Stock Value', `ETB ${kpis.totalStockValue.toLocaleString()}`],
-      ['Low Stock Alerts', kpis.lowStockAlerts.toString()],
-      ['Production Efficiency', `${kpis.productionEfficiency.toFixed(1)}%`]
+      [decodeHTMLEntities('Total Sales Value'), `ETB ${(kpis.totalSalesValue || 0).toLocaleString()}`],
+      [decodeHTMLEntities('Total Orders'), (kpis.totalOrders || 0).toString()],
+      [decodeHTMLEntities('Units Produced'), (kpis.unitsProduced || 0).toString()],
+      [decodeHTMLEntities('Active Shops'), `${kpis.activeShops || 0} of ${kpis.registeredShops || 0}`],
+      [decodeHTMLEntities('Average Order Value'), `ETB ${(kpis.averageOrderValue || 0).toFixed(2)}`],
+      [decodeHTMLEntities('Units per Transaction'), (kpis.unitsPerTransaction || 0).toFixed(1)],
+      [decodeHTMLEntities('Customer Retention Rate'), `${(kpis.customerRetentionRate || 0).toFixed(1)}%`],
+      [decodeHTMLEntities('Order Fulfillment Rate'), `${(kpis.orderFulfillmentRate || 0).toFixed(1)}%`],
+      [decodeHTMLEntities('On-Time Delivery Rate'), `${(kpis.onTimeDeliveryRate || 0).toFixed(1)}%`],
+      [decodeHTMLEntities('Marketing Order Completion Rate'), `${(kpis.marketingOrderCompletionRate || 0).toFixed(1)}%`],
+      [decodeHTMLEntities('Best Selling Product'), decodeHTMLEntities(`${bestSellingProduct.name || 'N/A'} (${bestSellingProduct.quantity || 0} units)`)],
+      [decodeHTMLEntities('Top Performing Shop'), decodeHTMLEntities(`${topShop.name || 'N/A'} (ETB ${(topShop.sales || 0).toLocaleString()})`)],
+      [decodeHTMLEntities('Sales Growth (MoM)'), `${(kpis.salesGrowthMoM || 0).toFixed(1)}%`],
+      [decodeHTMLEntities('Total Stock Quantity'), (kpis.totalStockQuantity || 0).toString()],
+      [decodeHTMLEntities('Total Stock Value'), `ETB ${(kpis.totalStockValue || 0).toLocaleString()}`],
+      [decodeHTMLEntities('Low Stock Alerts'), (kpis.lowStockAlerts || 0).toString()],
+      [decodeHTMLEntities('Production Efficiency'), `${(kpis.productionEfficiency || 0).toFixed(1)}%`]
     ];
     
     (doc as any).autoTable({
@@ -1728,14 +1876,19 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
     let finalY = (doc as any).lastAutoTable.finalY || currentY + 30;
     finalY += 10;
     
-    if (kpis.productInfo) {
+    const productsSource = kpis.productInfo || kpis.bestSellingProducts;
+
+    if (productsSource) {
       doc.setFontSize(16);
-      doc.text('Best Selling Products', 105, finalY, { align: 'center' });
+      doc.text(decodeHTMLEntities('Best Selling Products'), 105, finalY, { align: 'center' });
       finalY += 10;
       
       // Get top 5 best selling products with images
-      const topProducts = Object.values(kpis.productInfo)
-        .sort((a: any, b: any) => b.quantity - a.quantity)
+      // Handle array or object structure
+      const productsArray = Array.isArray(productsSource) ? productsSource : Object.values(productsSource);
+        
+      const topProducts = productsArray
+        .sort((a: any, b: any) => (b.quantity || 0) - (a.quantity || 0))
         .slice(0, 5);
       
       // Load product images
@@ -1763,8 +1916,8 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
               minCellHeight: 20
             }
           },
-          product.name,
-          product.quantity.toString()
+          decodeHTMLEntities(product.name || 'Unknown'),
+          (product.quantity || 0).toString()
         ];
       });
       
@@ -1821,23 +1974,25 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
     }
     
     // Add detailed stock information if available
-    if (kpis.stockByProduct && kpis.stockByProduct.length > 0) {
+    const stockSource = kpis.stockByProduct || kpis.stockInfo;
+    
+    if (stockSource && stockSource.length > 0) {
       doc.setFontSize(16);
-      doc.text('Inventory Details', 105, finalY, { align: 'center' });
+      doc.text(decodeHTMLEntities('Inventory Details'), 105, finalY, { align: 'center' });
       finalY += 10;
       
       // Get top 10 products by stock value
-      const topStockProducts = kpis.stockByProduct
-        .sort((a: any, b: any) => b.totalValue - a.totalValue)
+      const topStockProducts = stockSource
+        .sort((a: any, b: any) => (b.totalValue || 0) - (a.totalValue || 0))
         .slice(0, 10);
       
       // Create table with stock details
       const stockTableData = topStockProducts.map((product: any) => {
         return [
-          product.name,
-          product.category,
-          product.totalStock.toString(),
-          `ETB ${product.totalValue.toLocaleString()}`
+          decodeHTMLEntities(product.name || 'Unknown'),
+          decodeHTMLEntities(product.category || 'N/A'),
+          (product.totalStock || 0).toString(),
+          `ETB ${(product.totalValue || 0).toLocaleString()}`
         ];
       });
       

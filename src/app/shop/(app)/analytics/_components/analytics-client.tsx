@@ -60,10 +60,9 @@ export function ShopAnalyticsClientPage({ shop, orders }: ShopAnalyticsClientPag
         const targetAmount = shop.monthlySalesTarget || 0;
         const targetProgress = targetAmount > 0 ? (monthlySales / targetAmount) * 100 : 0;
 
-        // Chart Data
+        // Chart Data - Use all orders instead of just current month to match top products logic
         const weeklySales: { [key: string]: number } = {};
-        const currentMonthOrders = orders.filter(o => isThisMonth(parseISO(o.date)));
-        currentMonthOrders.forEach(order => {
+        orders.forEach(order => {
             const weekStart = format(startOfWeek(parseISO(order.date), { weekStartsOn: 1 }), "MMM d");
             if (!weeklySales[weekStart]) { weeklySales[weekStart] = 0; }
             weeklySales[weekStart] += order.amount;
@@ -73,7 +72,7 @@ export function ShopAnalyticsClientPage({ shop, orders }: ShopAnalyticsClientPag
             .sort((a, b) => new Date(a.name).getTime() - new Date(b.name).getTime());
 
         const monthlySalesByDay: { [key: string]: number } = {};
-        currentMonthOrders.forEach(order => {
+        orders.forEach(order => {
             const day = format(parseISO(order.date), "MMM d");
             if (!monthlySalesByDay[day]) { monthlySalesByDay[day] = 0; }
             monthlySalesByDay[day] += order.amount;
@@ -181,7 +180,7 @@ export function ShopAnalyticsClientPage({ shop, orders }: ShopAnalyticsClientPag
             <Card className="xl:col-span-2">
                 <CardHeader>
                     <CardTitle>Sales Performance</CardTitle>
-                    <CardDescription>Your shop's sales performance over time.</CardDescription>
+                    <CardDescription>Your shop's all-time sales performance over time.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Tabs defaultValue="monthly">

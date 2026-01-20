@@ -593,20 +593,27 @@ export default function PublicWebsite() {
                                 Our company continues to grow with strong performance across all key metrics.
                                 We maintain high inventory turnover rates while ensuring consistent product quality.
                             </p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div className="border rounded-lg p-4">
                                     <h3 className="font-bold mb-2">On-Time Delivery Rate</h3>
                                     <div className="text-3xl font-bold text-primary">
-                                        {businessInsights?.onTimeDeliveryRate ? `${businessInsights.onTimeDeliveryRate.toFixed(1)}%` : '92%'}
+                                        {businessInsights?.onTimeDeliveryRate !== undefined && businessInsights?.onTimeDeliveryRate !== null ? `${businessInsights.onTimeDeliveryRate.toFixed(1)}%` : 'Loading...'}
                                     </div>
                                     <p className="text-sm text-muted-foreground">Percentage of orders delivered on time</p>
                                 </div>
                                 <div className="border rounded-lg p-4">
                                     <h3 className="font-bold mb-2">Order Fulfillment Rate</h3>
                                     <div className="text-3xl font-bold text-primary">
-                                        {businessInsights?.orderFulfillmentRate ? `${businessInsights.orderFulfillmentRate.toFixed(1)}%` : '95%'}
+                                        {businessInsights?.orderFulfillmentRate !== undefined && businessInsights?.orderFulfillmentRate !== null ? `${businessInsights.orderFulfillmentRate.toFixed(1)}%` : 'Loading...'}
                                     </div>
                                     <p className="text-sm text-muted-foreground">Percentage of orders successfully completed</p>
+                                </div>
+                                <div className="border rounded-lg p-4">
+                                    <h3 className="font-bold mb-2">Number of Shops</h3>
+                                    <div className="text-3xl font-bold text-primary">
+                                        {businessInsights?.activeShops || companyInfo?.totalShops || 0}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">Active retail locations</p>
                                 </div>
                             </div>
                         </CardContent>

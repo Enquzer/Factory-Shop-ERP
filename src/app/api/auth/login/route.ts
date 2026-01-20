@@ -36,7 +36,12 @@ export async function POST(request: NextRequest) {
       // Reset rate limit on successful login
       authRateLimiter.resetLimit(clientId);
       
-      // Create a simple JWT-like token (in a real implementation, you would use a proper JWT library)
+      // Create a proper JWT-like token with header.payload.signature format
+      const tokenHeader = {
+        alg: 'HS256',
+        typ: 'JWT'
+      };
+      
       const tokenPayload = {
         userId: result.user?.id,
         username: result.user?.username,
@@ -44,8 +49,17 @@ export async function POST(request: NextRequest) {
         exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // 24 hours
       };
       
-      // Simple base64 encoding (in a real implementation, you would sign the token)
-      const token = btoa(JSON.stringify(tokenPayload));
+      // Encode header and payload in base64
+      const encodedHeader = btoa(JSON.stringify(tokenHeader));
+      const encodedPayload = btoa(JSON.stringify(tokenPayload));
+      
+      // For this simple implementation, we'll use a basic signature
+      // In a real implementation, you would use a proper JWT library
+      const secret = process.env.JWT_SECRET || 'fallback_secret_key_for_development';
+      const signatureData = encodedHeader + '.' + encodedPayload;
+      const signature = btoa(signatureData + secret).replace(/[^a-zA-Z0-9]/g, '');
+      
+      const token = `${encodedHeader}.${encodedPayload}.${signature}`;
       
       const response = NextResponse.json({
         ...result,

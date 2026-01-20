@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // PUT /api/orders/[id]/payment - Confirm payment for an order
 export async function PUT(
@@ -8,6 +9,15 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Authenticate the request
+    // @ts-ignore
+    const user = await authenticateRequest(request as any);
+    
+    // Only shop users can upload payment slips
+    if (!user || user.role !== 'shop') {
+      return NextResponse.json({ error: 'Unauthorized. Only shop users can upload payment slips.' }, { status: 403 });
+    }
+
     const { id } = params;
     const { paymentSlipUrl } = await request.json();
 
@@ -22,7 +32,7 @@ export async function PUT(
       UPDATE orders 
       SET status = ?, paymentSlipUrl = ?
       WHERE id = ?
-    `, 'Paid', paymentSlipUrl, id);
+    `, 'Awaiting Payment', paymentSlipUrl, id);
 
     // Get the updated order
     const order = await db.get(`
@@ -31,12 +41,28 @@ export async function PUT(
 
     if (order) {
       // Create notification for the factory
-      await createNotification({
-        userType: 'factory',
-        title: `Payment Confirmed`,
-        description: `Payment for order #${id} from ${order.shopName} has been confirmed`,
-        href: `/orders`,
-      });
+      try {
+        await createNotification({
+          userType: 'factory',
+          title: `Payment Updates`,
+          description: `Payment slip uploaded for order #${id} from ${order.shopName}`,
+          href: `/orders`,
+        });
+      } catch (err) {
+        console.error('Failed to notify factory:', err);
+      }
+
+      // Create notification for finance
+      try {
+        await createNotification({
+          userType: 'finance',
+          title: `Payment Verification Needed`,
+          description: `Payment slip uploaded for order #${id}. Please verify.`,
+          href: `/finance/orders/${id}`,
+        });
+      } catch (err) {
+         console.error('Failed to notify finance:', err);
+      }
     }
 
     return NextResponse.json({ message: 'Payment confirmed successfully' });

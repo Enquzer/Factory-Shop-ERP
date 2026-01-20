@@ -39,3 +39,7 @@ next-env.d.ts
 # genkit
 .genkit/
 .genkit-cache/
+
+# database
+/db/
+/public/uploads/

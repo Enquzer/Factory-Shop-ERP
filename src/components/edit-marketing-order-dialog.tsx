@@ -38,6 +38,12 @@ export function EditMarketingOrderDialog({
   const [sizeSetSampleApproved, setSizeSetSampleApproved] = useState<string>("");
   const [productionStartDate, setProductionStartDate] = useState<string>("");
   const [productionFinishedDate, setProductionFinishedDate] = useState<string>("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [availableUsers, setAvailableUsers] = useState<{id: number, username: string}[]>([]);
+  const [priority, setPriority] = useState(0);
+  const [ppmMeetingAttached, setPpmMeetingAttached] = useState("");
+  const [sampleApprovalAttached, setSampleApprovalAttached] = useState("");
+  const [cuttingQualityAttached, setCuttingQualityAttached] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -51,8 +57,31 @@ export function EditMarketingOrderDialog({
       setSizeSetSampleApproved(order.sizeSetSampleApproved || "");
       setProductionStartDate(order.productionStartDate || "");
       setProductionFinishedDate(order.productionFinishedDate || "");
+      setAssignedTo(order.assignedTo || "");
+      setPriority(order.priority || 0);
+      setPpmMeetingAttached(order.ppmMeetingAttached || "");
+      setSampleApprovalAttached(order.sampleApprovalAttached || "");
+      setCuttingQualityAttached(order.cuttingQualityAttached || "");
     }
   }, [order]);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('/api/users');
+        if (response.ok) {
+          const data = await response.json();
+          const pUsers = data.filter((u: any) => 
+            ['planning', 'sample_maker', 'cutting', 'sewing', 'finishing', 'packing', 'quality_inspection', 'factory'].includes(u.role)
+          );
+          setAvailableUsers(pUsers);
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+    if (open) fetchUsers();
+  }, [open]);
 
   // Update the quantity whenever items change
   useEffect(() => {
@@ -78,6 +107,11 @@ export function EditMarketingOrderDialog({
         sizeSetSampleApproved: sizeSetSampleApproved || undefined,
         productionStartDate: productionStartDate || undefined,
         productionFinishedDate: productionFinishedDate || undefined,
+        assignedTo: assignedTo || undefined,
+        priority,
+        ppmMeetingAttached: ppmMeetingAttached || undefined,
+        sampleApprovalAttached: sampleApprovalAttached || undefined,
+        cuttingQualityAttached: cuttingQualityAttached || undefined,
       };
 
       const success = await updateMarketingOrder(order.id, updatedData);
@@ -177,6 +211,21 @@ export function EditMarketingOrderDialog({
                   placeholder="Product description"
                 />
               </div>
+
+              <div>
+                <Label htmlFor="assignedTo">Assigned Representative / Team</Label>
+                <select
+                  id="assignedTo"
+                  value={assignedTo}
+                  onChange={(e) => setAssignedTo(e.target.value)}
+                  className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Unassigned</option>
+                  {availableUsers.map((u) => (
+                    <option key={u.id} value={u.username}>{u.username}</option>
+                  ))}
+                </select>
+              </div>
               
               <div>
                 <Label>Total Quantity</Label>
@@ -256,6 +305,49 @@ export function EditMarketingOrderDialog({
                     value={productionFinishedDate}
                     onChange={(e) => setProductionFinishedDate(e.target.value)}
                   />
+                </div>
+              </div>
+
+              {/* Advanced Production Attachments */}
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="font-semibold">Production Documentation</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="priority">Sequence Priority</Label>
+                    <Input
+                      id="priority"
+                      type="number"
+                      value={priority}
+                      onChange={(e) => setPriority(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="ppmMeeting">PPM Meeting Minutes (URL)</Label>
+                    <Input
+                      id="ppmMeeting"
+                      value={ppmMeetingAttached}
+                      onChange={(e) => setPpmMeetingAttached(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="sampleApproval">Sample Approval (URL)</Label>
+                    <Input
+                      id="sampleApproval"
+                      value={sampleApprovalAttached}
+                      onChange={(e) => setSampleApprovalAttached(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="cuttingQuality">Cutting Quality Report (URL)</Label>
+                    <Input
+                      id="cuttingQuality"
+                      value={cuttingQualityAttached}
+                      onChange={(e) => setCuttingQualityAttached(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
                 </div>
               </div>
             </div>

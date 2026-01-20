@@ -63,10 +63,8 @@ export function middleware(request: NextRequest) {
     addCorsHeaders(response, origin);
   }
   
-  // Add rate limiting headers (these are informational only)
-  response.headers.set('X-RateLimit-Limit', '1000');
-  response.headers.set('X-RateLimit-Remaining', '999');
-  response.headers.set('X-RateLimit-Reset', new Date(Date.now() + 60000).toISOString());
+  // Remove predictable rate limiting headers to prevent information disclosure
+  // (These were removed to prevent exposing system information)
   
   return response;
 }

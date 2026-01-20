@@ -26,6 +26,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getProducts } from '@/lib/products';
+import { createAuthHeaders } from '@/lib/auth-helpers';
 import { Badge } from '@/components/ui/badge';
 
 const statusVariants: Record<any, "default" | "secondary" | "destructive" | "outline"> = {
@@ -72,7 +73,9 @@ export function DashboardClient() {
 
                 // Fetch orders and products through APIs
                 const [ordersResponse, productsData] = await Promise.all([
-                    fetch(`/api/orders?shopId=${shop.id}`),
+                    fetch(`/api/orders?shopId=${shop.id}`, {
+                        headers: createAuthHeaders()
+                    }),
                     getProducts()
                 ]);
                 

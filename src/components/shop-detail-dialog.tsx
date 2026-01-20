@@ -84,6 +84,16 @@ export function ShopDetailDialog({ shop, open, onOpenChange }: { shop: Shop; ope
                             </div>
                         </div>
 
+                        <div className="flex items-center">
+                            <FileText className="h-5 w-5 mr-3 text-muted-foreground" />
+                            <div>
+                                <p className="text-sm font-medium">Show Variant Details</p>
+                                <Badge variant={shop.showVariantDetails ? 'default' : 'secondary'}>
+                                    {shop.showVariantDetails ? 'Enabled' : 'Disabled'}
+                                </Badge>
+                            </div>
+                        </div>
+
                         <Separator />
 
                         <div>

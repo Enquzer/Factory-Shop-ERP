@@ -3,10 +3,12 @@ import { StockEvent } from './stock-events-sqlite';
 
 // Create a stock event via API
 export async function createStockEvent(event: Omit<StockEvent, 'id' | 'createdAt'>): Promise<StockEvent> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   const response = await fetch('/api/stock-events', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(event),
   });

@@ -87,7 +87,7 @@ export function ResponsiveTable({
                         </span>
                         <span className="text-sm font-medium">
                           {typeof item[header.key] === 'object' 
-                            ? JSON.stringify(item[header.key]) 
+                            ? (item[header.key]?.toString ? item[header.key].toString() : '[Object]')
                             : item[header.key]}
                         </span>
                       </div>
@@ -104,7 +104,7 @@ export function ResponsiveTable({
                       </span>
                       <span className="text-sm font-medium">
                         {typeof item[header.key] === 'object' 
-                          ? JSON.stringify(item[header.key]) 
+                          ? (item[header.key]?.toString ? item[header.key].toString() : '[Object]')
                           : item[header.key]}
                       </span>
                     </div>
@@ -126,9 +126,11 @@ export function ResponsiveTable({
           {headers.map((header) => (
             <TableHead 
               key={header.key} 
-              className={header.className}
+              className={cn(header.className, 'whitespace-nowrap truncate')}
             >
-              {header.title}
+              <div className="truncate" title={typeof header.title === 'string' ? header.title : undefined}>
+                {header.title}
+              </div>
             </TableHead>
           ))}
         </TableRow>
@@ -142,9 +144,11 @@ export function ResponsiveTable({
               {headers.map((header) => (
                 <TableCell 
                   key={header.key} 
-                  className={header.className}
+                  className={cn(header.className, 'whitespace-nowrap truncate')}
                 >
-                  {item[header.key]}
+                  <div className="truncate" title={typeof item[header.key] === 'string' ? item[header.key] : undefined}>
+                    {item[header.key]}
+                  </div>
                 </TableCell>
               ))}
             </TableRow>

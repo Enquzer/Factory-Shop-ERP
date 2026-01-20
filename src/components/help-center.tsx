@@ -277,9 +277,26 @@ function DocumentViewer({
   );
 }
 
+function sanitizeHTML(html: string): string {
+  // Remove potentially dangerous content
+  return html
+    .replace(/<script[^>]*>.*?<\/script>/gi, '') // Remove script tags
+    .replace(/<iframe[^>]*>.*?<\/iframe>/gi, '') // Remove iframe tags
+    .replace(/<object[^>]*>.*?<\/object>/gi, '') // Remove object tags
+    .replace(/<embed[^>]*>.*?<\/embed>/gi, '') // Remove embed tags
+    .replace(/<form[^>]*>.*?<\/form>/gi, '') // Remove form tags
+    .replace(/javascript:/gi, '') // Remove javascript: URLs
+    .replace(/data:/gi, '') // Remove data: URLs
+    .replace(/vbscript:/gi, '') // Remove vbscript: URLs
+    .replace(/on\w+\s*=/gi, ''); // Remove event handlers
+}
+
 function formatContent(content: string): string {
+  // First, sanitize the content
+  let sanitizedContent = sanitizeHTML(content);
+  
   // Convert markdown-like formatting to HTML
-  let formatted = content
+  let formatted = sanitizedContent
     // Convert ## headers to <h2>
     .replace(/^## (.*$)/gm, '<h2 class="text-xl font-semibold mt-6 mb-3">$1</h2>')
     // Convert ### headers to <h3>

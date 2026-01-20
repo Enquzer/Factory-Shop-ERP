@@ -3,37 +3,64 @@ import { NextRequest } from 'next/server';
 import { getUserById } from './auth-sqlite';
 import { User } from './auth-sqlite'; // Import from auth-sqlite instead of auth
 
+// Define the expanded role type
+export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer';
+
 // Extend the User type to include a method for checking roles
-export interface AuthenticatedUser extends User {
-  hasRole: (role: 'factory' | 'shop') => boolean;
+export interface AuthenticatedUser extends Omit<User, 'role'> {
+  role: UserRole;
+  hasRole: (role: UserRole | UserRole[]) => boolean;
 }
 
-// JWT token verification (simplified for this example)
-async function verifyToken(token: string): Promise<{ userId: number } | null> {
-  try {
-    // In a real implementation, you would verify the JWT token here
-    // For now, we'll just decode the token (assuming it's a simple base64 encoded JSON)
-    // Handle both JWT format and simple base64 format
-    let payload;
-    if (token.includes('.')) {
-      // JWT format
-      payload = JSON.parse(atob(token.split('.')[1]));
-    } else {
-      // Simple base64 format
-      payload = JSON.parse(atob(token));
+// JWT token verification using a simple but more secure approach
+// In production, use a proper JWT library like jsonwebtoken
+function verifyToken(token: string): Promise<{ userId: number } | null> {
+  return new Promise((resolve) => {
+    try {
+      // For now, we'll implement a more secure token verification
+      // In a real implementation, use a proper JWT library with secret signing
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        console.error('Invalid token format');
+        resolve(null);
+        return;
+      }
+
+      // Decode the payload part (second part)
+      const payload = JSON.parse(atob(tokenParts[1]));
+      
+      // Check if token is expired
+      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+        console.error('Token expired');
+        resolve(null);
+        return;
+      }
+      
+      // Verify signature by checking if the token was signed with our secret
+      // This is a simplified approach - in production, use a proper JWT library
+      // For signature verification, we need to use the same approach as in the login API
+      // Use the encoded header and payload from the token, not the parsed JSON
+      const encodedHeader = tokenParts[0];
+      const encodedPayload = tokenParts[1];
+      const signatureData = encodedHeader + '.' + encodedPayload;
+      const secret = process.env.JWT_SECRET || 'fallback_secret_key_for_development';
+      const expectedSignature = btoa(signatureData + secret).replace(/[^a-zA-Z0-9]/g, '');
+      
+      if (tokenParts[2] !== expectedSignature) {
+        console.error('Signature mismatch');
+        resolve(null);
+        return;
+      }
+      
+      resolve({ userId: payload.userId });
+    } catch (error) {
+      console.error('Token verification error:', error);
+      resolve(null);
     }
-    
-    // Check if token is expired
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return null;
-    }
-    
-    return { userId: payload.userId };
-  } catch (error) {
-    console.error('Token verification error:', error);
-    return null;
-  }
+  });
 }
+
+
 
 // Authentication middleware for API routes
 export async function authenticateRequest(request: NextRequest): Promise<AuthenticatedUser | null> {
@@ -49,22 +76,37 @@ export async function authenticateRequest(request: NextRequest): Promise<Authent
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     
     // Verify the token
+    console.log('Verifying token...');
     const payload = await verifyToken(token);
     if (!payload) {
+      console.log('Token verification failed');
       return null;
     }
+    console.log('Token verified, payload:', payload);
     
     // Get user from database
+    console.log(`Getting user by ID: ${payload.userId}`);
     const user = await getUserById(payload.userId);
     if (!user) {
+      console.log('User not found in database');
       return null;
     }
+    console.log('User found:', { id: user.id, username: user.username, role: user.role });
     
     // Return authenticated user with role checking method
-    return {
-      ...user,
-      hasRole: (role: 'factory' | 'shop') => user.role === role
-    };
+    // Normalize role for legacy names (e.g., "Factory Admin")
+    const normalizedRole = (user.role && typeof user.role === 'string' && user.role.toLowerCase().includes('factory')) ? 'factory' as UserRole : user.role as UserRole;
+    console.log(`Normalized role: ${normalizedRole}`);
+      return {
+        ...user,
+        role: normalizedRole,
+        hasRole: (role: UserRole | UserRole[]) => {
+          if (Array.isArray(role)) {
+            return role.includes(normalizedRole);
+          }
+          return normalizedRole === role;
+        }
+      };
   } catch (error) {
     console.error('Authentication error:', error);
     return null;
@@ -81,8 +123,18 @@ export function isShopUser(user: AuthenticatedUser | null): boolean {
   return user?.role === 'shop';
 }
 
+// Helper function to check if user is store
+export function isStoreUser(user: AuthenticatedUser | null): boolean {
+  return user?.role === 'store';
+}
+
+// Helper function to check if user is finance
+export function isFinanceUser(user: AuthenticatedUser | null): boolean {
+  return user?.role === 'finance';
+}
+
 // Middleware function for API routes
-export async function withAuth(handler: (request: NextRequest, user: AuthenticatedUser) => Promise<Response>) {
+export function withAuth(handler: (request: NextRequest, user: AuthenticatedUser) => Promise<Response>) {
   return async (request: NextRequest) => {
     const user = await authenticateRequest(request);
     
@@ -98,27 +150,40 @@ export async function withAuth(handler: (request: NextRequest, user: Authenticat
 }
 
 // Middleware function for API routes with role check
-export async function withRoleAuth(
+export function withRoleAuth(
   handler: (request: NextRequest, user: AuthenticatedUser) => Promise<Response>,
-  requiredRole: 'factory' | 'shop'
+  requiredRole: UserRole | UserRole[]
 ) {
   return async (request: NextRequest) => {
-    const user = await authenticateRequest(request);
-    
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
+    try {
+      const user = await authenticateRequest(request);
+      
+      if (!user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      console.log(`Checking role for user ${user.username}. Role: ${user.role}, Required: ${requiredRole}`);
+      if (!user.hasRole(requiredRole)) {
+        console.log(`Role check failed for user ${user.username}. Role: ${user.role}, required one of: ${JSON.stringify(requiredRole)}`);
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      console.log(`Role check passed for user ${user.username}`);
+      
+      // Execute the handler and ensure a response is returned
+      const result = await handler(request, user);
+      return result;
+    } catch (error) {
+      console.error('Error in withRoleAuth middleware:', error);
+      return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+        status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
-    if (user.role !== requiredRole) {
-      return new Response(JSON.stringify({ error: 'Forbidden' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    return handler(request, user);
   };
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // PUT /api/orders/[id]/status - Update order status
 export async function PUT(
@@ -8,6 +9,16 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Authenticate the request
+    // @ts-ignore
+    const user = await authenticateRequest(request as any);
+    
+    // Only factory users can manually update order status via this endpoint
+    // Store users use /dispatch and Finance users use /payment-verify
+    if (!user || user.role !== 'factory') {
+      return NextResponse.json({ error: 'Unauthorized. Only factory users can manually update status.' }, { status: 403 });
+    }
+
     const { id } = params;
     const { status } = await request.json();
 
@@ -63,6 +74,22 @@ export async function PUT(
           title: `Order Payment Confirmed`,
           description: `Your order #${id} payment has been confirmed.`,
           href: '/shop/orders',
+        });
+      } else if (status === 'Released') {
+        // Create notification for the store
+        await createNotification({
+          userType: 'store',
+          title: `Order Released to Store`,
+          description: `Order #${id} has been released and is ready for dispatch.`,
+          href: `/store/orders/${id}`,
+        });
+        
+        // Create notification for the factory
+        await createNotification({
+          userType: 'factory',
+          title: `Order Released`,
+          description: `Order #${id} for ${order.shopName} has been manually released to store.`,
+          href: '/orders',
         });
       } else if (status === 'Delivered') {
         // Create notification for the factory

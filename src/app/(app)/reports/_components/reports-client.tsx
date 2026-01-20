@@ -16,6 +16,7 @@ import { TrendingUp, TrendingDown, Package, Wallet, Loader2 } from "lucide-react
 import { type Product } from "@/lib/products";
 import { type Shop } from "@/lib/shops";
 import { type Order } from "@/lib/orders";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 type ShopPerformance = {
     id: string;
@@ -45,14 +46,18 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
             setIsLoading(true);
             try {
                 // Fetch fresh orders
-                const ordersResponse = await fetch('/api/orders');
+                const ordersResponse = await fetch('/api/orders', {
+                    headers: createAuthHeaders()
+                });
                 if (ordersResponse.ok) {
                     const ordersData = await ordersResponse.json();
                     setRefreshedOrders(ordersData);
                 }
                 
                 // Fetch fresh shops
-                const shopsResponse = await fetch('/api/shops');
+                const shopsResponse = await fetch('/api/shops', {
+                    headers: createAuthHeaders()
+                });
                 if (shopsResponse.ok) {
                     const shopsData = await shopsResponse.json();
                     // Handle both array and paginated response formats
@@ -63,7 +68,9 @@ export function ReportsClientPage({ products, shops, orders }: ReportsClientPage
                 }
                 
                 // Fetch fresh products
-                const productsResponse = await fetch('/api/products');
+                const productsResponse = await fetch('/api/products', {
+                    headers: createAuthHeaders()
+                });
                 if (productsResponse.ok) {
                     const productsData = await productsResponse.json();
                     setRefreshedProducts(productsData);

@@ -32,6 +32,15 @@ export type Product = {
   description?: string;
   readyToDeliver?: number; // New field to control shop visibility
   updatedAt?: Date; // Add updatedAt field
+  
+  // Advanced Production Fields
+  piecesPerSet?: number;
+  sampleDevelopmentStatus?: string;
+  sampleQuotationStatus?: string;
+  sampleSizeSetStatus?: string;
+  sampleCounterStatus?: string;
+  sampleApprovedBy?: string;
+  sampleApprovedDate?: string;
 };
 
 export type AuthResult = {
@@ -43,7 +52,7 @@ export type AuthResult = {
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection';
   createdAt: Date;
 };
 
@@ -52,12 +61,54 @@ export async function productCodeExists(productCode: string): Promise<boolean> {
   try {
     const db = await getDb();
     const result = await db.get(`
-      SELECT 1 FROM products WHERE productCode = ?
-    `, productCode.toUpperCase());
+      SELECT 1 FROM products WHERE UPPER(productCode) = ?
+    `, [productCode.toUpperCase()]);
     return !!result;
   } catch (error) {
     console.error('Error checking if product code exists:', error);
     return false;
+  }
+}
+
+// Get a product by its product code
+export async function getProductByProductCode(productCode: string): Promise<Product | null> {
+  try {
+    const db = await getDb();
+    
+    // Get the product - use UPPER to ensure case-insensitive lookup
+    const product = await db.get(`
+      SELECT * FROM products WHERE UPPER(productCode) = ?
+    `, [productCode.toUpperCase()]);
+
+    if (!product) {
+      return null;
+    }
+
+    // Get the product variants
+    const variants = await db.all(`
+      SELECT * FROM product_variants WHERE productId = ?
+    `, [product.id]);
+    
+    // Get age-based pricing
+    const agePricing = await db.all(`
+      SELECT * FROM product_age_pricing WHERE productId = ?
+    `, [product.id]);
+
+    // Use the product's own imageUrl, fallback to first variant's image if available
+    const imageUrl = product.imageUrl || (variants.length > 0 ? variants[0].imageUrl : undefined);
+
+    return {
+      ...product,
+      variants,
+      agePricing,
+      imageUrl,
+      description: product.description,
+      readyToDeliver: product.readyToDeliver || 0,
+      updatedAt: product.updated_at ? new Date(product.updated_at) : undefined
+    };
+  } catch (error) {
+    console.error('Error fetching product by product code:', error);
+    return null;
   }
 }
 
@@ -76,12 +127,12 @@ export async function getProducts(): Promise<Product[]> {
       products.map(async (product: any) => {
         const variants = await db.all(`
           SELECT * FROM product_variants WHERE productId = ?
-        `, product.id);
+        `, [product.id]);
         
         // Get age-based pricing
         const agePricing = await db.all(`
           SELECT * FROM product_age_pricing WHERE productId = ?
-        `, product.id);
+        `, [product.id]);
         
         // Use the product's own imageUrl, fallback to first variant's image if available
         const imageUrl = product.imageUrl || (variants.length > 0 ? variants[0].imageUrl : undefined);
@@ -115,7 +166,7 @@ export async function getProductById(id: string): Promise<Product | null> {
     // Get the product
     const product = await db.get(`
       SELECT * FROM products WHERE id = ?
-    `, id);
+    `, [id]);
 
     if (!product) {
       return null;
@@ -124,12 +175,12 @@ export async function getProductById(id: string): Promise<Product | null> {
     // Get the product variants
     const variants = await db.all(`
       SELECT * FROM product_variants WHERE productId = ?
-    `, id);
+    `, [id]);
     
     // Get age-based pricing
     const agePricing = await db.all(`
       SELECT * FROM product_age_pricing WHERE productId = ?
-    `, id);
+    `, [id]);
 
     // Use the product's own imageUrl, fallback to first variant's image if available
     const imageUrl = product.imageUrl || (variants.length > 0 ? variants[0].imageUrl : undefined);
@@ -164,11 +215,29 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
     // Generate a simple ID (in a real app, you might want to use a more robust ID generation method)
     const productId = `PRD-${Date.now()}`;
     
-    // Insert the product with readyToDeliver set to 1 by default
+    // Insert the product with readyToDeliver set to 1 by default - ensure productCode is stored in uppercase
     await db.run(`
-      INSERT INTO products (id, productCode, name, category, price, minimumStockLevel, imageUrl, description, readyToDeliver)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, productId, product.productCode.toUpperCase(), product.name, product.category, product.price, product.minimumStockLevel, product.imageUrl, product.description, 1);
+      INSERT INTO products (
+        id, productCode, name, category, price, minimumStockLevel, imageUrl, description, readyToDeliver,
+        piecesPerSet, sampleDevelopmentStatus, sampleQuotationStatus, sampleSizeSetStatus, sampleCounterStatus
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      productId, 
+      product.productCode.toUpperCase(), 
+      product.name, 
+      product.category, 
+      product.price, 
+      product.minimumStockLevel, 
+      product.imageUrl, 
+      product.description, 
+      1,
+      product.piecesPerSet || 1,
+      product.sampleDevelopmentStatus || 'Pending',
+      product.sampleQuotationStatus || 'Pending',
+      product.sampleSizeSetStatus || 'Pending',
+      product.sampleCounterStatus || 'Pending'
+    ]);
 
     // Insert the variants
     const variants: ProductVariant[] = [];
@@ -177,7 +246,7 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
       await db.run(`
         INSERT INTO product_variants (id, productId, color, size, stock, imageUrl)
         VALUES (?, ?, ?, ?, ?, ?)
-      `, variantId, productId, variant.color, variant.size, variant.stock, variant.imageUrl);
+      `, [variantId, productId, variant.color, variant.size, variant.stock, variant.imageUrl]);
       
       variants.push({
         id: variantId,
@@ -196,7 +265,7 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
         const result = await db.run(`
           INSERT INTO product_age_pricing (productId, ageMin, ageMax, price)
           VALUES (?, ?, ?, ?)
-        `, productId, pricing.ageMin, pricing.ageMax, pricing.price);
+        `, [productId, pricing.ageMin, pricing.ageMax, pricing.price]);
         
         agePricing.push({
           id: result.lastID ?? 0,
@@ -229,7 +298,7 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
     
     return {
       id: productId,
-      productCode: product.productCode.toUpperCase(),
+      productCode: product.productCode.toUpperCase(), // Ensure it's returned in uppercase
       name: product.name,
       category: product.category,
       price: product.price,
@@ -263,6 +332,15 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
     
     console.log('Current product:', currentProduct);
     
+    // Validate product code format if it's being updated
+    if (product.productCode) {
+      // Remove validation to make it more flexible for your data
+      // const productCodeRegex = /^[A-Z]{2}(-[A-Z]{2})?-\d{3,}([/-]\d{2,})?$/i;
+      // if (!productCodeRegex.test(product.productCode)) {
+      //   throw new Error(`Invalid product code format: ${product.productCode}. Code must follow format: XX-XXX, XX-XXX/XX, XX-XXXX, or XX-XX-XXX/XX`);
+      // }
+    }
+    
     // Build dynamic update query based on provided fields
     const fields: string[] = [];
     const values: any[] = [];
@@ -274,7 +352,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
     }
     if (product.productCode !== undefined) {
       fields.push('productCode = ?');
-      values.push(product.productCode);
+      values.push(product.productCode.toUpperCase()); // Ensure product code is stored in uppercase
     }
     if (product.category !== undefined) {
       fields.push('category = ?');
@@ -303,6 +381,36 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       values.push(product.readyToDeliver);
     }
     
+    // Handle Advanced Production Fields
+    if (product.piecesPerSet !== undefined) {
+      fields.push('piecesPerSet = ?');
+      values.push(product.piecesPerSet);
+    }
+    if (product.sampleDevelopmentStatus !== undefined) {
+      fields.push('sampleDevelopmentStatus = ?');
+      values.push(product.sampleDevelopmentStatus);
+    }
+    if (product.sampleQuotationStatus !== undefined) {
+      fields.push('sampleQuotationStatus = ?');
+      values.push(product.sampleQuotationStatus);
+    }
+    if (product.sampleSizeSetStatus !== undefined) {
+      fields.push('sampleSizeSetStatus = ?');
+      values.push(product.sampleSizeSetStatus);
+    }
+    if (product.sampleCounterStatus !== undefined) {
+      fields.push('sampleCounterStatus = ?');
+      values.push(product.sampleCounterStatus);
+    }
+    if (product.sampleApprovedBy !== undefined) {
+      fields.push('sampleApprovedBy = ?');
+      values.push(product.sampleApprovedBy);
+    }
+    if (product.sampleApprovedDate !== undefined) {
+      fields.push('sampleApprovedDate = ?');
+      values.push(product.sampleApprovedDate);
+    }
+    
     // Always update the updatedAt field
     fields.push('updated_at = CURRENT_TIMESTAMP');
     
@@ -310,7 +418,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       values.push(id);
       const query = `UPDATE products SET ${fields.join(', ')} WHERE id = ?`;
       console.log('Executing product update query:', query, 'with values:', values);
-      const result = await db.run(query, ...values);
+      const result = await db.run(query, values);
       console.log('Product update result:', result);
       
       // Check if any rows were affected
@@ -327,7 +435,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       // Get existing variants
       const existingVariants = await db.all(`
         SELECT id FROM product_variants WHERE productId = ?
-      `, id);
+      `, [id]);
 
       console.log('Existing variants:', existingVariants);
       const existingVariantIds = new Set(existingVariants.map((v: any) => v.id));
@@ -341,7 +449,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
           console.log('Deleting variant:', existingVariant.id);
           const deleteResult = await db.run(`
             DELETE FROM product_variants WHERE id = ?
-          `, existingVariant.id);
+          `, [existingVariant.id]);
           console.log('Delete result:', deleteResult);
         }
       }
@@ -385,7 +493,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
           if (variantFields.length > 0) {
             variantValues.push(variant.id);
             const variantQuery = `UPDATE product_variants SET ${variantFields.join(', ')} WHERE id = ?`;
-            const updateResult = await db.run(variantQuery, ...variantValues);
+            const updateResult = await db.run(variantQuery, variantValues);
             console.log('Update variant result:', updateResult);
           }
         } else {
@@ -398,7 +506,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
             const insertResult = await db.run(`
               INSERT INTO product_variants (id, productId, color, size, stock, imageUrl)
               VALUES (?, ?, ?, ?, ?, ?)
-            `, variant.id, id, variant.color, variant.size, variant.stock, variant.imageUrl || null);
+            `, [variant.id, id, variant.color, variant.size, variant.stock, variant.imageUrl || null]);
             console.log('Insert variant result:', insertResult);
           } else {
             console.warn('Skipping variant insert due to missing required fields:', variant);
@@ -414,14 +522,14 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       // Delete all existing age pricing for this product
       await db.run(`
         DELETE FROM product_age_pricing WHERE productId = ?
-      `, id);
+      `, [id]);
       
       // Insert new age pricing
       for (const pricing of product.agePricing) {
         await db.run(`
           INSERT INTO product_age_pricing (productId, ageMin, ageMax, price)
           VALUES (?, ?, ?, ?)
-        `, id, pricing.ageMin, pricing.ageMax, pricing.price);
+        `, [id, pricing.ageMin, pricing.ageMax, pricing.price]);
       }
     }
 
@@ -448,7 +556,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
         FROM shop_inventory si 
         JOIN product_variants pv ON si.productVariantId = pv.id 
         WHERE pv.productId = ?
-      `, id);
+      `, [id]);
       
       console.log('Shops with this product in inventory:', shopsWithProduct);
       
@@ -487,7 +595,7 @@ export async function deleteProduct(id: string): Promise<boolean> {
     
     const result = await db.run(`
       DELETE FROM products WHERE id = ?
-    `, id);
+    `, [id]);
     const deleted = (result.changes || 0) > 0;
     if (deleted) {
       // Reset the database cache to ensure subsequent queries get fresh data
@@ -508,7 +616,7 @@ export async function updateVariantStock(variantId: string, newStock: number): P
     
     const result = await db.run(`
       UPDATE product_variants SET stock = ? WHERE id = ?
-    `, newStock, variantId);
+    `, [newStock, variantId]);
     const updated = (result.changes || 0) > 0;
     if (updated) {
       // Reset the database cache to ensure subsequent queries get fresh data
@@ -529,7 +637,7 @@ export async function updateVariantImage(variantId: string, imageUrl: string): P
     
     const result = await db.run(`
       UPDATE product_variants SET imageUrl = ? WHERE id = ?
-    `, imageUrl, variantId);
+    `, [imageUrl, variantId]);
     const updated = (result.changes || 0) > 0;
     if (updated) {
       // Reset the database cache to ensure subsequent queries get fresh data
@@ -553,7 +661,7 @@ export async function updateShopInventoryOnReplenishment(productId: string, vari
       FROM products p 
       JOIN product_variants pv ON p.id = pv.productId 
       WHERE pv.id = ?
-    `, variantId);
+    `, [variantId]);
     
     if (!product) {
       console.error('Product or variant not found for replenishment notification');
@@ -563,7 +671,7 @@ export async function updateShopInventoryOnReplenishment(productId: string, vari
     // Get all shops that have this product variant in their inventory
     const shopsWithVariant = await db.all(`
       SELECT shopId FROM shop_inventory WHERE productVariantId = ?
-    `, variantId);
+    `, [variantId]);
     
     let updated = false;
     // Update stock for each shop and create notifications
@@ -573,7 +681,7 @@ export async function updateShopInventoryOnReplenishment(productId: string, vari
         UPDATE shop_inventory 
         SET stock = stock + ? 
         WHERE shopId = ? AND productVariantId = ?
-      `, quantityAdded, shop.shopId, variantId);
+      `, [quantityAdded, shop.shopId, variantId]);
       
       if (result.changes > 0) {
         updated = true;

@@ -34,9 +34,10 @@ interface SimplifiedOrderDialogProps {
     }>;
   };
   shopId: string;
+  onOrderPlaced: (productCode: string, quantities: Map<string, number>) => void;
 }
 
-export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId }: SimplifiedOrderDialogProps) {
+export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onOrderPlaced }: SimplifiedOrderDialogProps) {
   const [quantity, setQuantity] = useState(6);
   const [isLoading, setIsLoading] = useState(false);
   const { addSimplifiedOrder } = useOrder();
@@ -91,6 +92,9 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId }: S
 
       // Add the order using the hook
       await addSimplifiedOrder(product.productCode, distribution);
+
+      // Call the callback with the product code and distribution quantities
+      onOrderPlaced(product.productCode, distribution);
 
       // Close the dialog
       onOpenChange(false);

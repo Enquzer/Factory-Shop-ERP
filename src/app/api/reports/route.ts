@@ -7,12 +7,12 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const reportType = searchParams.get('type') || 'owner-kpis'; // Default to owner-kpis
-    
+
     // Only handle owner-kpis type for now
     if (reportType !== 'owner-kpis') {
       return NextResponse.json({ error: 'Invalid report type' }, { status: 400 });
     }
-    
+
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
     const shopId = searchParams.get('shopId') || null;
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     // Validate and parse dates
     let startDate: string;
     let endDate: string;
-    
+
     try {
       // Validate start date
       if (startDateParam) {
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       } else {
         startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
       }
-      
+
       // Validate end date
       if (endDateParam) {
         const parsedEndDate = parseISO(endDateParam);
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       } else {
         endDate = format(new Date(), 'yyyy-MM-dd');
       }
-      
+
       // Ensure start date is not after end date
       if (parseISO(startDate) > parseISO(endDate)) {
         throw new Error('Start date cannot be after end date');
@@ -66,17 +66,17 @@ export async function GET(request: Request) {
       WHERE date BETWEEN ? AND ?
     `;
     let totalSalesParams: any[] = [startDate, endDate];
-    
+
     if (shopId) {
       totalSalesQuery += ` AND shopId = ?`;
       totalSalesParams.push(shopId);
     }
-    
+
     if (orderStatus) {
       totalSalesQuery += ` AND status = ?`;
       totalSalesParams.push(orderStatus);
     }
-    
+
     const totalSalesResult = await db.get(totalSalesQuery, ...totalSalesParams);
     const totalSales = totalSalesResult?.totalSales || 0;
 
@@ -87,17 +87,17 @@ export async function GET(request: Request) {
       WHERE date BETWEEN ? AND ?
     `;
     let totalOrdersParams: any[] = [startDate, endDate];
-    
+
     if (shopId) {
       totalOrdersQuery += ` AND shopId = ?`;
       totalOrdersParams.push(shopId);
     }
-    
+
     if (orderStatus) {
       totalOrdersQuery += ` AND status = ?`;
       totalOrdersParams.push(orderStatus);
     }
-    
+
     const totalOrdersResult = await db.get(totalOrdersQuery, ...totalOrdersParams);
     const totalOrders = totalOrdersResult?.totalOrders || 0;
 
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
     `;
     // Ensure the date format is correct for SQLite datetime comparison
     const unitsProducedParams: any[] = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
-    
+
     const unitsProducedResult = await db.get(unitsProducedQuery, ...unitsProducedParams);
     const unitsProduced = unitsProducedResult?.unitsProduced || 0;
 
@@ -132,35 +132,67 @@ export async function GET(request: Request) {
     const aov = totalOrders > 0 ? totalSales / totalOrders : 0;
 
     // Get order items for additional metrics
-    let orderItemsQuery = `
-      SELECT o.id as orderId, o.amount, o.date, o.shopId, o.status, oi.quantity, oi.productId, p.category
-      FROM orders o
-      JOIN order_items oi ON o.id = oi.orderId
-      JOIN products p ON oi.productId = p.id
-      WHERE o.date BETWEEN ? AND ?
+    // We fetch from the 'orders' table directly and parse the 'items' JSON column
+    // This is more robust than joining with 'order_items' which might be empty
+    let ordersQuery = `
+      SELECT id as orderId, amount, date, shopId, shopName, status, items
+      FROM orders
+      WHERE date BETWEEN ? AND ?
     `;
-    let orderItemsParams: any[] = [startDate, endDate];
-    
+    let ordersParams: any[] = [startDate, endDate];
+
     if (shopId) {
-      orderItemsQuery += ` AND o.shopId = ?`;
-      orderItemsParams.push(shopId);
+      ordersQuery += ` AND shopId = ?`;
+      ordersParams.push(shopId);
     }
-    
+
     if (orderStatus) {
-      orderItemsQuery += ` AND o.status = ?`;
-      orderItemsParams.push(orderStatus);
+      ordersQuery += ` AND status = ?`;
+      ordersParams.push(orderStatus);
     }
-    
-    if (category) {
-      orderItemsQuery += ` AND p.category = ?`;
-      orderItemsParams.push(category);
-    }
-    
-    const orderItems = await db.all(orderItemsQuery, ...orderItemsParams);
+
+    const fetchedOrders = await db.all(ordersQuery, ...ordersParams);
+
+    // Get all products to lookup categories
+    const allProducts = await db.all(`SELECT id, category, name, imageUrl FROM products`);
+    const productMeta: Record<string, any> = {};
+    allProducts.forEach((p: any) => { productMeta[p.id] = p; });
+
+    const orderItems: any[] = [];
+    fetchedOrders.forEach((order: any) => {
+      let items = [];
+      try {
+        items = JSON.parse(order.items);
+      } catch (e) {
+        console.error(`Error parsing items for order ${order.orderId}`);
+      }
+
+      (Array.isArray(items) ? items : []).forEach(item => {
+        const pId = item.productId || item.variant?.productId;
+        const pMeta = productMeta[pId];
+
+        // Skip if category filter is active and doesn't match
+        if (category && pMeta?.category !== category) return;
+
+        orderItems.push({
+          orderId: order.orderId,
+          amount: order.amount,
+          date: order.date,
+          shopId: order.shopId,
+          shopName: order.shopName,
+          status: order.status,
+          quantity: item.quantity || 0,
+          price: item.price || 0,
+          productId: pId,
+          category: pMeta?.category || "Uncategorized"
+        });
+      });
+    });
 
     // Units per Transaction (UPT)
-    const totalUnitsSold = orderItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
+    const totalUnitsSold = orderItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
     const upt = totalOrders > 0 ? totalUnitsSold / totalOrders : 0;
+
 
     // Customer Retention Rate
     const uniqueShopsInPeriod = [...new Set(orderItems.map((item: any) => item.shopId))].length;
@@ -192,16 +224,17 @@ export async function GET(request: Request) {
       FROM marketing_orders 
       WHERE createdAt BETWEEN ? AND ?
     `, `${startDate} 00:00:00`, `${endDate} 23:59:59`);
-    const marketingOrderCompletionRate = completedMarketingOrdersResult?.total > 0 ? 
+    const marketingOrderCompletionRate = completedMarketingOrdersResult?.total > 0 ?
       (completedMarketingOrdersResult.completed / completedMarketingOrdersResult.total) * 100 : 0;
 
     // Best Selling Product
-    const productSales: { [key: string]: { name: string, quantity: number, imageUrl?: string } } = {};
+    const productSales: { [key: string]: { name: string, quantity: number, revenue: number, imageUrl?: string } } = {};
     orderItems.forEach((item: any) => {
       if (!productSales[item.productId]) {
-        productSales[item.productId] = { name: '', quantity: 0, imageUrl: '' };
+        productSales[item.productId] = { name: '', quantity: 0, revenue: 0, imageUrl: '' };
       }
       productSales[item.productId].quantity += item.quantity;
+      productSales[item.productId].revenue += (item.quantity * item.price);
     });
 
     // Get product names and images
@@ -222,12 +255,12 @@ export async function GET(request: Request) {
 
     // Category sales data for charts
     const categorySales: { [key: string]: { totalValue: number, products: { [key: string]: any } } } = {};
-    
+
     // Get product categories and build category sales data
     if (productIds.length > 0) {
       const productsWithCategoriesQuery = `SELECT id, name, imageUrl, category FROM products WHERE id IN (${productIds.map(() => '?').join(',')})`;
       const productsWithCategories = await db.all(productsWithCategoriesQuery, ...productIds);
-      
+
       // Get prices for products to calculate values
       const productPrices: { [key: string]: number } = {};
       const orderItemsWithPrices = await db.all(`
@@ -236,22 +269,22 @@ export async function GET(request: Request) {
         JOIN products p ON oi.productId = p.id
         WHERE oi.productId IN (${productIds.map(() => '?').join(',')})
       `, ...productIds);
-      
+
       orderItemsWithPrices.forEach((item: any) => {
         productPrices[item.productId] = item.price;
       });
-      
+
       productsWithCategories.forEach((product: any) => {
         const productId = product.id;
         const categoryName = product.category;
         const productQuantity = productSales[productId]?.quantity || 0;
         const productPrice = productPrices[productId] || 0;
         const productValue = productQuantity * productPrice;
-        
+
         if (!categorySales[categoryName]) {
           categorySales[categoryName] = { totalValue: 0, products: {} };
         }
-        
+
         categorySales[categoryName].totalValue += productValue;
         categorySales[categoryName].products[productId] = {
           name: product.name,
@@ -265,7 +298,7 @@ export async function GET(request: Request) {
     const shopSales: { [key: string]: { name: string, sales: number } } = {};
     orderItems.forEach((item: any) => {
       if (!shopSales[item.shopId]) {
-        shopSales[item.shopId] = { name: '', sales: 0 };
+        shopSales[item.shopId] = { name: item.shopName || 'Unknown Shop', sales: 0 };
       }
       shopSales[item.shopId].sales += item.amount;
     });
@@ -288,11 +321,11 @@ export async function GET(request: Request) {
     // 2. Inventory & Stock KPIs
     // Total Stock (Quantity and Value)
     const inventoryResult = await db.all(`
-      SELECT pv.stock, p.price, p.category, p.name, p.id as productId, pv.color, pv.size
+      SELECT pv.stock, p.price, p.category, p.name, p.id as productId, p.imageUrl, pv.color, pv.size
       FROM product_variants pv
       JOIN products p ON pv.productId = p.id
     `);
-    
+
     const totalStockQuantity = inventoryResult.reduce((sum: number, item: any) => sum + item.stock, 0);
     const totalStockValue = inventoryResult.reduce((sum: number, item: any) => sum + (item.stock * item.price), 0);
 
@@ -337,32 +370,33 @@ export async function GET(request: Request) {
       FROM marketing_orders 
       WHERE createdAt BETWEEN ? AND ?
     `, `${startDate} 00:00:00`, `${endDate} 23:59:59`);
-    
-    const productionEfficiency = productionEfficiencyResult?.total > 0 ? 
+
+    const productionEfficiency = productionEfficiencyResult?.total > 0 ?
       (productionEfficiencyResult.completed / productionEfficiencyResult.total) * 100 : 0;
 
     // 4. Shop Performance & Sales KPIs
     // Shop Ranking (by Value)
     const shopRanking = Object.entries(shopSales)
       .map(([id, data]) => ({ id, name: data.name, sales: data.sales }))
+      .filter(shop => shop.name && shop.name !== 'Unknown Shop')
       .sort((a, b) => b.sales - a.sales);
 
     // 5. Comparative & Trend Analytics
     // Previous period for comparison
     let prevStartDate: string;
     let prevEndDate: string;
-    
+
     try {
       const parsedStartDate = parseISO(startDate);
       const parsedEndDate = parseISO(endDate);
-      
+
       // Calculate the duration of the current period in days
       const periodDuration = Math.ceil((parsedEndDate.getTime() - parsedStartDate.getTime()) / (1000 * 60 * 60 * 24));
-      
+
       // Previous period: same duration but before the current period
       const prevPeriodEnd = subDays(parsedStartDate, 1);
       const prevPeriodStart = subDays(prevPeriodEnd, periodDuration);
-      
+
       prevStartDate = format(prevPeriodStart, 'yyyy-MM-dd');
       prevEndDate = format(prevPeriodEnd, 'yyyy-MM-dd');
     } catch (dateError) {
@@ -371,15 +405,15 @@ export async function GET(request: Request) {
       prevStartDate = format(subDays(new Date(), 60), 'yyyy-MM-dd');
       prevEndDate = format(subDays(new Date(), 31), 'yyyy-MM-dd');
     }
-    
+
     const prevPeriodSalesResult = await db.get(`
       SELECT SUM(amount) as prevSales
       FROM orders 
       WHERE date BETWEEN ? AND ?
     `, prevStartDate, prevEndDate);
     const prevPeriodSales = prevPeriodSalesResult?.prevSales || 0;
-    
-    const salesGrowthMoM = prevPeriodSales > 0 ? 
+
+    const salesGrowthMoM = prevPeriodSales > 0 ?
       ((totalSales - prevPeriodSales) / prevPeriodSales) * 100 : 0;
 
     // Compile all KPIs
@@ -417,11 +451,12 @@ export async function GET(request: Request) {
 
       // Additional data for frontend visualization
       bestSellingProducts: Object.values(productSales)
-        .sort((a: any, b: any) => (b.quantity || 0) - (a.quantity || 0))
+        .sort((a: any, b: any) => (b.revenue || 0) - (a.revenue || 0))
         .slice(0, 10)
         .map((product: any) => ({
           name: product.name,
           quantity: product.quantity,
+          revenue: product.revenue,
           imageUrl: product.imageUrl
         })),
 
@@ -433,9 +468,9 @@ export async function GET(request: Request) {
           if (existing) {
             existing.totalSales += item.amount || 0;
           } else {
-            acc.push({ 
-              date: dateKey, 
-              totalSales: item.amount || 0 
+            acc.push({
+              date: dateKey,
+              totalSales: item.amount || 0
             });
           }
           return acc;

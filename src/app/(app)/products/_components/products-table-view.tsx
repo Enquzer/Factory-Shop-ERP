@@ -2,14 +2,19 @@
 
 import { useState, useMemo } from "react";
 import Image from "next/image";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, BarChart3 } from "lucide-react";
+import { Download, BarChart3, Edit, Eye, Trash2, History } from "lucide-react";
 import { Product } from "@/lib/products";
 import { StockDistributionChart } from "@/components/stock-distribution-chart";
 import { useToast } from "@/hooks/use-toast";
 import { generateColorScheme } from "@/lib/stock-distribution";
+import { BulkSelectionTable } from "@/components/bulk-selection-table";
+import { BulkActions } from "@/components/bulk-actions";
+import { useBulkSelection } from "@/contexts/bulk-selection-context";
+import { ProductDetailDialog } from "@/components/product-detail-dialog";
+import { EditProductDialog } from "@/components/edit-product-dialog";
+import { ProductHistoryDialog } from "@/components/product-history-dialog";
 
 interface ProductsTableViewProps {
   products: Product[];
@@ -18,6 +23,7 @@ interface ProductsTableViewProps {
   selectedStatus?: string | null;
   stockFilter?: string | null;
   dateRange?: { from?: Date; to?: Date };
+  onProductsDeleted?: () => void;
 }
 
 export function ProductsTableView({ 
@@ -26,11 +32,15 @@ export function ProductsTableView({
   selectedCategory,
   selectedStatus,
   stockFilter,
-  dateRange
+  dateRange,
+  onProductsDeleted
 }: ProductsTableViewProps) {
   const { toast } = useToast();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showingHistory, setShowingHistory] = useState<Product | null>(null);
 
   // Calculate total stock for a product
   const calculateTotalStock = (product: Product) => {
@@ -218,9 +228,224 @@ export function ProductsTableView({
     );
   }
 
+  const handlePrint = (selectedIds: string[]) => {
+    // For printing, we can open a new window with selected product details
+    const selectedProducts = filteredProducts.filter(p => selectedIds.includes(p.id));
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      let printContent = `
+        <html>
+          <head>
+            <title>Selected Products</title>
+            <style>
+              body { font-family: Arial, sans-serif; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+            </style>
+          </head>
+          <body>
+            <h1>Selected Products (${selectedProducts.length})</h1>
+            <table>
+              <thead>
+                <tr>
+                  <th>Product Name</th>
+                  <th>Product Code</th>
+                  <th>Category</th>
+                  <th>Total Stock</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+      
+      selectedProducts.forEach(product => {
+        const totalStock = calculateTotalStock(product);
+        const status = product.readyToDeliver === 1 ? 'Available' : 'Unavailable';
+        printContent += `
+          <tr>
+            <td>${product.name}</td>
+            <td>${product.productCode}</td>
+            <td>${product.category}</td>
+            <td>${totalStock}</td>
+            <td>${status}</td>
+          </tr>
+        `;
+      });
+      
+      printContent += `
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `;
+      
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    }
+  };
+  
+  const handleBulkOrder = async (selectedIds: string[]) => {
+    try {
+      // In a real implementation, this would handle bulk ordering of products
+      // For now, we'll show a toast indicating the action
+      
+      toast({
+        title: "Bulk Order Requested",
+        description: `Ordering ${selectedIds.length} product(s). This would typically open an order form or process the order.`,
+      });
+      
+      // Here you would typically:
+      // 1. Open a modal to specify quantities for each product
+      // 2. Process the order through an API
+      // 3. Add to shopping cart
+      // 4. Or any other order-related action
+      
+    } catch (error) {
+      console.error('Error processing bulk order:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to process bulk order",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleDelete = async (selectedIds: string[]) => {
+    try {
+      // If it's a bulk delete (multiple IDs), use the bulk endpoint
+      if (selectedIds.length > 1) {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('/api/bulk/products', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ productIds: selectedIds }),
+        });
+        
+        if (response.ok) {
+          toast({
+            title: "Success",
+            description: `${selectedIds.length} product(s) deleted successfully.`,
+          });
+          if (onProductsDeleted) onProductsDeleted();
+        } else {
+          let errorMsg = 'Failed to delete products';
+          try {
+             const errorText = await response.text();
+             if (errorText) {
+               try {
+                 const errorData = JSON.parse(errorText);
+                 errorMsg = errorData.message || errorData.error || errorMsg;
+               } catch (e) {
+                 // Not JSON, use text directly if it looks like a message (not huge HTML)
+                 if (errorText.length < 200) errorMsg = errorText;
+                 else errorMsg = `Server error (${response.status})`;
+               }
+             }
+          } catch (e) {
+             console.error('Error reading error response:', e);
+          }
+          throw new Error(errorMsg);
+        }
+      } else {
+        // If it's a single product delete, use the single product endpoint
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`/api/products?id=${selectedIds[0]}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          toast({
+            title: "Success",
+            description: "Product deleted successfully.",
+          });
+          if (onProductsDeleted) onProductsDeleted();
+        } else {
+          let errorMsg = 'Failed to delete product';
+          try {
+             const errorText = await response.text();
+             if (errorText) {
+               try {
+                 const errorData = JSON.parse(errorText);
+                 errorMsg = errorData.message || errorData.error || errorMsg;
+               } catch (e) {
+                 // Not JSON, use text directly if it looks like a message
+                 if (errorText.length < 200) errorMsg = errorText;
+                 else errorMsg = `Server error (${response.status})`;
+               }
+             }
+          } catch (e) {
+             console.error('Error reading error response:', e);
+          }
+          throw new Error(errorMsg);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting products:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete products",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleSingleProductDelete = async (product: Product) => {
+    if (!confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/products?id=${product.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Product Deleted",
+          description: `"${product.name}" has been deleted successfully.`,
+        });
+        if (onProductsDeleted) onProductsDeleted();
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete product');
+      }
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete product",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const tableHeaders = [
+    { key: 'product', title: 'Product', mobileTitle: 'Product' },
+    { key: 'productCode', title: 'Product Code', mobileTitle: 'Code' },
+    { key: 'registeredDate', title: 'Registered Date', mobileTitle: 'Date' },
+    { key: 'totalQuantity', title: 'Total Quantity', mobileTitle: 'Qty' },
+    { key: 'stockDistribution', title: 'Stock Distribution', mobileTitle: 'Distribution' },
+    { key: 'actions', title: 'Actions', mobileTitle: 'Actions' },
+  ];
+  
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-between">
         <div className="flex gap-2">
           <Button 
             variant="outline" 
@@ -252,137 +477,186 @@ export function ProductsTableView({
         </div>
       </div>
       
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Product Code</TableHead>
-              <TableHead>Registered Date</TableHead>
-              <TableHead>Total Quantity</TableHead>
-              <TableHead>Stock Distribution</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredProducts.map((product) => {
-              const totalStock = calculateTotalStock(product);
-              const isExpanded = expandedRows.has(product.id);
-              const registeredDate = product.created_at 
-                ? new Date(product.created_at).toLocaleDateString() 
-                : "N/A";
-              
-              return (
-                <>
-                  <TableRow key={product.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-3">
-                        <div className="relative w-12 h-12 rounded-md overflow-hidden">
-                          <Image 
-                            src={product.imageUrl || '/placeholder-product.png'} 
-                            alt={product.name} 
-                            fill
-                            className="object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              // Only set fallback if not already set to avoid infinite loop
-                              if (target.src !== window.location.origin + '/placeholder-product.png') {
-                                target.src = '/placeholder-product.png';
-                              }
-                            }}
-                            // Add loading strategy to prevent blob URL issues
-                            loading="lazy"
-                            // Add key to force re-render when src changes
-                            key={product.imageUrl || 'placeholder'}
-                          />
-                        </div>
-                        <div>
-                          <div>{product.name}</div>
-                          <div className="text-sm text-muted-foreground">{product.category}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{product.productCode}</TableCell>
-                    <TableCell>{registeredDate}</TableCell>
-                    <TableCell>
-                      <Badge variant={totalStock > 0 ? "secondary" : "destructive"}>
-                        {totalStock} in stock
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {/* Color variant representation */}
-                        <div className="flex gap-1">
-                          {Array.from(new Set(product.variants.map(v => v.color)))
-                            .slice(0, 3)
-                            .map((color, index) => (
-                              <div key={index} className="relative">
-                                <div 
-                                  className="w-6 h-6 rounded-full border border-gray-300"
-                                  style={{ backgroundColor: getColorForName(color) }}
-                                  title={color}
-                                />
-                                {/* Show image thumbnail if available */}
-                                {product.variants
-                                  .filter(v => v.color === color && v.imageUrl)
-                                  .slice(0, 1)
-                                  .map((variant, vIndex) => (
-                                    <div 
-                                      key={vIndex} 
-                                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full border border-white"
-                                    >
-                                      <Image 
-                                        src={variant.imageUrl!} 
-                                        alt={color} 
-                                        width={16} 
-                                        height={16} 
-                                        className="rounded-full object-cover"
-                                      />
-                                    </div>
-                                  ))
-                                }
-                              </div>
-                            ))
-                          }
-                          {Array.from(new Set(product.variants.map(v => v.color))).length > 3 && (
-                            <div className="w-6 h-6 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-xs">
-                              +{Array.from(new Set(product.variants.map(v => v.color))).length - 3}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => toggleRowExpansion(product.id)}
-                      >
-                        <BarChart3 className="h-4 w-4" />
-                        {isExpanded ? "Hide" : "Show"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                  
-                  {isExpanded && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="p-0">
-                        <div className="p-4 bg-gray-50">
-                          <StockDistributionChart 
-                            product={product}
-                            viewType="factory"
-                            className="w-full"
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <BulkSelectionTable
+        headers={tableHeaders}
+        data={filteredProducts.map(product => {
+          const totalStock = calculateTotalStock(product);
+          const isExpanded = expandedRows.has(product.id);
+          const registeredDate = product.created_at 
+            ? new Date(product.created_at).toLocaleDateString() 
+            : "N/A";
+          
+          return {
+            ...product,
+            product: (
+              <div className="flex items-center gap-3">
+                <div className="relative w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
+                  <Image 
+                    src={product.imageUrl || '/placeholder-product.png'} 
+                    alt={product.name} 
+                    width={48}
+                    height={48}
+                    className="object-cover"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (target.src !== window.location.origin + '/placeholder-product.png') {
+                        target.src = '/placeholder-product.png';
+                      }
+                    }}
+                    loading="lazy"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{product.name}</div>
+                  <div className="text-sm text-muted-foreground truncate">{product.category}</div>
+                </div>
+              </div>
+            ),
+            productCode: (
+              <div className="text-sm">
+                <span className="font-medium">{product.productCode}</span>
+              </div>
+            ),
+            registeredDate: (
+              <div className="text-sm text-muted-foreground">
+                {registeredDate}
+              </div>
+            ),
+            totalQuantity: (
+              <div className="text-sm">
+                <Badge variant={totalStock > 0 ? "secondary" : "destructive"}>
+                  {totalStock} in stock
+                </Badge>
+              </div>
+            ),
+            stockDistribution: (
+              <div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent row click
+                    toggleRowExpansion(product.id);
+                  }}
+                  className="p-1 h-auto"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  {isExpanded ? "Hide" : "Show"}
+                </Button>
+                {isExpanded && (
+                  <div className="p-4 bg-gray-50 rounded-lg mt-2">
+                    <StockDistributionChart 
+                      product={product}
+                      viewType="factory"
+                      className="w-full"
+                    />
+                  </div>
+                )}
+              </div>
+            ),
+            actions: (
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent row click
+                    setSelectedProduct(product);
+                  }}
+                >
+                  <span className="sr-only">View</span>
+                  <Eye className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent row click
+                    setEditingProduct(product);
+                  }}
+                >
+                  <span className="sr-only">Edit</span>
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent row click
+                    setShowingHistory(product);
+                  }}
+                >
+                  <span className="sr-only">History</span>
+                  <History className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent row click
+                    handleSingleProductDelete(product);
+                  }}
+                >
+                  <span className="sr-only">Delete</span>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )
+          };
+        })}
+        idKey="id"
+        actions={
+          <BulkActions 
+            onPrint={handlePrint}
+            onDelete={handleDelete}
+            onOrder={handleBulkOrder}
+            printLabel="Print Selected"
+            deleteLabel="Delete Selected"
+            orderLabel="Order Selected"
+            itemType="products"
+          />
+        }
+      />
+      
+      {selectedProduct && (
+        <ProductDetailDialog 
+          product={selectedProduct}
+          open={!!selectedProduct}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setSelectedProduct(null);
+            }
+          }}
+        />
+      )}
+
+      {editingProduct && (
+        <EditProductDialog
+          product={editingProduct}
+          open={!!editingProduct}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setEditingProduct(null);
+            }
+          }}
+          onProductUpdated={() => {
+            // Refresh the product list after editing
+            window.location.reload();
+          }}
+        />
+      )}
+
+      {showingHistory && (
+        <ProductHistoryDialog
+          product={showingHistory}
+          open={!!showingHistory}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setShowingHistory(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

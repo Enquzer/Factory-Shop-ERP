@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getProducts, getProductById, updateProduct, deleteProduct, productCodeExists, createProduct } from '@/lib/products-sqlite';
 import { Product } from '@/lib/products';
 import { getDb } from '@/lib/db';
-import { withAuth, withRoleAuth, AuthenticatedUser } from '@/lib/auth-middleware';
-import { NextRequest } from 'next/server';
-import { productSchema, sanitizeInput } from '@/lib/validation';
+import { withAuth, withRoleAuth, AuthenticatedUser, authenticateRequest } from '@/lib/auth-middleware';
+import { productSchema, productCreateSchema, productVariantCreateSchema, sanitizeInput } from '@/lib/validation';
 import { handleErrorResponse, ValidationError, ConflictError, AppError } from '@/lib/error-handler';
 import { logAuditEntry } from '@/lib/audit-logger'; // Import audit logger
 import { getShopById } from '@/lib/shops-sqlite';
+import { z } from 'zod';
 
 // GET /api/products - Get all products
 export async function GET(request: Request) {
@@ -76,61 +76,105 @@ export async function GET(request: Request) {
 
 // POST /api/products - Create a new product (protected - factory only)
 export async function POST(request: NextRequest) {
-  return withRoleAuth(async (req, user) => {
+  try {
+    console.log('POST /api/products called - direct route');
+    
+    // First authenticate the request manually
+    const authResult = await authenticateRequest(request);
+    
+    if (!authResult) {
+      console.log('Authentication failed');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Check role - only allow factory and sample_maker roles
+    const requiredRoles = ['factory', 'sample_maker', 'designer'];
+    const hasRequiredRole = requiredRoles.includes(authResult.role);
+    
+    if (!hasRequiredRole) {
+      console.log('Role check failed - user role:', authResult.role);
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    console.log('User authenticated:', authResult);
+    
+    // Parse the request body
+    let productData;
     try {
-      // Parse the request body
-      let productData;
-      try {
-        productData = await req.json();
-      } catch (parseError) {
-        console.error('Error parsing request body:', parseError);
-        throw new ValidationError('Invalid request body. Expected JSON data.');
-      }
-      
-      // Sanitize input data
-      const sanitizedData = sanitizeInput(productData);
-      
-      // Validate input data
-      try {
-        productSchema.parse(sanitizedData);
-      } catch (validationError: any) {
-        throw new ValidationError('Invalid input data', validationError.errors);
-      }
-      
-      // Check if product code already exists
-      const exists = await productCodeExists(sanitizedData.productCode);
-      if (exists) {
-        throw new ConflictError(`Product with code "${sanitizedData.productCode}" already exists`);
-      }
-      
-      // For now, we'll pass the data as-is to the createProduct function
-      // In a real implementation, you would process file uploads here
-      const newProduct = await createProduct(sanitizedData);
-      
-      // Log audit entry
+      productData = await request.json();
+      console.log('Product data received:', productData);
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      throw new ValidationError('Invalid request body. Expected JSON data.');
+    }
+    
+    // Sanitize input data
+    const sanitizedData = sanitizeInput(productData);
+    console.log('Sanitized data:', sanitizedData);
+    
+    // Validate input data
+    try {
+      // Use productCreateSchema for new product creation
+      productCreateSchema.parse(sanitizedData);
+      console.log('Validation passed');
+    } catch (validationError: any) {
+      console.error('Validation failed:', validationError);
+      throw new ValidationError('Invalid input data', validationError.errors);
+    }
+    
+    // Check if product code already exists
+    const exists = await productCodeExists(sanitizedData.productCode);
+    console.log('Product code exists check:', exists);
+    if (exists) {
+      throw new ConflictError(`Product with code "${sanitizedData.productCode}" already exists`);
+    }
+    
+    // For now, we'll pass the data as-is to the createProduct function
+    // In a real implementation, you would process file uploads here
+    console.log('Calling createProduct function');
+    const newProduct = await createProduct(sanitizedData);
+    console.log('Product created successfully:', newProduct.id);
+    
+    // Log audit entry
+    try {
+      console.log('Logging audit entry');
       await logAuditEntry({
-        userId: user.id,
-        username: user.username,
+        userId: authResult.id,
+        username: authResult.username,
         action: 'CREATE',
         resourceType: 'PRODUCT',
         resourceId: newProduct.id,
         details: `Created product "${newProduct.name}" with code "${newProduct.productCode}"`
       });
-      
-      // Remove the automatic population of shop inventories
-      // Shops will only get inventory when they actually order products
-      
-      return NextResponse.json(newProduct, { status: 201 });
-    } catch (error) {
-      console.error('Error in POST /api/products:', error);
-      return handleErrorResponse(error);
+      console.log('Audit entry logged');
+    } catch (auditError) {
+      console.error('Error logging audit entry:', auditError);
+      // Don't throw here, just log the error
     }
-  }, 'factory'); // Only factory users can create products
+    
+    // Remove the automatic population of shop inventories
+    // Shops will only get inventory when they actually order products
+    
+    console.log('Returning success response');
+    return NextResponse.json(newProduct, { status: 201 });
+  } catch (error) {
+    console.error('Error in POST /api/products:', error);
+    if (error && typeof error === 'object' && 'stack' in error) {
+      console.error('Error stack:', error.stack);
+    }
+    return handleErrorResponse(error);
+  }
 }
 
 // PUT /api/products/:id - Update a product (protected - factory only)
 export async function PUT(request: NextRequest) {
-  return withRoleAuth(async (req, user) => {
+  const handler = withRoleAuth(async (req, user) => {
     try {
       console.log('PUT /api/products called');
       const { searchParams } = new URL(req.url);
@@ -214,12 +258,14 @@ export async function PUT(request: NextRequest) {
       console.error('Error in PUT /api/products:', error);
       return handleErrorResponse(error);
     }
-  }, 'factory'); // Only factory users can update products
+  }, ['factory', 'sample_maker', 'designer']);
+
+  return handler(request);
 }
 
 // DELETE /api/products/:id - Delete a product (protected - factory only)
 export async function DELETE(request: NextRequest) {
-  return withRoleAuth(async (req, user) => {
+  const handler = withRoleAuth(async (req, user) => {
     try {
       const { searchParams } = new URL(req.url);
       const id = searchParams.get('id');
@@ -254,5 +300,7 @@ export async function DELETE(request: NextRequest) {
       console.error('Error in DELETE /api/products:', error);
       return handleErrorResponse(error);
     }
-  }, 'factory'); // Only factory users can delete products
+  }, 'factory');
+
+  return handler(request);
 }

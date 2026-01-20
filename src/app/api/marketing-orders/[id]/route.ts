@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { getMarketingOrderByIdFromDB, updateMarketingOrderInDB, deleteMarketingOrderFromDB, getDailyProductionStatus } from '@/lib/marketing-orders';
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // GET /api/marketing-orders/:id - Get a specific marketing order by ID
 export async function GET(request: Request, { params }: { params: { id: string } }) {
@@ -41,8 +42,19 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 // PUT /api/marketing-orders/:id - Update a marketing order
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const user = await authenticateRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Check roles allowed to modify orders (including status updates and planning)
+    const allowedRoles = ['factory', 'marketing', 'planning', 'sample_maker', 'sewing', 'packing'];
+    if (!allowedRoles.includes(user.role)) {
+      return NextResponse.json({ error: `Forbidden: ${user.role} role cannot modify marketing orders` }, { status: 403 });
+    }
+    
     console.log('PUT /api/marketing-orders/:id called with id:', params.id);
     
     const orderData = await request.json();
@@ -154,6 +166,84 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         }
       }
       
+      // Notify the next team based on the new status
+      if (orderData.status) {
+        let targetTeam = '';
+        let targetHref = '';
+        
+        switch (orderData.status) {
+          case 'Planning':
+            targetTeam = 'planning';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Sample Making':
+            targetTeam = 'sample_maker';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Cutting':
+            targetTeam = 'cutting';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Sewing':
+            targetTeam = 'sewing';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Finishing':
+            targetTeam = 'finishing';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Quality Inspection':
+            targetTeam = 'quality_inspection';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Packing':
+            targetTeam = 'packing';
+            targetHref = '/production-dashboard';
+            break;
+          case 'Delivery':
+            targetTeam = 'factory';
+            targetHref = '/marketing-orders';
+            break;
+        }
+        
+        if (targetTeam) {
+          try {
+            // Get order number for notification
+            const db = await getDb();
+            const order = await db.get('SELECT orderNumber, productName FROM marketing_orders WHERE id = ?', params.id);
+            
+            if (order) {
+              await createNotification({
+                userType: targetTeam as any,
+                title: 'Order Status Updated',
+                description: `Order ${order.orderNumber} for ${order.productName} is now in "${orderData.status}" stage.`,
+                href: targetHref,
+              });
+            }
+          } catch (notificationError) {
+            console.error('Failed to create status change notification:', notificationError);
+          }
+        }
+      }
+      
+      // Notify planning approval
+      if (orderData.isPlanningApproved) {
+        try {
+          const db = await getDb();
+          const order = await db.get('SELECT orderNumber, productName FROM marketing_orders WHERE id = ?', params.id);
+          if (order) {
+            await createNotification({
+              userType: 'sample_maker',
+              title: 'Planning Go-ahead Received',
+              description: `Order ${order.orderNumber} for ${order.productName} has been approved by Planning.`,
+              href: '/production-dashboard',
+            });
+          }
+        } catch (notificationError) {
+          console.error('Failed to create planning approval notification:', notificationError);
+        }
+      }
+      
       console.log('Marketing order updated successfully');
       return NextResponse.json({ message: 'Marketing order updated successfully' });
     } else {
@@ -170,8 +260,17 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 // DELETE /api/marketing-orders/:id - Delete a marketing order
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const user = await authenticateRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    if (user.role !== 'factory' && user.role !== 'marketing') {
+      return NextResponse.json({ error: 'Forbidden: Only factory or marketing can delete orders' }, { status: 403 });
+    }
+    
     const success = await deleteMarketingOrderFromDB(params.id);
     
     if (success) {

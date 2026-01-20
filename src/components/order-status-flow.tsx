@@ -42,7 +42,7 @@ export function OrderStatusFlow({ order }: { order: Order }) {
             const isCancelled = order.status === 'Cancelled' && step.status === 'Cancelled';
             
             return (
-              <div key={step.status} className="flex flex-col items-center relative">
+              <div key={step.status} className="flex flex-col items-center flex-1 min-w-[0] px-1">
                 {/* Status indicator */}
                 <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
                   isCompleted || isCurrent || isCancelled
@@ -59,8 +59,8 @@ export function OrderStatusFlow({ order }: { order: Order }) {
                 </div>
                 
                 {/* Status label */}
-                <div className="mt-2 text-center">
-                  <p className={`text-xs font-medium ${
+                <div className="mt-2 text-center w-full max-w-[100px] min-w-0">
+                  <p className={`text-xs font-medium truncate ${
                     isCurrent || isCancelled ? 'text-primary' : 'text-muted-foreground'
                   }`}>
                     {step.label}

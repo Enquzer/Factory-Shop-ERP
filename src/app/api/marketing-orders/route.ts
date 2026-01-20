@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { getMarketingOrdersFromDB, createMarketingOrderInDB, deleteMarketingOrderFromDB, getDailyProductionStatus, updateDailyProductionStatus } from '@/lib/marketing-orders';
 import { getDb } from '@/lib/db';
 import { createProduct } from '@/lib/products-sqlite';
+import { createNotification } from '@/lib/notifications';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // GET /api/marketing-orders - Get all marketing orders
 export async function GET() {
@@ -25,9 +27,13 @@ export async function GET() {
   }
 }
 
-// POST /api/marketing-orders - Create a new marketing order
-export async function POST(request: Request) {
+// POST /api/marketing-orders - Create a new marketing order or update daily status
+export async function POST(request: NextRequest) {
   try {
+    const user = await authenticateRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const url = new URL(request.url);
     
     // Check if this is a daily status update request
@@ -48,40 +54,23 @@ export async function POST(request: Request) {
       }
     }
     
-    // Default to creating a new marketing order
-    const orderData = await request.json();
-    
-    // Generate order number if not provided
-    let orderNumber = orderData.orderNumber;
-    if (!orderNumber) {
-      // Generate order number in format CM-YYYY-XXXX where XXXX is a sequential number
-      const year = new Date().getFullYear();
-      const db = await getDb();
-      
-      // Get the count of orders for this year to generate a sequential number
-      const orderCountResult = await db.get(`
-        SELECT COUNT(*) as count FROM marketing_orders 
-        WHERE orderNumber LIKE ?
-      `, `CM-${year}-%`);
-      
-      const orderCount = orderCountResult?.count || 0;
-      const nextNumber = orderCount + 1;
-      orderNumber = `CM-${year}-${nextNumber.toString().padStart(4, '0')}`;
+    // Default to creating a new marketing order - Restrict to factory/marketing
+    if (user.role !== 'factory' && user.role !== 'marketing') {
+      return NextResponse.json({ error: 'Forbidden: Only factory or marketing can create orders' }, { status: 403 });
     }
     
-    // Set order placement date to current date if not provided
-    const orderPlacementDate = orderData.orderPlacementDate || new Date().toISOString().split('T')[0];
+    const orderData = await request.json();
     
     // Validate required fields
     if (!orderData.productName || !orderData.productCode || !orderData.quantity || !orderData.items) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
     
-    // Create the marketing order
+    // Create the marketing order (order number will be generated if not provided)
     const newOrder = await createMarketingOrderInDB({
       ...orderData,
-      orderNumber,
-      orderPlacementDate
+      orderNumber: orderData.orderNumber,
+      orderPlacementDate: orderData.orderPlacementDate
     });
     
     // If this is a new product, register it in the product database
@@ -128,6 +117,18 @@ export async function POST(request: Request) {
         console.error('Error registering new product:', productError);
         // Don't fail the order creation if product registration fails
       }
+    }
+    
+    // Notify planning team
+    try {
+      await createNotification({
+        userType: 'planning',
+        title: 'New Marketing Order Placed',
+        description: `New order ${newOrder.orderNumber} for ${newOrder.productName} has been placed.`,
+        href: `/order-planning`,
+      });
+    } catch (notificationError) {
+      console.error('Failed to create planning notification:', notificationError);
     }
     
     return NextResponse.json(newOrder, { status: 201 });

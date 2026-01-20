@@ -3,12 +3,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authenticateUser as authUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import { getUserById } from '@/lib/auth-sqlite';
+
 
 type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -61,15 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('authToken', result.token);
         }
         
-        // Fetch the complete user data including profile picture
-        const fullUser = await getUserById(result.user.id);
-        if (fullUser) {
-          setUser(fullUser);
-          localStorage.setItem('user', JSON.stringify(fullUser));
-        } else {
-          setUser(result.user);
-          localStorage.setItem('user', JSON.stringify(result.user));
-        }
+        // Use the user data directly from the response
+        setUser(result.user);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        
         return { success: true };
       } else {
         return { success: false, message: result.message };

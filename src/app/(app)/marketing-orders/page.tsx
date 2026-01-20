@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,8 @@ import { generateOrderPDF, downloadPDF, generateSummaryReport } from "@/lib/pdf-
 import { GanttChart } from "@/components/gantt-chart";
 import Image from "next/image";
 import { MarketingOrdersDashboard } from "./_components/marketing-orders-dashboard";
+import { CreateMarketingOrderDialog } from "@/components/create-marketing-order-dialog";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function MarketingOrdersPage() {
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
@@ -46,27 +49,33 @@ export default function MarketingOrdersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+  
+  const canEdit = user?.role === 'factory' || user?.role === 'marketing';
 
-  // Form state for new order
-  const [productName, setProductName] = useState("");
-  const [productCode, setProductCode] = useState("");
-  const [description, setDescription] = useState("");
-  const [quantity, setQuantity] = useState(0);
-  const [category, setCategory] = useState("");
-  const [price, setPrice] = useState(0);
-  const [isNewProduct, setIsNewProduct] = useState(false);
-  const [items, setItems] = useState<MarketingOrderItem[]>([]);
-  const [orderPlacementDate, setOrderPlacementDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [plannedDeliveryDate, setPlannedDeliveryDate] = useState<string>("");
 
-  // Item form state
-  const [itemSize, setItemSize] = useState("");
-  const [itemColor, setItemColor] = useState("");
-  const [itemQuantity, setItemQuantity] = useState(0);
+
+  const [availableUsers, setAvailableUsers] = useState<{id: number, username: string}[]>([]);
 
   useEffect(() => {
     fetchOrders();
+    fetchUsers();
   }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('/api/users');
+      if (response.ok) {
+        const data = await response.json();
+        const pUsers = data.filter((u: any) => 
+          ['planning', 'sample_maker', 'cutting', 'sewing', 'finishing', 'packing', 'quality_inspection', 'factory'].includes(u.role)
+        );
+        setAvailableUsers(pUsers);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
 
   useEffect(() => {
     // Filter orders based on date range
@@ -121,104 +130,7 @@ export default function MarketingOrdersPage() {
     }
   };
 
-  const handleCreateOrder = async () => {
-    try {
-      if (!productName || !productCode || quantity <= 0 || items.length === 0) {
-        toast({
-          title: "Validation Error",
-          description: "Please fill in all required fields and add at least one item.",
-          variant: "destructive",
-        });
-        return;
-      }
 
-      // Create the order data with new fields
-      const orderData: any = {
-        productName,
-        productCode,
-        description,
-        quantity,
-        status: "Placed Order" as MarketingOrderStatus,
-        isCompleted: false,
-        createdBy: "Marketing Team",
-        orderPlacementDate,
-        plannedDeliveryDate: plannedDeliveryDate || undefined,
-        items: items.map(item => ({
-          size: item.size,
-          color: item.color,
-          quantity: item.quantity
-        }))
-      };
-
-      // Add extra fields for new product registration if needed
-      if (isNewProduct) {
-        orderData.isNewProduct = true;
-        orderData.category = category;
-        orderData.price = price;
-      }
-
-      const newOrder = await createMarketingOrder(orderData);
-
-      setOrders([newOrder, ...orders]);
-      resetForm();
-      setIsCreateDialogOpen(false);
-
-      toast({
-        title: "Success",
-        description: "Marketing order created successfully.",
-      });
-    } catch (error) {
-      console.error("Error creating order:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create order. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const resetForm = () => {
-    setProductName("");
-    setProductCode("");
-    setDescription("");
-    setQuantity(0);
-    setCategory("");
-    setPrice(0);
-    setIsNewProduct(false);
-    setItems([]);
-    setOrderPlacementDate(new Date().toISOString().split('T')[0]);
-    setPlannedDeliveryDate("");
-  };
-
-  const addItem = () => {
-    if (!itemSize || !itemColor || itemQuantity <= 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all item fields.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setItems([
-      ...items,
-      {
-        orderId: "", // Will be set when creating the order
-        size: itemSize,
-        color: itemColor,
-        quantity: itemQuantity
-      }
-    ]);
-
-    // Reset item form
-    setItemSize("");
-    setItemColor("");
-    setItemQuantity(0);
-  };
-
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
 
   const updateOrderStatus = async (orderId: string, status: MarketingOrderStatus) => {
     try {
@@ -406,200 +318,17 @@ export default function MarketingOrdersPage() {
           <h1 className="text-3xl font-bold">Marketing Orders</h1>
           <p className="text-muted-foreground">Manage your marketing orders.</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
+        {canEdit && (
+          <>
             <Button onClick={() => setIsCreateDialogOpen(true)}>Create New Order</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New Marketing Order</DialogTitle>
-              <DialogDescription>
-                Fill in the details for your new marketing order.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="productName" className="text-right">
-                  Product Name
-                </Label>
-                <Input
-                  id="productName"
-                  value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  className="col-span-3"
-                  placeholder="Enter product name"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="productCode" className="text-right">
-                  Product Code
-                </Label>
-                <Input
-                  id="productCode"
-                  value={productCode}
-                  onChange={(e) => setProductCode(e.target.value)}
-                  className="col-span-3"
-                  placeholder="Enter product code"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="description" className="text-right">
-                  Description
-                </Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="col-span-3"
-                  placeholder="Enter order description"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="quantity" className="text-right">
-                  Total Quantity
-                </Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  value={quantity || ""}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-                  className="col-span-3"
-                  placeholder="Enter total quantity"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="orderPlacementDate" className="text-right">
-                  Order Placement Date
-                </Label>
-                <Input
-                  id="orderPlacementDate"
-                  type="date"
-                  value={orderPlacementDate}
-                  onChange={(e) => setOrderPlacementDate(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="plannedDeliveryDate" className="text-right">
-                  Planned Delivery Date
-                </Label>
-                <Input
-                  id="plannedDeliveryDate"
-                  type="date"
-                  value={plannedDeliveryDate}
-                  onChange={(e) => setPlannedDeliveryDate(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="isNewProduct" className="text-right">
-                  New Product
-                </Label>
-                <div className="col-span-3 flex items-center space-x-2">
-                  <input
-                    id="isNewProduct"
-                    type="checkbox"
-                    checked={isNewProduct}
-                    onChange={(e) => setIsNewProduct(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <Label htmlFor="isNewProduct">This is a new product</Label>
-                </div>
-              </div>
-              
-              {isNewProduct && (
-                <>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="category" className="text-right">
-                      Category
-                    </Label>
-                    <Input
-                      id="category"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="col-span-3"
-                      placeholder="Enter product category"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="price" className="text-right">
-                      Price
-                    </Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      value={price || ""}
-                      onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
-                      className="col-span-3"
-                      placeholder="Enter product price"
-                    />
-                  </div>
-                </>
-              )}
-              
-              <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">Order Items</h3>
-                <div className="grid grid-cols-4 items-center gap-4 mb-2">
-                  <Input
-                    placeholder="Size"
-                    value={itemSize}
-                    onChange={(e) => setItemSize(e.target.value)}
-                  />
-                  <Input
-                    placeholder="Color"
-                    value={itemColor}
-                    onChange={(e) => setItemColor(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Quantity"
-                    value={itemQuantity || ""}
-                    onChange={(e) => setItemQuantity(parseInt(e.target.value) || 0)}
-                  />
-                  <Button onClick={addItem}>Add Item</Button>
-                </div>
-                {items.length > 0 && (
-                  <div className="mt-2 border rounded-md">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Size</TableHead>
-                          <TableHead>Color</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((item, index) => (
-                          <TableRow key={index}>
-                            <TableCell>{item.size}</TableCell>
-                            <TableCell>{item.color}</TableCell>
-                            <TableCell>{item.quantity}</TableCell>
-                            <TableCell>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => removeItem(index)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreateOrder}>Create Order</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <CreateMarketingOrderDialog 
+              open={isCreateDialogOpen} 
+              onOpenChange={setIsCreateDialogOpen}
+              onOrderCreated={fetchOrders}
+              availableUsers={availableUsers}
+            />
+          </>
+        )}
       </div>
 
       <Tabs defaultValue="orders">
@@ -627,12 +356,13 @@ export default function MarketingOrdersPage() {
                     <TableRow>
                       <TableHead>Order Number</TableHead>
                       <TableHead>Product</TableHead>
-                      <TableHead>Quantity</TableHead>
-                      <TableHead>Produced</TableHead>
+                      <TableHead>Qty</TableHead>
+                      <TableHead>Prod.</TableHead>
                       <TableHead>Process Status</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Assigned Team</TableHead>
+                      <TableHead>Overall Status</TableHead>
                       <TableHead>Created By</TableHead>
-                      <TableHead>Created Date</TableHead>
+                      <TableHead>Date</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -649,7 +379,7 @@ export default function MarketingOrdersPage() {
                         statusDisplay = 'Completed';
                       } else if (!isFullyProduced && order.status === 'Completed') {
                         // Fix incorrect status - order can't be completed if not fully produced
-                        statusDisplay = 'Production';
+                        statusDisplay = 'Sewing' as MarketingOrderStatus;
                       }
                       
                       return (
@@ -697,20 +427,51 @@ export default function MarketingOrdersPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-col gap-1">
-                              <div className={`text-xs ${getProcessStatusColor('Cutting', order.id)}`}>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              <div className={`text-[10px] ${getProcessStatusColor('Planning', order.id)}`}>
+                                {getProcessStatusText('Planning', order.id)}
+                              </div>
+                              <div className={`text-[10px] ${getProcessStatusColor('Sample Making', order.id)}`}>
+                                {getProcessStatusText('Sample Making', order.id)}
+                              </div>
+                              <div className={`text-[10px] ${getProcessStatusColor('Cutting', order.id)}`}>
                                 {getProcessStatusText('Cutting', order.id)}
                               </div>
-                              <div className={`text-xs ${getProcessStatusColor('Production', order.id)}`}>
-                                {getProcessStatusText('Production', order.id)}
+                              <div className={`text-[10px] ${getProcessStatusColor('Sewing', order.id)}`}>
+                                {getProcessStatusText('Sewing', order.id)}
                               </div>
-                              <div className={`text-xs ${getProcessStatusColor('Packing', order.id)}`}>
+                              <div className={`text-[10px] ${getProcessStatusColor('Finishing', order.id)}`}>
+                                {getProcessStatusText('Finishing', order.id)}
+                              </div>
+                              <div className={`text-[10px] ${getProcessStatusColor('Quality Inspection', order.id)}`}>
+                                {getProcessStatusText('Quality Inspection', order.id)}
+                              </div>
+                              <div className={`text-[10px] ${getProcessStatusColor('Packing', order.id)}`}>
                                 {getProcessStatusText('Packing', order.id)}
                               </div>
-                              <div className={`text-xs ${getProcessStatusColor('Delivery', order.id)}`}>
+                              <div className={`text-[10px] ${getProcessStatusColor('Delivery', order.id)}`}>
                                 {getProcessStatusText('Delivery', order.id)}
                               </div>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="whitespace-nowrap">
+                              {(() => {
+                                switch(order.status) {
+                                  case 'Placed Order': return 'Sales/Entry';
+                                  case 'Planning': return 'Planning Team';
+                                  case 'Sample Making': return 'Sample Room';
+                                  case 'Cutting': return 'Cutting Section';
+                                  case 'Sewing': return 'Sewing Floor';
+                                  case 'Finishing': return 'Finishing Section';
+                                  case 'Quality Inspection': return 'QC Team';
+                                  case 'Packing': return 'Packing Section';
+                                  case 'Delivery': return 'Logistics';
+                                  case 'Completed': return 'Finished';
+                                  default: return order.status;
+                                }
+                              })()}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -746,35 +507,39 @@ export default function MarketingOrdersPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  setSelectedOrder(order);
-                                  setIsEditDialogOpen(true);
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
                                 onClick={() => handleExportToPdf(order.id)}
                               >
                                 <FileText className="h-4 w-4" />
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openDeleteDialog(order.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                onClick={() => markAsCompleted(order.id)}
-                                disabled={order.status !== ('Delivery' as MarketingOrderStatus) || remaining > 0 || order.status === ('Placed Order' as MarketingOrderStatus)}
-                                variant="outline"
-                                size="sm"
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </Button>
+                              {canEdit && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedOrder(order);
+                                      setIsEditDialogOpen(true);
+                                    }}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openDeleteDialog(order.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    onClick={() => markAsCompleted(order.id)}
+                                    disabled={order.status !== ('Delivery' as MarketingOrderStatus) || remaining > 0 || order.status === ('Placed Order' as MarketingOrderStatus)}
+                                    variant="outline"
+                                    size="sm"
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

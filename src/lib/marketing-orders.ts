@@ -2,11 +2,16 @@ import { getDb, resetDbCache } from './db';
 
 export type MarketingOrderStatus = 
   'Placed Order' | 
+  'Planning' |
+  'Sample Making' |
   'Cutting' | 
-  'Production' | 
+  'Sewing' | 
+  'Finishing' |
+  'Quality Inspection' |
   'Packing' | 
   'Delivery' | 
-  'Completed';
+  'Completed' |
+  'Cancelled';
 
 export type MarketingOrderItem = {
   id?: number;
@@ -37,7 +42,10 @@ export type MarketingOrder = {
   quantity: number;
   status: MarketingOrderStatus;
   cuttingStatus?: string;
-  productionStatus?: string;
+  sewingStatus?: string;
+  finishingStatus?: string;
+  qualityInspectionStatus?: 'Passed' | 'Failed' | 'Pending' | 'Approved' | 'Rejected' | 'Rework';
+  qualityInspectionReportUrl?: string;
   packingStatus?: string;
   deliveryStatus?: string;
   assignedTo?: string;
@@ -55,12 +63,72 @@ export type MarketingOrder = {
   productionStartDate?: string;
   productionFinishedDate?: string;
   // Process completion dates
+  planningCompletionDate?: string;
+  sampleCompletionDate?: string;
   cuttingCompletionDate?: string;
-  productionCompletionDate?: string;
+  sewingCompletionDate?: string;
+  finishingCompletionDate?: string;
+  qualityInspectionCompletionDate?: string;
   packingCompletionDate?: string;
   deliveryCompletionDate?: string;
+  
+  // Gatekeeper and Sequencing
+  isPlanningApproved?: boolean;
+  priority?: number;
+  
+  // Attachments
+  ppmMeetingAttached?: string;
+  sampleApprovalAttached?: string;
+  cuttingQualityAttached?: string;
+  
   items: MarketingOrderItem[];
+  
+  // Planning specific fields
+  smv?: number;
+  manpower?: number;
+  sewingOutputPerDay?: number;
+  operationDays?: number;
+  sewingStartDate?: string;
+  sewingFinishDate?: string;
+  remarks?: string;
+  piecesPerSet?: number;
+  efficiency?: number;
+  
+  // Production Release Fields
+  cuttingStartDate?: string;
+  cuttingFinishDate?: string;
+  packingStartDate?: string;
+  packingFinishDate?: string;
+  isNewProduct?: boolean;
 };
+
+export type OperationBulletinItem = {
+  id?: number;
+  orderId?: string;
+  productCode?: string;
+  sequence: number;
+  operationName: string;
+  machineType: string;
+  smv: number;
+  manpower: number;
+};
+
+export interface QualityInspection {
+  id?: number;
+  orderId: string;
+  date: string;
+  stage: 'Sample' | 'Order' | 'Inline-Cutting' | 'Inline-Sewing' | 'Final';
+  size?: string;
+  color?: string;
+  quantityInspected: number;
+  quantityPassed: number; // Also used as Approved
+  quantityRejected: number;
+  status: 'Passed' | 'Failed' | 'Approved' | 'Rejected' | 'Rework';
+  reportUrl?: string;
+  remarks?: string;
+  inspectorId?: string;
+  createdAt?: string;
+}
 
 // Client-side function to fetch marketing orders from API
 export async function getMarketingOrders(): Promise<MarketingOrder[]> {
@@ -73,7 +141,13 @@ export async function getMarketingOrders(): Promise<MarketingOrder[]> {
       ? `${baseUrl}/api/marketing-orders`
       : '/api/marketing-orders';
       
-    const response = await fetch(url);
+    const headers: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+      
+    const response = await fetch(url, { headers });
     if (!response.ok) {
       throw new Error('Failed to fetch marketing orders');
     }
@@ -95,7 +169,13 @@ export async function getMarketingOrderById(id: string): Promise<MarketingOrder 
       ? `${baseUrl}/api/marketing-orders/${id}`
       : `/api/marketing-orders/${id}`;
       
-    const response = await fetch(url);
+    const headers: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+      
+    const response = await fetch(url, { headers });
     if (!response.ok) {
       return null;
     }
@@ -117,11 +197,15 @@ export async function createMarketingOrder(order: Omit<MarketingOrder, 'id' | 'c
       ? `${baseUrl}/api/marketing-orders`
       : '/api/marketing-orders';
       
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(order),
     });
     
@@ -148,11 +232,15 @@ export async function updateMarketingOrder(id: string, order: Partial<MarketingO
       ? `${baseUrl}/api/marketing-orders/${id}`
       : `/api/marketing-orders/${id}`;
       
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(order),
     });
     
@@ -161,6 +249,41 @@ export async function updateMarketingOrder(id: string, order: Partial<MarketingO
     console.error('Error updating marketing order:', error);
     return false;
   }
+}
+
+/**
+ * Client-side function to handover order to next department
+ */
+export async function handoverOrder(orderId: string, currentStatus: MarketingOrderStatus): Promise<boolean> {
+  const processSequence: MarketingOrderStatus[] = [
+    'Placed Order',
+    'Planning',
+    'Sample Making',
+    'Cutting', 
+    'Sewing', 
+    'Finishing',
+    'Quality Inspection',
+    'Packing', 
+    'Delivery',
+    'Completed'
+  ];
+  
+  const currentIndex = processSequence.indexOf(currentStatus);
+  if (currentIndex === -1 || currentIndex >= processSequence.length - 1) return false;
+  
+  const nextStatus = processSequence[currentIndex + 1];
+  
+  const updates: Partial<MarketingOrder> = {
+    status: nextStatus
+  };
+  
+  // Specific completion dates
+  if (currentStatus === 'Sewing') updates.sewingCompletionDate = new Date().toISOString().split('T')[0];
+  if (currentStatus === 'Finishing') updates.finishingCompletionDate = new Date().toISOString().split('T')[0];
+  if (currentStatus === 'Quality Inspection') updates.qualityInspectionCompletionDate = new Date().toISOString().split('T')[0];
+  if (currentStatus === 'Packing') updates.packingCompletionDate = new Date().toISOString().split('T')[0];
+
+  return await updateMarketingOrder(orderId, updates);
 }
 
 // Client-side function to delete a marketing order
@@ -174,8 +297,15 @@ export async function deleteMarketingOrder(id: string): Promise<boolean> {
       ? `${baseUrl}/api/marketing-orders/${id}`
       : `/api/marketing-orders/${id}`;
       
+    const headers: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       method: 'DELETE',
+      headers
     });
     
     return response.ok;
@@ -233,7 +363,9 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           quantity: order.quantity,
           status: order.status,
           cuttingStatus: order.cuttingStatus,
-          productionStatus: order.productionStatus,
+          sewingStatus: order.sewingStatus,
+          finishingStatus: order.finishingStatus,
+          qualityInspectionStatus: order.qualityInspectionStatus,
           packingStatus: order.packingStatus,
           deliveryStatus: order.deliveryStatus,
           assignedTo: order.assignedTo,
@@ -250,6 +382,29 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           sizeSetSampleApproved: order.sizeSetSampleApproved,
           productionStartDate: order.productionStartDate,
           productionFinishedDate: order.productionFinishedDate,
+          planningCompletionDate: order.planningCompletionDate,
+          sampleCompletionDate: order.sampleCompletionDate,
+          cuttingCompletionDate: order.cuttingCompletionDate,
+          sewingCompletionDate: order.sewingCompletionDate,
+          finishingCompletionDate: order.finishingCompletionDate,
+          qualityInspectionCompletionDate: order.qualityInspectionCompletionDate,
+          packingCompletionDate: order.packingCompletionDate,
+          deliveryCompletionDate: order.deliveryCompletionDate,
+          smv: order.smv,
+          manpower: order.manpower,
+          sewingOutputPerDay: order.sewingOutputPerDay,
+          operationDays: order.operationDays,
+          sewingStartDate: order.sewingStartDate,
+          sewingFinishDate: order.sewingFinishDate,
+          remarks: order.remarks,
+          piecesPerSet: order.piecesPerSet,
+          efficiency: order.efficiency,
+          cuttingStartDate: order.cuttingStartDate,
+          cuttingFinishDate: order.cuttingFinishDate,
+          packingStartDate: order.packingStartDate,
+          packingFinishDate: order.packingFinishDate,
+          isNewProduct: order.isNewProduct === 1,
+          isPlanningApproved: order.isPlanningApproved === 1,
           items: items.map((item: any) => ({
             id: item.id,
             orderId: item.orderId,
@@ -296,7 +451,9 @@ export async function getMarketingOrderByIdFromDB(id: string): Promise<Marketing
       quantity: order.quantity,
       status: order.status,
       cuttingStatus: order.cuttingStatus,
-      productionStatus: order.productionStatus,
+      sewingStatus: order.sewingStatus,
+      finishingStatus: order.finishingStatus,
+      qualityInspectionStatus: order.qualityInspectionStatus,
       packingStatus: order.packingStatus,
       deliveryStatus: order.deliveryStatus,
       assignedTo: order.assignedTo,
@@ -313,6 +470,29 @@ export async function getMarketingOrderByIdFromDB(id: string): Promise<Marketing
       sizeSetSampleApproved: order.sizeSetSampleApproved,
       productionStartDate: order.productionStartDate,
       productionFinishedDate: order.productionFinishedDate,
+      planningCompletionDate: order.planningCompletionDate,
+      sampleCompletionDate: order.sampleCompletionDate,
+      cuttingCompletionDate: order.cuttingCompletionDate,
+      sewingCompletionDate: order.sewingCompletionDate,
+      finishingCompletionDate: order.finishingCompletionDate,
+      qualityInspectionCompletionDate: order.qualityInspectionCompletionDate,
+      packingCompletionDate: order.packingCompletionDate,
+      deliveryCompletionDate: order.deliveryCompletionDate,
+      smv: order.smv,
+      manpower: order.manpower,
+      sewingOutputPerDay: order.sewingOutputPerDay,
+      operationDays: order.operationDays,
+      sewingStartDate: order.sewingStartDate,
+      sewingFinishDate: order.sewingFinishDate,
+      remarks: order.remarks,
+      piecesPerSet: order.piecesPerSet,
+      efficiency: order.efficiency,
+      cuttingStartDate: order.cuttingStartDate,
+      cuttingFinishDate: order.cuttingFinishDate,
+      packingStartDate: order.packingStartDate,
+      packingFinishDate: order.packingFinishDate,
+      isNewProduct: order.isNewProduct === 1,
+      isPlanningApproved: order.isPlanningApproved === 1,
       items
     };
   } catch (error) {
@@ -331,58 +511,92 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
     
     // Generate order number if not provided
     let orderNumber = order.orderNumber;
-    if (!orderNumber) {
-      // Generate order number in format CM-YYYY-XXXX where XXXX is a sequential number
-      const year = new Date().getFullYear();
+    let attempts = 0;
+    const maxAttempts = 5;
+    let orderPlacementDate = order.orderPlacementDate || new Date().toISOString().split('T')[0]; // Define outside try block
+    
+    while (attempts < maxAttempts) {
+      if (!orderNumber) {
+        // Generate order number in format CM-YYYY-XXXX where XXXX is a sequential number
+        const year = new Date().getFullYear();
+        
+        // Get the count of orders for this year to generate a sequential number
+        const orderCountResult = await db.get(`
+          SELECT COUNT(*) as count FROM marketing_orders 
+          WHERE orderNumber LIKE ?
+        `, `CM-${year}-%`);
+        
+        const orderCount = orderCountResult?.count || 0;
+        const nextNumber = orderCount + 1 + attempts; // Add attempts to avoid collision
+        orderNumber = `CM-${year}-${nextNumber.toString().padStart(4, '0')}`;
+      }
       
-      // Get the count of orders for this year to generate a sequential number
-      const orderCountResult = await db.get(`
-        SELECT COUNT(*) as count FROM marketing_orders 
-        WHERE orderNumber LIKE ?
-      `, `CM-${year}-%`);
-      
-      const orderCount = orderCountResult?.count || 0;
-      const nextNumber = orderCount + 1;
-      orderNumber = `CM-${year}-${nextNumber.toString().padStart(4, '0')}`;
+      try {
+        // Set order placement date to current date if not provided
+        orderPlacementDate = order.orderPlacementDate || new Date().toISOString().split('T')[0];
+        
+        // Insert order into database
+        await db.run(`
+          INSERT INTO marketing_orders (
+            id, orderNumber, productName, productCode, description, quantity, status, 
+            cuttingStatus, sewingStatus, finishingStatus, qualityInspectionStatus, packingStatus, deliveryStatus, assignedTo, 
+            dueDate, completedDate, pdfUrl, imageUrl, isCompleted, createdBy, createdAt, updatedAt,
+            orderPlacementDate, plannedDeliveryDate, sizeSetSampleApproved, productionStartDate, productionFinishedDate,
+            isPlanningApproved, priority, ppmMeetingAttached, sampleApprovalAttached, cuttingQualityAttached, piecesPerSet, efficiency
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          orderId,
+          orderNumber,
+          order.productName,
+          order.productCode,
+          order.description,
+          order.quantity,
+          order.status,
+          order.cuttingStatus,
+          order.sewingStatus,
+          order.finishingStatus,
+          order.qualityInspectionStatus,
+          order.packingStatus,
+          order.deliveryStatus,
+          order.assignedTo,
+          order.dueDate,
+          order.completedDate,
+          order.pdfUrl,
+          order.imageUrl,
+          order.isCompleted ? 1 : 0,
+          order.createdBy,
+          orderPlacementDate,
+          order.plannedDeliveryDate,
+          order.sizeSetSampleApproved,
+          order.productionStartDate,
+          order.productionFinishedDate,
+          order.isPlanningApproved ? 1 : 0,
+          order.priority || 0,
+          order.ppmMeetingAttached || null,
+          order.sampleApprovalAttached || null,
+          order.cuttingQualityAttached || null,
+          order.piecesPerSet || 1,
+          order.efficiency || 70.0
+        );
+        
+        break; // Success, exit the retry loop
+      } catch (insertError: any) {
+        // If it's a unique constraint error, try with a different order number
+        if (insertError.code === 'SQLITE_CONSTRAINT' && insertError.errno === 19 && insertError.message.includes('UNIQUE constraint failed')) {
+          attempts++;
+          orderNumber = undefined as unknown as string; // Reset order number to generate a new one
+          continue;
+        } else {
+          // If it's a different error, throw it
+          throw insertError;
+        }
+      }
     }
     
-    // Set order placement date to current date if not provided
-    const orderPlacementDate = order.orderPlacementDate || new Date().toISOString().split('T')[0];
-    
-    // Insert order into database
-    await db.run(`
-      INSERT INTO marketing_orders (
-        id, orderNumber, productName, productCode, description, quantity, status, 
-        cuttingStatus, productionStatus, packingStatus, deliveryStatus, assignedTo, 
-        dueDate, completedDate, pdfUrl, imageUrl, isCompleted, createdBy, createdAt, updatedAt,
-        orderPlacementDate, plannedDeliveryDate, sizeSetSampleApproved, productionStartDate, productionFinishedDate
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?)
-    `,
-      orderId,
-      orderNumber,
-      order.productName,
-      order.productCode,
-      order.description,
-      order.quantity,
-      order.status,
-      order.cuttingStatus,
-      order.productionStatus,
-      order.packingStatus,
-      order.deliveryStatus,
-      order.assignedTo,
-      order.dueDate,
-      order.completedDate,
-      order.pdfUrl,
-      order.imageUrl,
-      order.isCompleted ? 1 : 0,
-      order.createdBy,
-      orderPlacementDate,
-      order.plannedDeliveryDate,
-      order.sizeSetSampleApproved,
-      order.productionStartDate,
-      order.productionFinishedDate
-    );
+    if (attempts >= maxAttempts) {
+      throw new Error(`Failed to create unique order number after ${maxAttempts} attempts`);
+    }
     
     // Insert items into database
     const itemsWithOrderId = order.items.map(item => ({
@@ -453,9 +667,17 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
       fields.push('cuttingStatus = ?');
       values.push(order.cuttingStatus);
     }
-    if (order.productionStatus !== undefined) {
-      fields.push('productionStatus = ?');
-      values.push(order.productionStatus);
+    if (order.sewingStatus !== undefined) {
+      fields.push('sewingStatus = ?');
+      values.push(order.sewingStatus);
+    }
+    if (order.finishingStatus !== undefined) {
+      fields.push('finishingStatus = ?');
+      values.push(order.finishingStatus);
+    }
+    if (order.qualityInspectionStatus !== undefined) {
+      fields.push('qualityInspectionStatus = ?');
+      values.push(order.qualityInspectionStatus);
     }
     if (order.packingStatus !== undefined) {
       fields.push('packingStatus = ?');
@@ -464,6 +686,38 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
     if (order.deliveryStatus !== undefined) {
       fields.push('deliveryStatus = ?');
       values.push(order.deliveryStatus);
+    }
+    if (order.planningCompletionDate !== undefined) {
+      fields.push('planningCompletionDate = ?');
+      values.push(order.planningCompletionDate);
+    }
+    if (order.sampleCompletionDate !== undefined) {
+      fields.push('sampleCompletionDate = ?');
+      values.push(order.sampleCompletionDate);
+    }
+    if (order.cuttingCompletionDate !== undefined) {
+      fields.push('cuttingCompletionDate = ?');
+      values.push(order.cuttingCompletionDate);
+    }
+    if (order.sewingCompletionDate !== undefined) {
+      fields.push('sewingCompletionDate = ?');
+      values.push(order.sewingCompletionDate);
+    }
+    if (order.finishingCompletionDate !== undefined) {
+      fields.push('finishingCompletionDate = ?');
+      values.push(order.finishingCompletionDate);
+    }
+    if (order.qualityInspectionCompletionDate !== undefined) {
+      fields.push('qualityInspectionCompletionDate = ?');
+      values.push(order.qualityInspectionCompletionDate);
+    }
+    if (order.packingCompletionDate !== undefined) {
+      fields.push('packingCompletionDate = ?');
+      values.push(order.packingCompletionDate);
+    }
+    if (order.deliveryCompletionDate !== undefined) {
+      fields.push('deliveryCompletionDate = ?');
+      values.push(order.deliveryCompletionDate);
     }
     if (order.assignedTo !== undefined) {
       fields.push('assignedTo = ?');
@@ -509,6 +763,82 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
       fields.push('productionFinishedDate = ?');
       values.push(order.productionFinishedDate);
     }
+    if (order.isPlanningApproved !== undefined) {
+      fields.push('isPlanningApproved = ?');
+      values.push(order.isPlanningApproved ? 1 : 0);
+    }
+    if (order.priority !== undefined) {
+      fields.push('priority = ?');
+      values.push(order.priority);
+    }
+    if (order.ppmMeetingAttached !== undefined) {
+      fields.push('ppmMeetingAttached = ?');
+      values.push(order.ppmMeetingAttached);
+    }
+    if (order.sampleApprovalAttached !== undefined) {
+      fields.push('sampleApprovalAttached = ?');
+      values.push(order.sampleApprovalAttached);
+    }
+    if (order.cuttingQualityAttached !== undefined) {
+      fields.push('cuttingQualityAttached = ?');
+      values.push(order.cuttingQualityAttached);
+    }
+    if (order.smv !== undefined) {
+      fields.push('smv = ?');
+      values.push(order.smv);
+    }
+    if (order.manpower !== undefined) {
+      fields.push('manpower = ?');
+      values.push(order.manpower);
+    }
+    if (order.sewingOutputPerDay !== undefined) {
+      fields.push('sewingOutputPerDay = ?');
+      values.push(order.sewingOutputPerDay);
+    }
+    if (order.operationDays !== undefined) {
+      fields.push('operationDays = ?');
+      values.push(order.operationDays);
+    }
+    if (order.sewingStartDate !== undefined) {
+      fields.push('sewingStartDate = ?');
+      values.push(order.sewingStartDate);
+    }
+    if (order.sewingFinishDate !== undefined) {
+      fields.push('sewingFinishDate = ?');
+      values.push(order.sewingFinishDate);
+    }
+    if (order.remarks !== undefined) {
+      fields.push('remarks = ?');
+      values.push(order.remarks);
+    }
+    if (order.piecesPerSet !== undefined) {
+      fields.push('piecesPerSet = ?');
+      values.push(order.piecesPerSet);
+    }
+    if (order.efficiency !== undefined) {
+      fields.push('efficiency = ?');
+      values.push(order.efficiency);
+    }
+    if (order.cuttingStartDate !== undefined) {
+      fields.push('cuttingStartDate = ?');
+      values.push(order.cuttingStartDate);
+    }
+    if (order.cuttingFinishDate !== undefined) {
+      fields.push('cuttingFinishDate = ?');
+      values.push(order.cuttingFinishDate);
+    }
+    if (order.packingStartDate !== undefined) {
+      fields.push('packingStartDate = ?');
+      values.push(order.packingStartDate);
+    }
+    if (order.packingFinishDate !== undefined) {
+      fields.push('packingFinishDate = ?');
+      values.push(order.packingFinishDate);
+    }
+    if (order.isNewProduct !== undefined) {
+      fields.push('isNewProduct = ?');
+      values.push(order.isNewProduct ? 1 : 0);
+    }
     
     // Always update the updatedAt field
     fields.push('updatedAt = datetime("now")');
@@ -545,26 +875,30 @@ export async function deleteMarketingOrderFromDB(id: string): Promise<boolean> {
 export async function getTotalProducedQuantity(orderId: string): Promise<number> {
   try {
     const db = await getDb();
-    // Try to get the sum with isTotalUpdate condition
-    try {
-      const result = await db.get(`
-        SELECT SUM(quantity) as totalProduced
-        FROM daily_production_status 
-        WHERE orderId = ? AND isTotalUpdate = 1
-      `, orderId);
-      
-      return result?.totalProduced || 0;
-    } catch (error) {
-      // If the isTotalUpdate column doesn't exist, fall back to summing all quantities
-      console.log('isTotalUpdate column not found, falling back to summing all quantities');
-      const result = await db.get(`
-        SELECT SUM(quantity) as totalProduced
-        FROM daily_production_status 
-        WHERE orderId = ?
-      `, orderId);
-      
-      return result?.totalProduced || 0;
-    }
+    
+    // Check if we have breakdown updates (isTotalUpdate = 0)
+    const breakdownResult = await db.get(`
+      SELECT SUM(quantity) as totalProduced
+      FROM daily_production_status 
+      WHERE orderId = ? AND isTotalUpdate = 0
+    `, orderId);
+    
+    const breakdownTotal = breakdownResult?.totalProduced || 0;
+    
+    // Check if we have total updates (isTotalUpdate = 1)
+    const totalUpdateResult = await db.get(`
+      SELECT SUM(quantity) as totalProduced
+      FROM daily_production_status 
+      WHERE orderId = ? AND isTotalUpdate = 1
+    `, orderId);
+    
+    const totalUpdateTotal = totalUpdateResult?.totalProduced || 0;
+    
+    // Return the maximum of either. Usually, they don't mix, but if they do, 
+    // we assume the one with more content is more accurate, or we just sum them if they are for different days.
+    // However, the current logic in DailyProductionForm might overlap.
+    // Simplest logic: if there is breakdown, return breakdown. Else return total.
+    return breakdownTotal > 0 ? breakdownTotal : totalUpdateTotal;
   } catch (error) {
     console.error('Error fetching total produced quantity:', error);
     return 0;
@@ -648,11 +982,24 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
       let dateField = '';
       
       switch (status.processStage) {
+        case 'Planning':
+          dateField = 'planningCompletionDate';
+          break;
+        case 'Sample Making':
+          dateField = 'sampleCompletionDate';
+          break;
         case 'Cutting':
           dateField = 'cuttingCompletionDate';
           break;
+        case 'Sewing':
         case 'Production':
-          dateField = 'productionCompletionDate';
+          dateField = 'sewingCompletionDate';
+          break;
+        case 'Finishing':
+          dateField = 'finishingCompletionDate';
+          break;
+        case 'Quality Inspection':
+          dateField = 'qualityInspectionCompletionDate';
           break;
         case 'Packing':
           dateField = 'packingCompletionDate';
@@ -663,11 +1010,43 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
       }
       
       if (dateField) {
+        // Update completion date
         await db.run(`
           UPDATE marketing_orders 
           SET ${dateField} = ?
           WHERE id = ?
         `, today, status.orderId);
+
+        // Handover: Update main status to the next stage
+        const processSequence: MarketingOrderStatus[] = [
+          'Placed Order',
+          'Planning',
+          'Sample Making',
+          'Cutting', 
+          'Sewing', 
+          'Finishing',
+          'Quality Inspection',
+          'Packing', 
+          'Delivery',
+          'Completed'
+        ];
+        
+        const currentStageIndex = processSequence.indexOf(status.processStage as MarketingOrderStatus);
+        if (currentStageIndex !== -1 && currentStageIndex < processSequence.length - 1) {
+          const nextStatus = processSequence[currentStageIndex + 1];
+          await db.run(`
+            UPDATE marketing_orders 
+            SET status = ?
+            WHERE id = ?
+          `, nextStatus, status.orderId);
+          
+          // Note: In an ideal world, we'd trigger the notification here too, 
+          // but since this is called from an API route, we'll handle notifications there 
+          // or just rely on the API caller to know.
+          // Actually, updateMarketingOrderInDB handles notifications when called via API.
+          // But this is updateDailyProductionStatus.
+          // I'll add a small check in the API route.
+        }
       }
     }
     
@@ -675,5 +1054,230 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
   } catch (error) {
     console.error('Error updating daily production status:', error);
     return false;
+  }
+}
+// Operation Bulletin Functions
+
+/**
+ * Get operation bulletin items for a product or specific order (Server-Side)
+ */
+export async function getOperationBulletinFromDB(orderId?: string, productCode?: string): Promise<OperationBulletinItem[]> {
+  try {
+    const db = await getDb();
+    let query = 'SELECT * FROM operation_bulletins WHERE ';
+    const params: any[] = [];
+
+    if (orderId) {
+      query += 'orderId = ? ';
+      params.push(orderId);
+    } else if (productCode) {
+      query += 'productCode = ? ';
+      params.push(productCode);
+    } else {
+      return [];
+    }
+
+    query += 'ORDER BY sequence ASC';
+    const items = await db.all(query, ...params);
+    return items;
+  } catch (error) {
+    console.error('Error fetching operation bulletin:', error);
+    return [];
+  }
+}
+
+/**
+ * Save operation bulletin items (Server-Side)
+ */
+export async function saveOperationBulletinInDB(items: OperationBulletinItem[], orderId?: string, productCode?: string): Promise<boolean> {
+  try {
+    const db = await getDb();
+    
+    // Delete existing items
+    if (orderId) {
+      await db.run('DELETE FROM operation_bulletins WHERE orderId = ?', orderId);
+    } else if (productCode) {
+      await db.run('DELETE FROM operation_bulletins WHERE productCode = ?', productCode);
+    } else {
+      return false;
+    }
+
+    // Insert new items
+    for (const item of items) {
+      await db.run(`
+        INSERT INTO operation_bulletins (orderId, productCode, sequence, operationName, machineType, smv, manpower)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, 
+        orderId || null, 
+        productCode || null, 
+        item.sequence || 0, 
+        item.operationName || '', 
+        item.machineType || '', 
+        isNaN(item.smv) ? 0 : (item.smv || 0), 
+        isNaN(item.manpower) ? 0 : (item.manpower || 0)
+      );
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error saving operation bulletin in DB:', error);
+    return false;
+  }
+}
+
+/**
+ * Client-side function to get operation bulletin
+ */
+export async function getOperationBulletin(orderId?: string, productCode?: string): Promise<OperationBulletinItem[]> {
+  try {
+    const params = new URLSearchParams();
+    if (orderId) params.append('orderId', orderId);
+    if (productCode) params.append('productCode', productCode);
+    
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const url = typeof window === 'undefined' 
+      ? `${baseUrl}/api/marketing-orders/operation-bulletin?${params.toString()}`
+      : `/api/marketing-orders/operation-bulletin?${params.toString()}`;
+      
+    const headers: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching operation bulletin:', error);
+    return [];
+  }
+}
+
+/**
+ * Client-side function to save operation bulletin
+ */
+export async function saveOperationBulletin(items: OperationBulletinItem[], orderId?: string, productCode?: string): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch('/api/marketing-orders/operation-bulletin', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ items, orderId, productCode }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Save OB failed:', errorData);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error saving operation bulletin:', error);
+    return false;
+  }
+}
+/**
+ * Client-side function to save quality inspection
+ */
+export async function saveQualityInspection(inspection: Omit<QualityInspection, 'id' | 'createdAt'>): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch('/api/quality-inspection', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(inspection),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error('Error saving quality inspection:', error);
+    return false;
+  }
+}
+
+/**
+ * Client-side function to get quality inspections for an order
+ */
+export async function getQualityInspections(orderId: string): Promise<QualityInspection[]> {
+  try {
+    const headers: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/quality-inspection?orderId=${orderId}`, { headers });
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching quality inspections:', error);
+    return [];
+  }
+}
+
+/**
+ * Server-side function to save quality inspection in DB
+ */
+export async function saveQualityInspectionInDB(inspection: Omit<QualityInspection, 'id' | 'createdAt'>): Promise<boolean> {
+  try {
+    const db = await getDb();
+    
+    await db.run(`
+      INSERT INTO quality_inspections (
+        orderId, date, stage, size, color, quantityInspected, quantityPassed, quantityRejected, status, reportUrl, remarks, inspectorId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      inspection.orderId,
+      inspection.date,
+      inspection.stage,
+      inspection.size || null,
+      inspection.color || null,
+      inspection.quantityInspected || 0,
+      inspection.quantityPassed || 0,
+      inspection.quantityRejected || 0,
+      inspection.status,
+      inspection.reportUrl || null,
+      inspection.remarks || null,
+      inspection.inspectorId || null
+    );
+
+    // Update the main order's quality status and report link with the latest inspection
+    await db.run(`
+      UPDATE marketing_orders SET qualityInspectionStatus = ?, qualityInspectionReportUrl = ? WHERE id = ?
+    `, inspection.status, inspection.reportUrl || null, inspection.orderId);
+
+    return true;
+  } catch (error) {
+    console.error('Error saving quality inspection in DB:', error);
+    return false;
+  }
+}
+
+/**
+ * Server-side function to get quality inspections for an order from DB
+ */
+export async function getQualityInspectionsFromDB(orderId: string): Promise<QualityInspection[]> {
+  try {
+    const db = await getDb();
+    const rows = await db.all(`
+      SELECT * FROM quality_inspections WHERE orderId = ? ORDER BY date DESC, createdAt DESC
+    `, orderId);
+    return rows;
+  } catch (error) {
+    console.error('Error fetching quality inspections from DB:', error);
+    return [];
   }
 }

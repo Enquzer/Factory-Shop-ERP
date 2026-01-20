@@ -16,6 +16,7 @@ import { type ShopInventoryItem } from '@/lib/shop-inventory';
 import { useState, useEffect } from "react";
 import { useOrder } from "@/hooks/use-order";
 import { useRouter } from "next/navigation";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 export function PlaceOrderDialog({ 
   item, 
@@ -27,16 +28,44 @@ export function PlaceOrderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [quantity, setQuantity] = useState(1);
+  const [factoryStock, setFactoryStock] = useState<number | null>(null);
+  const [loadingFactoryStock, setLoadingFactoryStock] = useState(false);
   const { toast } = useToast();
   const { addItem } = useOrder();
   const router = useRouter();
 
-  // Reset form when dialog opens
+  // Reset form when dialog opens and fetch factory stock
   useEffect(() => {
     if (open && item) {
       setQuantity(1);
+      setFactoryStock(null);
+      fetchFactoryStock();
     }
   }, [open, item]);
+  
+  const fetchFactoryStock = async () => {
+    if (!item) return;
+    
+    setLoadingFactoryStock(true);
+    try {
+      const response = await fetch(`/api/factory-stock?variantId=${item.productVariantId}`, {
+        headers: createAuthHeaders()
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFactoryStock(data.factoryStock);
+      } else {
+        console.error('Failed to fetch factory stock:', response.status);
+        setFactoryStock(0);
+      }
+    } catch (error) {
+      console.error('Error fetching factory stock:', error);
+      setFactoryStock(0);
+    } finally {
+      setLoadingFactoryStock(false);
+    }
+  };
 
   const handlePlaceOrder = async () => {
     if (!item) return;
@@ -45,6 +74,15 @@ export function PlaceOrderDialog({
       toast({
         title: "Invalid Quantity",
         description: "Order quantity must be greater than 0.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (factoryStock !== null && quantity > factoryStock) {
+      toast({
+        title: "Insufficient Factory Stock",
+        description: `Cannot order ${quantity} units. Only ${factoryStock} units available in factory stock.`,
         variant: "destructive",
       });
       return;
@@ -107,6 +145,14 @@ export function PlaceOrderDialog({
             </Label>
             <div className="col-span-3 font-medium">
               {item.stock} units
+            </div>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="factory-stock" className="text-right">
+              Factory Stock
+            </Label>
+            <div className="col-span-3 font-medium">
+              {loadingFactoryStock ? 'Loading...' : factoryStock !== null ? `${factoryStock} units` : 'N/A'}
             </div>
           </div>
           <div className="text-sm text-muted-foreground col-span-4 text-center">

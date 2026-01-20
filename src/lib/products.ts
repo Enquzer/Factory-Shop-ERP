@@ -28,6 +28,15 @@ export type Product = {
   description?: string;
   readyToDeliver?: number; // Add this field to match server-side implementation
   created_at?: string; // Add created_at field
+  
+  // Advanced Production Fields
+  piecesPerSet?: number; // e.g., 2 if product has top and bottom
+  sampleDevelopmentStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleQuotationStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleSizeSetStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleCounterStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleApprovedBy?: string;
+  sampleApprovedDate?: string;
 };
 
 // Client-side functions that call the API
@@ -107,10 +116,14 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
       ? `${baseUrl}/api/products`
       : '/api/products';
       
+    // Get the token from localStorage or cookies
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(product),
     });
@@ -170,10 +183,14 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       
     console.log('Update product URL:', url);
       
+    // Get the token from localStorage or cookies
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(product),
     });
@@ -208,8 +225,14 @@ export async function deleteProduct(id: string): Promise<boolean> {
       ? `${baseUrl}/api/products?id=${id}`
       : `/api/products?id=${id}`;
       
+    // Get the token from localStorage or cookies
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    
     const response = await fetch(url, {
       method: 'DELETE',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      }
     });
     
     return response.ok;
@@ -229,10 +252,14 @@ export async function updateVariantStock(variantId: string, newStock: number): P
       ? `${baseUrl}/api/products/variant/${variantId}`
       : `/api/products/variant/${variantId}`;
       
+    // Get the token from localStorage or cookies
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ newStock }),
     });
@@ -254,10 +281,14 @@ export async function updateVariantImage(variantId: string, imageUrl: string): P
       ? `${baseUrl}/api/products/variant/${variantId}/image`
       : `/api/products/variant/${variantId}/image`;
       
+    // Get the token from localStorage or cookies
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ imageUrl }),
     });

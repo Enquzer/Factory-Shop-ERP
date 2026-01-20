@@ -4,7 +4,7 @@ import { getDb, resetDbCache } from './db';
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'designer';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -19,7 +19,7 @@ export type AuthResult = {
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection'
 ): Promise<AuthResult> => {
   try {
     console.log('Registering user with data:', { username, role });
@@ -36,7 +36,7 @@ export const registerUser = async (
     const result = await db.run(`
       INSERT INTO users (username, password, role)
       VALUES (?, ?, ?)
-    `, username, hashedPassword, role);
+    `, [username, hashedPassword, role]);
     
     console.log('User inserted successfully, result:', result);
     
@@ -84,7 +84,7 @@ export const authenticateUser = async (
     // Find the user in the database
     const user = await db.get(`
       SELECT * FROM users WHERE username = ?
-    `, username);
+    `, [username]);
     
     if (!user) {
       return {
@@ -125,7 +125,7 @@ export const authenticateUser = async (
       user: {
         id: user.id,
         username: user.username,
-        role: user.role as 'factory' | 'shop',
+        role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer',
         profilePictureUrl: user.profilePictureUrl,
         createdAt: new Date(user.created_at)
       }
@@ -146,7 +146,7 @@ export const getUserById = async (id: number): Promise<User | undefined> => {
     
     const user = await db.get(`
       SELECT * FROM users WHERE id = ?
-    `, id);
+    `, [id]);
     
     if (!user) {
       return undefined;
@@ -155,7 +155,7 @@ export const getUserById = async (id: number): Promise<User | undefined> => {
     return {
       id: user.id,
       username: user.username,
-      role: user.role as 'factory' | 'shop',
+      role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer',
       profilePictureUrl: user.profilePictureUrl,
       createdAt: new Date(user.created_at)
     };
@@ -172,7 +172,7 @@ export const getUserByUsername = async (username: string): Promise<User | undefi
     
     const user = await db.get(`
       SELECT * FROM users WHERE username = ?
-    `, username);
+    `, [username]);
     
     if (!user) {
       return undefined;
@@ -181,7 +181,7 @@ export const getUserByUsername = async (username: string): Promise<User | undefi
     return {
       id: user.id,
       username: user.username,
-      role: user.role as 'factory' | 'shop',
+      role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer',
       profilePictureUrl: user.profilePictureUrl,
       createdAt: new Date(user.created_at)
     };
@@ -202,7 +202,7 @@ export const updateUserProfilePicture = async (
     // Update the user's profile picture URL
     const result = await db.run(`
       UPDATE users SET profilePictureUrl = ? WHERE id = ?
-    `, profilePictureUrl, userId);
+    `, [profilePictureUrl, userId]);
     
     // Reset the database cache to ensure subsequent queries get fresh data
     if (result.changes > 0) {
@@ -225,7 +225,7 @@ export const deleteUserByUsername = async (username: string): Promise<boolean> =
     // Delete the user from the database
     const result = await db.run(`
       DELETE FROM users WHERE username = ?
-    `, username);
+    `, [username]);
     
     const deleted = (result.changes || 0) > 0;
     if (deleted) {

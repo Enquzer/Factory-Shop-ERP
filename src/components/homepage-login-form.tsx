@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,36 +14,83 @@ export function HomepageLoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isAttemptingLogin, setIsAttemptingLogin] = useState(false);
   const router = useRouter();
-  const { login: factoryLogin, isLoggingIn } = useAuth();
+  const { login: factoryLogin, isLoggingIn, user: currentUser } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsAttemptingLogin(true);
 
     try {
-      // Try factory login first
-      const factoryResult = await factoryLogin(username, password);
+      // Try login with the auth context first (handles all users)
+      const result = await factoryLogin(username, password);
       
-      if (factoryResult.success) {
-        // Redirect to factory dashboard
-        router.push("/dashboard");
-        return;
+      if (!result.success) {
+        setError(result.message || "Invalid credentials");
+        setIsAttemptingLogin(false);
       }
-      
-      // If factory login fails, try shop login
-      const shopResult = await authenticateUser(username, password);
-      
-      if (shopResult.success && shopResult.user?.role === "shop") {
-        // Store user in localStorage for shop users as well
-        localStorage.setItem('user', JSON.stringify(shopResult.user));
-        // Redirect to shop dashboard
-        router.push("/shop/dashboard");
-      } else {
-        setError("Invalid credentials");
-      }
+      // If successful, we'll handle redirection in the useEffect below
     } catch (err) {
       setError("An error occurred during login");
+      setIsAttemptingLogin(false);
+    }
+  };
+  
+  // Effect to handle redirect after successful login
+  useEffect(() => {
+    if (isAttemptingLogin && currentUser) {
+      // Redirect based on user role
+      redirectToDashboard(currentUser.role);
+    }
+  }, [currentUser, isAttemptingLogin]);
+  
+  const redirectToDashboard = (role: string) => {
+    switch (role) {
+      case 'factory':
+        router.push("/dashboard");
+        break;
+      case 'shop':
+        router.push("/shop/dashboard");
+        break;
+      case 'store':
+        router.push("/store/dashboard");
+        break;
+      case 'finance':
+        router.push("/finance/dashboard");
+        break;
+      case 'packing':
+        router.push("/packing");
+        break;
+      case 'cutting':
+        router.push("/cutting");
+        break;
+      case 'sewing':
+        router.push("/sewing");
+        break;
+      case 'planning':
+        router.push("/order-planning");
+        break;
+      case 'marketing':
+        router.push("/marketing-orders");
+        break;
+      case 'quality_inspection':
+        router.push("/quality-inspection");
+        break;
+      case 'finishing':
+        // Assuming finishing might share a dashboard or has a different path if created later
+        router.push("/production-dashboard"); 
+        break;
+      case 'sample_maker':
+        router.push("/sample-management");
+        break;
+      case 'designer':
+        router.push("/designer");
+        break;
+      default:
+        router.push("/");
+        break;
     }
   };
 

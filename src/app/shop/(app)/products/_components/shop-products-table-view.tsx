@@ -2,14 +2,17 @@
 
 import { useState, useMemo } from "react";
 import Image from "next/image";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, Eye } from "lucide-react";
+import { Download, Eye, ShoppingCart } from "lucide-react";
 import { Product } from "@/lib/products";
 import { useToast } from "@/hooks/use-toast";
 import { generateColorScheme } from "@/lib/stock-distribution";
 import { DateRange } from "react-day-picker";
+import { BulkSelectionTable } from "@/components/bulk-selection-table";
+import { BulkActions } from "@/components/bulk-actions";
+import { useOrder } from "@/hooks/use-order";
+import { ProductVariant } from "@/lib/products";
 
 interface ShopProductsTableViewProps {
   products: Product[];
@@ -162,6 +165,130 @@ export function ShopProductsTableView({
     }, 1500);
   };
 
+  const { addItem } = useOrder(); // Use the order context to add items to cart
+
+  const handlePrint = (selectedIds: string[]) => {
+    // For printing, we can open a new window with selected product details
+    const selectedProducts = filteredProducts.filter(product => selectedIds.includes(product.id));
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      let printContent = `
+        <html>
+          <head>
+            <title>Selected Products</title>
+            <style>
+              body { font-family: Arial, sans-serif; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+            </style>
+          </head>
+          <body>
+            <h1>Selected Products (${selectedProducts.length})</h1>
+            <table>
+              <thead>
+                <tr>
+                  <th>Product Name</th>
+                  <th>Product Code</th>
+                  <th>Category</th>
+                  <th>Price</th>
+                  <th>Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+      
+      selectedProducts.forEach(product => {
+        const totalStock = calculateTotalStock(product);
+        printContent += `
+          <tr>
+            <td>${product.name}</td>
+            <td>${product.productCode}</td>
+            <td>${product.category}</td>
+            <td>ETB ${product.price.toFixed(2)}</td>
+            <td>${totalStock}</td>
+          </tr>
+        `;
+      });
+      
+      printContent += `
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `;
+      
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    }
+  };
+  
+  const handleBulkOrder = async (selectedIds: string[]) => {
+    // Get the selected products
+    const selectedProducts = filteredProducts.filter(product => selectedIds.includes(product.id));
+    
+    try {
+      // For each selected product, add the first available variant to the order
+      for (const product of selectedProducts) {
+        if (product.variants && product.variants.length > 0) {
+          const firstVariant = product.variants[0];
+          await addItem(product, firstVariant, 1); // Add 1 quantity of the first variant
+        }
+      }
+      
+      toast({
+        title: "Products Added to Order",
+        description: `${selectedProducts.length} product(s) added to your order.`,
+      });
+    } catch (error) {
+      console.error('Error adding products to order:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add products to order. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleBulkDelete = (selectedIds: string[]) => {
+    // For shop users, we don't typically delete products
+    alert(`Bulk delete requested for products: ${selectedIds.join(', ')}.
+
+Note: Shop users typically cannot delete products.`);
+  };
+
+  // OrderProductButton component
+  const OrderProductButton = ({ product }: { product: Product }) => {
+    
+    const handleOrderProduct = async () => {
+      // For now, add the first variant of the product to the order
+      if (product.variants && product.variants.length > 0) {
+        const firstVariant = product.variants[0];
+        await addItem(product, firstVariant, 1); // Add 1 quantity of the first variant
+      } else {
+        toast({
+          title: "No Variants Available",
+          description: `No variants available for ${product.name}.`,
+          variant: "destructive",
+        });
+      }
+    };
+    
+    return (
+      <Button 
+        variant="outline" 
+        size="sm"
+        onClick={handleOrderProduct}
+      >
+        <ShoppingCart className="h-4 w-4" />
+      </Button>
+    );
+  };
+
   if (filteredProducts.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -206,121 +333,139 @@ export function ShopProductsTableView({
       </div>
       
       <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Product Code</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>Total Stock Quantity</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead>Stock Distribution</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredProducts.map((product) => {
-              const totalStock = calculateTotalStock(product);
-              const createdDate = product.created_at ? new Date(product.created_at).toLocaleDateString() : 'N/A';
-              
-              return (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-3">
-                      <div className="relative w-12 h-12 rounded-md overflow-hidden">
-                        <Image 
-                          src={product.imageUrl || '/placeholder-product.png'} 
-                          alt={product.name} 
-                          fill
-                          className="object-cover"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = '/placeholder-product.png';
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <div>{product.name}</div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{product.productCode}</TableCell>
-                  <TableCell>{product.category}</TableCell>
-                  <TableCell>ETB {product.price.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={totalStock > 0 ? "secondary" : "destructive"}>
-                      {totalStock} in stock
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{createdDate}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {/* Color variant representation */}
-                      <div className="flex gap-1">
-                        {Array.from(new Set(product.variants.map(v => v.color)))
-                          .slice(0, 3)
-                          .map((color, index) => (
-                            <div key={index} className="relative">
-                              <div 
-                                className="w-6 h-6 rounded-full border border-gray-300"
-                                style={{ backgroundColor: getColorForName(color) }}
-                                title={color}
-                              />
-                              {/* Show image thumbnail if available */}
-                              {product.variants
-                                .filter(v => v.color === color && v.imageUrl)
-                                .slice(0, 1)
-                                .map((variant, vIndex) => (
-                                  <div 
-                                    key={vIndex} 
-                                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full border border-white"
-                                  >
-                                    <Image 
-                                      src={variant.imageUrl!} 
-                                      alt={color} 
-                                      width={16} 
-                                      height={16} 
-                                      className="rounded-full object-cover"
-                                    />
-                                  </div>
-                                ))
-                              }
-                            </div>
-                          ))
-                        }
-                        {Array.from(new Set(product.variants.map(v => v.color))).length > 3 && (
-                          <div className="w-6 h-6 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-xs">
-                            +{Array.from(new Set(product.variants.map(v => v.color))).length - 3}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => {
-                        // Use the onViewProduct callback if provided, otherwise show toast
-                        if (onViewProduct) {
-                          onViewProduct(product);
-                        } else {
-                          toast({
-                            title: "Product Details",
-                            description: `Viewing details for ${product.name}`,
-                          });
-                        }
+        <BulkSelectionTable
+          headers={[ 
+            { key: 'product', title: 'Product', mobileTitle: 'Product' },
+            { key: 'productCode', title: 'Product Code', mobileTitle: 'Code' },
+            { key: 'category', title: 'Category', mobileTitle: 'Category' },
+            { key: 'price', title: 'Price', mobileTitle: 'Price' },
+            { key: 'totalStock', title: 'Total Stock Quantity', mobileTitle: 'Stock' },
+            { key: 'createdDate', title: 'Created Date', mobileTitle: 'Date' },
+            { key: 'stockDistribution', title: 'Stock Distribution', mobileTitle: 'Distribution' },
+            { key: 'actions', title: 'Actions', mobileTitle: 'Actions', className: 'text-center' },
+          ]}
+          data={filteredProducts.map((product) => {
+            const totalStock = calculateTotalStock(product);
+            const createdDate = product.created_at ? new Date(product.created_at).toLocaleDateString() : 'N/A';
+            
+            return {
+              id: product.id,
+              product: (
+                <div className="flex items-center gap-3">
+                  <div className="relative w-12 h-12 rounded-md overflow-hidden">
+                    <Image 
+                      src={product.imageUrl || '/placeholder-product.png'} 
+                      alt={product.name} 
+                      fill
+                      className="object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = '/placeholder-product.png';
                       }}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    />
+                  </div>
+                  <div>
+                    <div>{product.name}</div>
+                  </div>
+                </div>
+              ),
+              productCode: (
+                <div>{product.productCode}</div>
+              ),
+              category: (
+                <div>{product.category}</div>
+              ),
+              price: (
+                <div>ETB {product.price.toFixed(2)}</div>
+              ),
+              totalStock: (
+                <div>
+                  <Badge variant={totalStock > 0 ? "secondary" : "destructive"}>
+                    {totalStock} in stock
+                  </Badge>
+                </div>
+              ),
+              createdDate: (
+                <div>{createdDate}</div>
+              ),
+              stockDistribution: (
+                <div className="flex items-center gap-2">
+                  {/* Color variant representation */}
+                  <div className="flex gap-1">
+                    {Array.from(new Set(product.variants.map(v => v.color)))
+                      .slice(0, 3)
+                      .map((color, index) => (
+                        <div key={index} className="relative">
+                          <div 
+                            className="w-6 h-6 rounded-full border border-gray-300"
+                            style={{ backgroundColor: getColorForName(color) }}
+                            title={color}
+                          />
+                          {/* Show image thumbnail if available */}
+                          {product.variants
+                            .filter(v => v.color === color && v.imageUrl)
+                            .slice(0, 1)
+                            .map((variant, vIndex) => (
+                              <div 
+                                key={vIndex} 
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full border border-white"
+                              >
+                                <Image 
+                                  src={variant.imageUrl!} 
+                                  alt={color} 
+                                  width={16} 
+                                  height={16} 
+                                  className="rounded-full object-cover"
+                                />
+                              </div>
+                            ))
+                          }
+                        </div>
+                      ))
+                    }
+                    {Array.from(new Set(product.variants.map(v => v.color))).length > 3 && (
+                      <div className="w-6 h-6 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-xs">
+                        +{Array.from(new Set(product.variants.map(v => v.color))).length - 3}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ),
+              actions: (
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      // Use the onViewProduct callback if provided, otherwise show toast
+                      if (onViewProduct) {
+                        onViewProduct(product);
+                      } else {
+                        toast({
+                          title: "Product Details",
+                          description: `Viewing details for ${product.name}`,
+                        });
+                      }
+                    }}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <OrderProductButton product={product} />
+                </div>
+              ),
+            };
+          })}
+          idKey="id"
+          actions={
+            <BulkActions 
+              onPrint={handlePrint}
+              onOrder={handleBulkOrder}
+              printLabel="Print Selected"
+              orderLabel="Order Selected"
+              itemType="products"
+            />
+          }
+        />
       </div>
     </div>
   );
