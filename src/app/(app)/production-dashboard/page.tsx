@@ -234,7 +234,7 @@ export default function ProductionDashboardPage() {
                   <TableHead className="w-[100px]">Product</TableHead>
                   <TableHead>Order Details</TableHead>
                   <TableHead>Output Progress</TableHead>
-                  <TableHead>Quality Status</TableHead>
+                  <TableHead>QC Status (Current Stage)</TableHead>
                   <TableHead>Current Stage</TableHead>
                   <TableHead>Timeline</TableHead>
                   <TableHead className="text-right">Action</TableHead>
@@ -293,15 +293,35 @@ export default function ProductionDashboardPage() {
                            </div>
                         </TableCell>
                         <TableCell>
-                            <Badge variant="outline" className={cn(
-                               "text-[10px] font-bold uppercase",
-                               (order.qualityInspectionStatus === 'Passed' || order.qualityInspectionStatus === 'Approved') ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                               (order.qualityInspectionStatus === 'Failed' || order.qualityInspectionStatus === 'Rejected') ? "bg-red-50 text-red-700 border-red-200" :
-                               order.qualityInspectionStatus === 'Rework' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                               "bg-gray-50 text-gray-500 border-gray-200"
-                            )}>
-                              {order.qualityInspectionStatus || 'No Report'}
-                           </Badge>
+                          {(() => {
+                            const status = order.qualityInspectionStatus;
+                            const stage = order.qualityInspectionStage;
+                            const currentStatus = order.status;
+
+                            // Map order status to expected inspection stage
+                            let expectedStage = '';
+                            if (currentStatus === 'Sample Making') expectedStage = 'Sample';
+                            else if (currentStatus === 'Cutting') expectedStage = 'Inline-Cutting';
+                            else if (currentStatus === 'Sewing') expectedStage = 'Inline-Sewing';
+                            else if (['Finishing', 'Quality Inspection', 'Packing'].includes(currentStatus)) expectedStage = 'Final';
+
+                            const isMismatch = status && status !== 'Pending' && stage !== expectedStage;
+                            const displayStatus = isMismatch ? 'Pending' : (status || 'No Report');
+                            const displayStage = isMismatch ? expectedStage : (stage || '');
+
+                            return (
+                              <Badge variant="outline" className={cn(
+                                "text-[10px] font-bold uppercase",
+                                (displayStatus === 'Passed' || displayStatus === 'Approved') ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                (displayStatus === 'Failed' || displayStatus === 'Rejected') ? "bg-red-50 text-red-700 border-red-200" :
+                                (displayStatus === 'Rework' || displayStatus === 'Pending') ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                "bg-gray-50 text-gray-500 border-gray-200"
+                              )}>
+                                {displayStage && <span className="mr-1 opacity-70">[{displayStage}]</span>}
+                                {displayStatus}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                            <Badge variant="outline" className={cn(
@@ -316,13 +336,52 @@ export default function ProductionDashboardPage() {
                         </TableCell>
                         <TableCell>
                            <div className="flex flex-col text-xs space-y-1">
-                              <div className="flex items-center text-muted-foreground">
-                                 <Clock className="mr-1 h-3 w-3" />
-                                 {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'TBD'}
-                              </div>
-                              {order.priority && (
-                                <div className="text-primary font-bold">Priority: {order.priority}</div>
-                              )}
+                              {(() => {
+                                const status = order.status;
+                                let start = order.productionStartDate;
+                                let end = order.plannedDeliveryDate || order.dueDate;
+                                let label = 'Production';
+
+                                if (status === 'Cutting') {
+                                  start = order.cuttingStartDate;
+                                  end = order.cuttingFinishDate;
+                                  label = 'Cutting';
+                                } else if (status === 'Sewing') {
+                                  start = order.sewingStartDate;
+                                  end = order.sewingFinishDate;
+                                  label = 'Sewing';
+                                } else if (status === 'Packing' || status === 'Finishing') {
+                                  // Finishing dates might be missing in type, falling back or using packing if available
+                                  start = order.packingStartDate; 
+                                  end = order.packingFinishDate;
+                                  label = status === 'Finishing' ? 'Finish/Pack' : 'Packing';
+                                }
+
+                                // Fallback if stage specific dates are missing
+                                if (!start && !end) {
+                                   start = order.productionStartDate;
+                                   end = order.plannedDeliveryDate || order.dueDate;
+                                   label = 'Overall';
+                                }
+
+                                return (
+                                  <>
+                                    <div className="flex items-center text-muted-foreground font-medium" title={`${label} Timeline`}>
+                                       <Clock className="mr-1 h-3 w-3 text-primary/70" />
+                                       <span className="truncate max-w-[100px]">
+                                          {start ? new Date(start).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : 'TBD'} 
+                                          {' - '} 
+                                          {end ? new Date(end).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : 'TBD'}
+                                       </span>
+                                    </div>
+                                    {order.priority && (
+                                      <div className="text-[10px] text-primary font-bold bg-primary/5 px-1 rounded w-fit">
+                                        Priority: {order.priority}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                            </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -379,8 +438,13 @@ export default function ProductionDashboardPage() {
           onDelete={() => {}}
           onCancel={() => {}}
           onUpdateStatus={async (id, status) => {
+            const token = localStorage.getItem('authToken');
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             const res = await fetch(`/api/marketing-orders/${id}`, {
                 method: 'PUT',
+                headers,
                 body: JSON.stringify({ status })
             });
             if (res.ok) {

@@ -24,31 +24,10 @@ export async function GET(
     }
 
     // Include authentication check for shop users - they can only see their own orders
-    if (user.role === 'shop' && order.shopId !== user.id) { // Note: Assuming user.id corresponds to shop.id approx. logic need verification
-       // Actually user.id for shop is usually shopId or something similar. 
-       // But wait, the previous code checks username against shop table.
-       // Let's rely on the previous pattern: 
-       // "if (user.role === 'shop') { ... check shop permissions ... }"
-       // However, for single order view, if the order belongs to shop X, user must be from shop X.
-       // Since we might not have shopId in user object directly cleanly without lookup, 
-       // let's just allow it for now or check if order.shopName matches? 
-       // Better: In /api/orders, it checked: "user.username !== shop.username"
-       // We can assume if the user is a shop, they should only see their own orders.
-       
-       // For now, let's keep it simple: fetch the order, if user is shop, check if shopName matches user.username (or shop lookup)
-       // But we don't have easy shop lookup here without DB.
-       // Let's assume factory access is the priority for finance/reports.
+    if (user.role === 'shop' && order.shopId !== user.id.toString()) {
+       return NextResponse.json({ error: 'Unauthorized - You can only view your own orders' }, { status: 403 });
     }
     
-    // Allow factory users to see any order (which is what finance needs)
-    if (user.role === 'shop') {
-       // Ideally we should verify shop ownership here. 
-       // For this task, we are fixing Finance Reports (Factory View), so strictly checking factory role might be enough?
-       // But the file is in api/orders/[id], so it's shared.
-       // Let's just return the order for now, assuming the client won't link unauthorized shops to it.
-       // A robust check would require DB lookup.
-    }
-
     // Add cache control to prevent caching
     const response = NextResponse.json(order);
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

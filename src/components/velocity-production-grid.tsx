@@ -24,6 +24,8 @@ interface VelocityProductionGridProps {
   userRole: 'cutting' | 'sewing' | 'packing' | 'quality_inspection' | 'other';
   onSave: (updates: { id: string; quantity: number }[]) => void;
   isLoading?: boolean;
+  plannedOutputPerDay?: number;
+  componentName?: string;
 }
 
 export function VelocityProductionGrid({
@@ -35,7 +37,9 @@ export function VelocityProductionGrid({
   items,
   userRole,
   onSave,
-  isLoading = false
+  isLoading = false,
+  plannedOutputPerDay,
+  componentName
 }: VelocityProductionGridProps) {
   // State for all inputs
   const [inputs, setInputs] = useState<Record<string, number>>({});
@@ -188,8 +192,12 @@ export function VelocityProductionGrid({
 
   // Calculate average of last 3 entries for estimation
   const calculateAverageDailyRate = useCallback(() => {
-    // For simplicity, we'll calculate average of all items
-    // In a real implementation, you'd track historical data
+    // Priority 1: Use explicitly passed planned output per day from planning sheet
+    if (plannedOutputPerDay && plannedOutputPerDay > 0) {
+      return plannedOutputPerDay;
+    }
+
+    // Priority 2: Use historical entries if available
     const recentEntries = items.flatMap(item => 
       item.previousEntries?.slice(-3) || []
     ).slice(-3);
@@ -199,26 +207,24 @@ export function VelocityProductionGrid({
       return Math.round(avg);
     }
     
-    // If no historical data, estimate based on order timeline
-    // Assume production started and calculate reasonable daily rate
+    // Priority 3: Fallback to a rough estimate based on total quantity
     const totalToProduce = items.reduce((sum, item) => sum + item.plannedQuantity, 0);
     const producedSoFar = items.reduce((sum, item) => sum + (item.currentDepartmentTotal || 0), 0);
     
     if (producedSoFar > 0) {
-      // If some production has happened, use that as baseline
-      return Math.max(1, Math.round(producedSoFar / 3)); // Assume 3 days of production
+      return Math.max(1, Math.round(producedSoFar / 3)); 
     }
     
-    // If no production yet, estimate based on total quantity and timeline
-    // This is a rough estimate - in practice you'd want more sophisticated logic
-    return Math.max(10, Math.round(totalToProduce / 10)); // Assume 10-day production cycle as fallback
-  }, [items]);
+    return Math.max(10, Math.round(totalToProduce / 10));
+  }, [items, plannedOutputPerDay]);
 
   const estimatedDaysToFinish = useMemo(() => {
     const avgDailyRate = calculateAverageDailyRate();
-    if (avgDailyRate <= 0 || totalRemaining <= 0) return null;
+    if (!avgDailyRate || avgDailyRate <= 0 || totalRemaining <= 0) return null;
+    
+    // Use precise division for days
     const days = totalRemaining / avgDailyRate;
-    return Math.max(0.1, days); // Minimum 0.1 days to avoid showing 0
+    return Math.max(0.1, days);
   }, [totalRemaining, calculateAverageDailyRate]);
 
   // Handle tap-to-fill (long press simulation with right-click)
@@ -279,7 +285,10 @@ export function VelocityProductionGrid({
             )}
             <div>
               <div className="text-lg font-semibold">Order: {orderNumber}</div>
-              <div className="text-sm text-muted-foreground">Style: {styleCode} | Total Qty: {totalOrderQty.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground">
+                Style: {styleCode} | Total Qty: {totalOrderQty.toLocaleString()}
+                {componentName && <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md text-xs font-bold tracking-wide">COMP: {componentName}</span>}
+              </div>
             </div>
           </CardTitle>
         </CardHeader>
@@ -397,7 +406,7 @@ export function VelocityProductionGrid({
               className="w-full py-6 text-lg" 
               disabled={isLoading}
             >
-              {isLoading ? 'Saving...' : 'SAVE DATA'}
+              {isLoading ? 'Saving...' : 'FINISHED UPDATING STATUS'}
             </Button>
           </div>
         </CardContent>

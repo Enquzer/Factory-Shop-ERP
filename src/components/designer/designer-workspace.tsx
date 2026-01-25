@@ -12,6 +12,7 @@ import { GeneralTab } from '@/components/designer/general-tab';
 import { BomTab } from '@/components/designer/bom-tab';
 import { MeasurementsTab } from '@/components/designer/measurements-tab';
 import { TechPackTab } from '@/components/designer/techpack-tab';
+import { SpecificationTab } from '@/components/designer/specification-tab';
 import { useAuth } from '@/contexts/auth-context';
 import {
   Dialog,
@@ -311,7 +312,9 @@ export function DesignerWorkspace({ style, isNew = false }: DesignerWorkspacePro
             <TabsList className="bg-transparent border-b border-transparent w-full justify-start h-auto p-0 space-x-6">
               <TabTrigger value="general">General Info</TabTrigger>
               <TabTrigger value="bom" disabled={isNew}>Bill of Materials</TabTrigger>
-              <TabTrigger value="measurements" disabled={isNew}>Measurements & Tech Pack</TabTrigger>
+              <TabTrigger value="measurements" disabled={isNew}>Measurements</TabTrigger>
+              <TabTrigger value="finishing" disabled={isNew}>Finishing Specs</TabTrigger>
+              <TabTrigger value="labels" disabled={isNew}>Labels & Tags</TabTrigger>
               <TabTrigger value="techpack" disabled={isNew}>Export</TabTrigger>
             </TabsList>
           </div>
@@ -325,6 +328,30 @@ export function DesignerWorkspace({ style, isNew = false }: DesignerWorkspacePro
             </TabsContent>
             <TabsContent value="measurements" className="m-0 h-full">
                {!isNew && <MeasurementsTab styleId={style!.id} initialMeasurements={style!.measurements || []} initialCanvas={style!.canvas} />}
+            </TabsContent>
+            <TabsContent value="finishing" className="m-0 h-full">
+               {!isNew && (
+                <SpecificationTab 
+                    styleId={style!.id} 
+                    category="Finishing" 
+                    initialSpecs={style!.specifications?.filter(s => s.category === 'Finishing') || []}
+                    title="Finishing Specifications"
+                    description="Upload designs and instructions for Print, Embroidery, and Wash finishing."
+                    typeOptions={['Print', 'Embroidery', 'Wash', 'Dyeing', 'Other']}
+                />
+               )}
+            </TabsContent>
+            <TabsContent value="labels" className="m-0 h-full">
+                {!isNew && (
+                <SpecificationTab 
+                    styleId={style!.id} 
+                    category="Labels" 
+                    initialSpecs={style!.specifications?.filter(s => s.category === 'Labels') || []}
+                    title="Labels & Tags"
+                    description="Define specifications for main labels, care labels, hang tags, and price tags."
+                    typeOptions={['Main Label', 'Care Label', 'Size Label', 'Hang Tag', 'Price Tag', 'Barcode', 'Polybag', 'Other']}
+                />
+               )}
             </TabsContent>
             <TabsContent value="techpack" className="m-0 h-full">
                {!isNew && <TechPackTab style={style as Style} />}

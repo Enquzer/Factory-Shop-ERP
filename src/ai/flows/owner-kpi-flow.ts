@@ -8,7 +8,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 const OwnerKPIQAInputSchema = z.object({
   query: z.string().describe("The user's question about KPIs, business performance, or insights."),

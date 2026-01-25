@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { getShopInventory } from "@/lib/shop-inventory";
 import { ShopInventoryItem } from "@/lib/shop-inventory-sqlite";
 
 interface UseShopInventoryResult {
@@ -24,7 +23,16 @@ export function useShopInventory(shopId: string): UseShopInventoryResult {
     try {
       setLoading(true);
       setError(null);
-      const data = await getShopInventory(shopId);
+      
+      // Determine if shopId is a SHP-ID or username
+      const param = shopId.startsWith('SHP-') ? `shopId=${shopId}` : `username=${shopId}`;
+      const response = await fetch(`/api/shop-inventory?${param}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch inventory: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
       setInventory(data);
     } catch (err) {
       console.error("Error fetching shop inventory:", err);

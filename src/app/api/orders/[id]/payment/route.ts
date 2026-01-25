@@ -32,7 +32,7 @@ export async function PUT(
       UPDATE orders 
       SET status = ?, paymentSlipUrl = ?
       WHERE id = ?
-    `, 'Awaiting Payment', paymentSlipUrl, id);
+    `, 'Payment Slip Attached', paymentSlipUrl, id);
 
     // Get the updated order
     const order = await db.get(`
@@ -62,6 +62,27 @@ export async function PUT(
         });
       } catch (err) {
          console.error('Failed to notify finance:', err);
+      }
+
+      // NEW: Telegram Notification for Shop Channel
+      try {
+        const { sendShopOrderNotification } = await import('@/lib/telegram-shop-notifications');
+        const { generateOrderTelegramPDF } = await import('@/lib/shop-order-telegram-pdf');
+        
+        // Generate Updated PDF with Payment Info
+        const { pdfPath, summary } = await generateOrderTelegramPDF(id, 'payment_verified');
+        
+        await sendShopOrderNotification(
+          id,
+          order.shopId,
+          'payment_verified',
+          {
+            pdfPath,
+            caption: `📊 *Order Summary:*\n• Total Unique Styles: ${summary.uniqueStyles}\n• Total Quantity: ${summary.totalQuantity} pieces\n• Total Value: ${summary.totalValue.toLocaleString()} Birr\n\n📄 Status: Payment Slip Attached\nAwaiting Verification by Finance`
+          }
+        );
+      } catch (telegramError) {
+        console.error('Failed to send Shop Telegram notification for payment:', telegramError);
       }
     }
 

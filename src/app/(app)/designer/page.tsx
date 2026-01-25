@@ -91,7 +91,7 @@ function StyleCard({ style }: { style: Style }) {
   };
 
   return (
-    <Card className="group overflow-hidden border-slate-200 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+    <Card className="relative group overflow-hidden border-slate-200 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
       <div className="aspect-[4/3] bg-slate-100 relative overflow-hidden">
         {style.imageUrl ? (
           <img 

@@ -181,6 +181,52 @@ The system automatically tracks completion dates for each process stage:
     tags: ['orders', 'production', 'tracking']
   },
   {
+    id: 'factory-smart-planner',
+    title: 'Smart Distribution Planner Guide',
+    category: 'orders',
+    content: `
+## Smart Distribution Planner Guide
+
+The **Smart Distribution Planner** is a powerful AI-driven tool designed to optimize your production quantites based on historical network demand and current factory stock levels.
+
+### 🚀 Accessing the Planner:
+1. Open the **Create Marketing Order** dialog.
+2. Under the "Order Breakdown & Distribution" section, click **Smart Distribution Planner**.
+
+### 📊 Core Features:
+
+#### 1. Trend-Weighted Distribution (AI Mode)
+- **What it is**: Uses historical "Order Tendency" data from all retail shops to predict exactly which colors and sizes will sell best.
+- **How to use**: Toggle **"Trend Weighted"** in the sidebar. Instead of entering "Qty per Variant", you enter a **"Total Project Units"**. The system then automatically weights each variant based on historical shop demand.
+
+#### 2. Inventory Balancing
+- **What it is**: Cross-references your current **Factory Stock** with production targets.
+- **Benefits**: 
+  - Automatically scales back production for variants that are already overstocked.
+  - Increases production priority for best-sellers that are running low.
+- **How to use**: Enable **"Inventory Balancing"** while in Trend Weighted mode.
+
+#### 3. AI Placement Discovery
+- **What it is**: A proactive assistant that scans for missed opportunities.
+- **Best Seller Alerts**: If you've forgotten to add a historically high-performing color to your matrix, an **Orange Discovery Box** will appear recommending that you add it.
+
+#### 4. Master Matrix & Manual Adjustments
+- **Editable Grid**: You can manually click on any quantity in the "Master Matrix" to override the AI's calculation.
+- **Stock Visualization**: Current available stock levels for each SKU are visible inside the matrix cells for quick reference.
+- **Reset**: Use the "Reset to Calculated" button to clear all manual overrides and return to the AI's optimized plan.
+
+#### 5. Shop Prioritization
+- **Tier-Based Allocation**: Define "High Tier Shops" in the sidebar to ensure your most important retail locations receive their inventory first.
+- **Fair Distribution**: The system ensures all active shops get at least one "Pack" (defined by your Multiple) before over-allocating to others.
+
+### 💡 Pro Tips:
+- **Min Coverage**: Check the "Min Coverage" indicator to see the absolute minimum pieces required to give every active shop at least one pack.
+- **Shop Breakdown Tab**: Use this view to see exactly how a single color-size variant is being split across every retail shop in your network.
+    `,
+    roles: ['factory'],
+    tags: ['planner', 'distribution', 'ai', 'inventory', 'analytics']
+  },
+  {
     id: 'factory-production-tracking',
     title: 'Production Tracking and Reporting',
     category: 'reports',

@@ -19,7 +19,7 @@ export const GET = withRoleAuth(async (request: Request) => {
 
     const db = await getDb();
     
-    let query = `SELECT id, username, role, profilePictureUrl, created_at as createdAt FROM users`;
+    let query = `SELECT id, username, role, profilePictureUrl, resetRequestPending, tempPasswordDisplay, created_at as createdAt FROM users`;
     const params: any[] = [];
 
     if (roleFilter) {

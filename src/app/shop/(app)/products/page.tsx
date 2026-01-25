@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { ShopProductsTableView } from "./_components/shop-products-table-view";
 import { DateRange } from "react-day-picker";
+import { useAuth } from "@/contexts/auth-context";
+import { ShopProductCard } from "./_components/shop-product-card";
 
 export default function ShopProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -30,6 +32,22 @@ export default function ShopProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [shopSettings, setShopSettings] = useState<{ showVariantDetails: boolean } | null>(null);
+
+  // Fetch shop settings
+  useEffect(() => {
+    if (user && user.role === 'shop') {
+        fetch(`/api/shops?username=${user.username}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data && typeof data.showVariantDetails !== 'undefined') {
+                setShopSettings({ showVariantDetails: !!data.showVariantDetails });
+            }
+        })
+        .catch(err => console.error("Error fetching shop settings:", err));
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchProducts();
@@ -246,37 +264,12 @@ export default function ShopProductsPage() {
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map((product) => (
-            <Card 
+            <ShopProductCard 
               key={product.id} 
-              className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+              product={product}
+              shopSettings={shopSettings}
               onClick={() => handleProductClick(product)}
-            >
-              <div className="relative h-48">
-                <Image
-                  src={product.imageUrl || '/placeholder-product.png'}
-                  alt={product.name}
-                  fill
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  style={{ objectFit: 'cover' }}
-                />
-              </div>
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-semibold text-lg truncate">{product.name}</h3>
-                    <p className="text-sm text-muted-foreground">{product.productCode}</p>
-                  </div>
-                  <span className="font-bold text-lg">ETB {product.price.toFixed(2)}</span>
-                </div>
-                <div className="mt-2 flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">{product.category}</span>
-                  <div className="flex items-center text-sm text-muted-foreground">
-                    <Package className="h-4 w-4 mr-1" />
-                    {calculateTotalStock(product)}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            />
           ))}
         </div>
       ) : (

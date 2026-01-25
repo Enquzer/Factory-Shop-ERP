@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getOrdersFromDB, getOrdersForShop } from '@/lib/orders';
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
 import { authenticateRequest, isFactoryUser } from '@/lib/auth-middleware';
-import { NextRequest } from 'next/server';
+import { sendShopOrderNotification } from '@/lib/telegram-shop-notifications';
+import { generateOrderPlacementPDF } from '@/lib/shop-order-telegram-pdf';
 
 // GET /api/orders - Get all orders
 export async function GET(request: NextRequest) {
@@ -123,16 +124,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate order ID
-    const orderId = `ORD-${Date.now()}`;
+    // Generate descriptive order ID
+    // Format: ShopName_MonthDate_OrderSeq#
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthDate = `${monthNames[now.getMonth()]}${now.getDate()}`;
+    const shopNameClean = orderData.shopName.replace(/[^a-zA-Z0-9]/g, '');
+    
+    // Get sequence number for this shop
+    const sequenceResult = await db.get('SELECT COUNT(*) as count FROM orders WHERE shopId = ?', [orderData.shopId]);
+    const nextSequence = (sequenceResult?.count || 0) + 1;
+    
+    const orderId = `${shopNameClean}_${monthDate}_Order${nextSequence}`;
 
     // Prepare order data
     const newOrderData = {
       ...orderData,
       id: orderId,
       status: 'Pending',
-      date: new Date().toISOString().split('T')[0],
-      createdAt: new Date(),
+      date: now.toISOString().split('T')[0],
+      createdAt: now,
       items: orderData.items,
       // Initialize delivery performance tracking fields
       requestedDeliveryDate: orderData.requestedDeliveryDate || null,
@@ -197,6 +208,26 @@ export async function POST(request: NextRequest) {
       console.log('Finance notification created for order:', orderId);
     } catch (notificationError) {
       console.error('Failed to create finance notification:', notificationError);
+    }
+
+    // NEW: Telegram Notification for Shop Channel
+    try {
+      // Generate Order Placement PDF
+      const { pdfPath, summary } = await generateOrderPlacementPDF(orderId);
+      
+      // Send to Shop's dedicated Telegram Channel
+      await sendShopOrderNotification(
+        orderId,
+        newOrderData.shopId,
+        'order_placed',
+        {
+          pdfPath,
+          caption: `📊 *Order Summary:*\n• Total Unique Styles: ${summary.uniqueStyles}\n• Total Quantity: ${summary.totalQuantity} pieces\n• Total Value: ${summary.totalValue.toLocaleString()} Birr`
+        }
+      );
+      console.log('Shop Telegram notification sent for order:', orderId);
+    } catch (telegramError) {
+      console.error('Failed to send Shop Telegram notification:', telegramError);
     }
 
     return NextResponse.json(newOrderData);

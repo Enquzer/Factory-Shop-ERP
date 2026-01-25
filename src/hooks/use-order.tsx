@@ -290,22 +290,17 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   
     if (factoryStock >= quantity) {
       toast({
-        title: "Item Added",
-        description: `${product.name} added to your order. (Factory stock: ${factoryStock})`,
+        id: "order-update-success",
+        title: "Order Updated",
+        description: `${product.name} added to your order.`,
+        duration: 1500,
       });
     }
   };
 
   const removeItem = (variantId: string) => {
-    const itemToRemove = items.find((item) => item.variant.id === variantId);
-    if (itemToRemove) {
-      toast({
-      title: "Item Removed",
-      description: `${itemToRemove.name} removed from your order.`,
-    });
-  }
-  setItems((prevItems) => prevItems.filter((item) => item.variant.id !== variantId));
-};
+    setItems((prevItems) => prevItems.filter((item) => item.variant.id !== variantId));
+  };
 
   const updateQuantity = async (variantId: string, quantity: number) => {
     if (quantity < 1) {
@@ -322,23 +317,17 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     if (factoryStock < quantity) {
       toast({
         title: "Insufficient Factory Stock",
-        description: `Not enough stock for ${item.name} (${item.variant.color}, ${item.variant.size}). Available: ${factoryStock}, Requested: ${quantity}`,
+        description: `Not enough stock for ${item.name}. (Available: ${factoryStock})`,
         variant: "destructive",
       });
       return;
     }
-    
-    toast({
-      title: "Quantity Updated",
-      description: `Quantity for ${item.name} updated to ${quantity}. (Factory stock: ${factoryStock})`,
-    });
     
     setItems((prevItems) =>
       prevItems.map((item) =>
         item.variant.id === variantId ? { ...item, quantity: quantity } : item
       )
     );
-    return;
   };
 
   const clearOrder = () => {
@@ -599,8 +588,10 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       });
       
       toast({
+        id: "order-update-success",
         title: "Order Updated",
         description: `Added ${totalQuantity} units of ${product.name} to your order.`,
+        duration: 1500,
       });
     } catch (error) {
       console.error("Error adding simplified order:", error);

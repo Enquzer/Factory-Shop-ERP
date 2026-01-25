@@ -1,0 +1,64 @@
+
+═══════════════════════════════════════════════════════════════
+                    ORDER PLACEMENT CONFIRMATION
+═══════════════════════════════════════════════════════════════
+
+Order ID: ORD-1769270558887
+Order Sequence: #28
+Shop: Mexico Shop
+Contact: Mexico Manager
+Phone: +251913022020
+Location: Mexico, Debrework Tower, Addis Ababa
+
+Date: January 24, 2026 at 04:02 PM
+
+───────────────────────────────────────────────────────────────
+                         ORDER DETAILS
+───────────────────────────────────────────────────────────────
+
+
+1. ladies top
+   Product ID: PROD-1769008806707
+   Color: undefined
+   Size: undefined
+   Quantity: 7 pieces
+   Unit Price: 800 Birr
+   Subtotal: 5,600 Birr
+
+
+2. ladies top
+   Product ID: PROD-1769008806707
+   Color: undefined
+   Size: undefined
+   Quantity: 5 pieces
+   Unit Price: 800 Birr
+   Subtotal: 4,000 Birr
+
+
+───────────────────────────────────────────────────────────────
+                         ORDER SUMMARY
+───────────────────────────────────────────────────────────────
+
+Total Items: 2 products
+Total Quantity: 12 pieces
+Total Amount: 7,680 Birr
+
+Shop Discount: 0.2%
+Final Amount: 7,680 Birr
+
+Status: Pending
+
+───────────────────────────────────────────────────────────────
+                      NEXT STEPS
+───────────────────────────────────────────────────────────────
+
+1. Factory will review and verify your order
+2. You will receive payment instructions
+3. Upload payment slip after payment
+4. Order will be processed after payment verification
+
+═══════════════════════════════════════════════════════════════
+Generated: 1/24/2026, 7:02:38 PM
+Carement Fashion ERP System
+═══════════════════════════════════════════════════════════════
+  

@@ -87,6 +87,24 @@ export const initializeDatabase = async (database: any) => {
       console.log('profilePictureUrl column already exists or was added successfully');
     }
 
+    // Add resetRequestPending column to existing users table
+    try {
+      await database.exec(`
+        ALTER TABLE users ADD COLUMN resetRequestPending INTEGER DEFAULT 0
+      `);
+    } catch (error) {
+      console.log('resetRequestPending column already exists or was added successfully');
+    }
+
+    // Add tempPasswordDisplay column to existing users table
+    try {
+      await database.exec(`
+        ALTER TABLE users ADD COLUMN tempPasswordDisplay TEXT
+      `);
+    } catch (error) {
+      console.log('tempPasswordDisplay column already exists or was added successfully');
+    }
+
     // Create products table
     await database.exec(`
       CREATE TABLE IF NOT EXISTS products (
@@ -277,6 +295,36 @@ export const initializeDatabase = async (database: any) => {
       // Column might already exist, which is fine
       console.log('updated_at column already exists or was added successfully');
     }
+
+    // Add telegram_channel_id column to existing shops table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE shops ADD COLUMN telegram_channel_id TEXT
+      `);
+    } catch (error) {
+      // Column might already exist, which is fine
+      console.log('telegram_channel_id column already exists or was added successfully');
+    }
+
+    // Create shop telegram notifications log table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS shop_telegram_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        shopId TEXT NOT NULL,
+        channelId TEXT NOT NULL,
+        messageType TEXT NOT NULL,
+        messageId TEXT,
+        pdfUrl TEXT,
+        imageUrl TEXT,
+        status TEXT NOT NULL,
+        errorMessage TEXT,
+        sentAt DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (orderId) REFERENCES orders (id),
+        FOREIGN KEY (shopId) REFERENCES shops (id)
+      )
+    `);
 
     // Create shop inventory table
     await database.exec(`
@@ -510,9 +558,20 @@ export const initializeDatabase = async (database: any) => {
         finishingCompletionDate TEXT,
         qualityInspectionCompletionDate TEXT,
         packingCompletionDate TEXT,
-        deliveryCompletionDate TEXT
+        deliveryCompletionDate TEXT,
+        qualityInspectionStage TEXT,
+        inventoryAdded INTEGER DEFAULT 0
       )
     `);
+
+    // Add qualityInspectionStage column to existing marketing_orders table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE marketing_orders ADD COLUMN qualityInspectionStage TEXT
+      `);
+    } catch (error) {
+      // Column might already exist
+    }
 
     // Create marketing order items table for size/color breakdown
     await database.exec(`
@@ -525,6 +584,36 @@ export const initializeDatabase = async (database: any) => {
         FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
       )
     `);
+
+    // Create marketing order components table for multi-part styles planning
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS marketing_order_components (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        componentName TEXT NOT NULL,
+        smv REAL DEFAULT 0,
+        manpower INTEGER DEFAULT 0,
+        sewingOutputPerDay INTEGER DEFAULT 0,
+        operationDays INTEGER DEFAULT 0,
+        efficiency REAL DEFAULT 70.0,
+        sewingStartDate TEXT,
+        sewingFinishDate TEXT,
+        cuttingStartDate TEXT,
+        cuttingFinishDate TEXT,
+        packingStartDate TEXT,
+        packingFinishDate TEXT,
+        FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Add efficiency column to existing marketing_order_components table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE marketing_order_components ADD COLUMN efficiency REAL DEFAULT 70.0
+      `);
+    } catch (error) {
+      // Column might already exist
+    }
 
     // Add new columns to existing marketing_orders table if they don't exist
     try {
@@ -605,6 +694,16 @@ export const initializeDatabase = async (database: any) => {
     } catch (error) {
       // Column might already exist, which is fine
       console.log('processStage column already exists or was added successfully');
+    }
+
+    // Add componentName column to existing daily_production_status table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE daily_production_status ADD COLUMN componentName TEXT
+      `);
+    } catch (error) {
+      // Column might already exist, which is fine
+      console.log('componentName column already exists or was added successfully');
     }
 
     // Add process completion date columns to existing marketing_orders table if they don't exist
@@ -776,6 +875,29 @@ export const initializeDatabase = async (database: any) => {
       `);
     } catch (error) {}
 
+    // Add missing status and completion date columns
+    const columns = [
+      'sewingStatus', 'finishingStatus', 'qualityInspectionStatus', 'packingStatus', 'deliveryStatus',
+      'planningCompletionDate', 'sampleCompletionDate', 'cuttingCompletionDate', 'sewingCompletionDate', 
+      'finishingCompletionDate', 'qualityInspectionCompletionDate', 'packingCompletionDate', 'deliveryCompletionDate',
+      'isPlanningApproved', 'piecesPerSet', 'orderPlacementDate', 'plannedDeliveryDate'
+    ];
+
+    for (const column of columns) {
+      try {
+        const type = column.includes('isPlanningApproved') || column.includes('piecesPerSet') || column.includes('inventoryAdded') ? 'INTEGER' : 
+                     column.includes('efficiency') ? 'REAL' : 'TEXT';
+        await database.exec(`ALTER TABLE marketing_orders ADD COLUMN ${column} ${type}`);
+      } catch (e) {
+        // Already exists
+      }
+    }
+    
+    // Explicitly add inventoryAdded if not in the list or if list logic fails
+    try {
+        await database.exec(`ALTER TABLE marketing_orders ADD COLUMN inventoryAdded INTEGER DEFAULT 0`);
+    } catch (e) {}
+
     // Create styles table
     await database.exec(`
       CREATE TABLE IF NOT EXISTS styles (
@@ -791,8 +913,32 @@ export const initializeDatabase = async (database: any) => {
         description TEXT,
         sampleApproved INTEGER DEFAULT 0,
         sampleApprovedDate TEXT,
+        components TEXT, -- JSON string for component list: [{name: 'Jacket', ratio: 1}, ...]
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    try {
+        await database.exec(`ALTER TABLE styles ADD COLUMN components TEXT`);
+    } catch (e) {}
+    
+    try {
+        await database.exec(`ALTER TABLE products ADD COLUMN components TEXT`);
+    } catch (e) {}
+
+    // Create production ledger for component-level tracking
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS production_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        componentName TEXT NOT NULL,
+        processType TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        userId TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        notes TEXT,
+        FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
       )
     `);
 
@@ -853,6 +999,22 @@ export const initializeDatabase = async (database: any) => {
       )
     `);
 
+    // Create style specifications table (Finishing & Labels)
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS style_specifications (
+        id TEXT PRIMARY KEY,
+        styleId TEXT NOT NULL,
+        category TEXT NOT NULL, -- 'Finishing' or 'Labels'
+        type TEXT NOT NULL, -- e.g. 'Print', 'Wash', 'Embroidery', 'Main Label', 'Hang Tag'
+        description TEXT,
+        imageUrl TEXT,
+        comments TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (styleId) REFERENCES styles (id) ON DELETE CASCADE
+      )
+    `);
+
     // Create operation bulletins table
     await database.exec(`
       CREATE TABLE IF NOT EXISTS operation_bulletins (
@@ -861,6 +1023,7 @@ export const initializeDatabase = async (database: any) => {
         productCode TEXT,
         sequence INTEGER NOT NULL,
         operationName TEXT NOT NULL,
+        componentName TEXT,
         machineType TEXT NOT NULL,
         smv REAL NOT NULL,
         manpower INTEGER NOT NULL,
@@ -874,6 +1037,30 @@ export const initializeDatabase = async (database: any) => {
         ALTER TABLE products ADD COLUMN piecesPerSet INTEGER DEFAULT 1
       `);
     } catch (error) {}
+
+    // Add notes column to production_ledger
+    try {
+      await database.exec(`ALTER TABLE production_ledger ADD COLUMN notes TEXT`);
+    } catch (error) {}
+
+    // Add componentName column to operation_bulletins
+    try {
+      await database.exec(`ALTER TABLE operation_bulletins ADD COLUMN componentName TEXT`);
+    } catch (error) {}
+
+    // Create store handovers table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS store_handovers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        status TEXT DEFAULT 'Pending', -- 'Pending', 'Received'
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        received_at DATETIME,
+        receivedBy TEXT,
+        FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
+      )
+    `);
 
     // Create factory profile table
     await database.exec(`
@@ -1119,6 +1306,92 @@ export const initializeDatabase = async (database: any) => {
       )
     `);
 
+    // Create raw materials table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS raw_materials (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        unitOfMeasure TEXT NOT NULL,
+        currentBalance REAL DEFAULT 0,
+        minimumStockLevel REAL DEFAULT 0,
+        costPerUnit REAL DEFAULT 0,
+        supplier TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create product BOM table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS product_bom (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        productId TEXT NOT NULL,
+        materialId TEXT NOT NULL,
+        quantityPerUnit REAL NOT NULL,
+        wastagePercentage REAL DEFAULT 0,
+        FOREIGN KEY (productId) REFERENCES products (id) ON DELETE CASCADE,
+        FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create purchase requests table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS purchase_requests (
+        id TEXT PRIMARY KEY,
+        materialId TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        reason TEXT,
+        status TEXT DEFAULT 'Pending',
+        requesterId TEXT,
+        requestedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+        approvedDate DATETIME,
+        orderedDate DATETIME,
+        receivedDate DATETIME,
+        FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create material requisitions table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS material_requisitions (
+        id TEXT PRIMARY KEY,
+        orderId TEXT NOT NULL,
+        materialId TEXT NOT NULL,
+        quantityRequested REAL NOT NULL,
+        quantityIssued REAL DEFAULT 0,
+        status TEXT DEFAULT 'Pending',
+        requestedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+        issuedDate DATETIME,
+        FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE,
+        FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create production ledger (activity log) table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS production_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        userId INTEGER,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Add componentCount to products table
+    try {
+      await database.exec(`
+        ALTER TABLE products ADD COLUMN componentCount INTEGER DEFAULT 1
+      `);
+    } catch (error) {
+      console.log('componentCount column already exists or was added successfully');
+    }
+
     // Create default factory user if it doesn't exist
     try {
       const bcrypt = require('bcryptjs');
@@ -1190,6 +1463,90 @@ export const initializeDatabase = async (database: any) => {
         console.error(`Error creating default ${team.username} user:`, error);
       }
     }
+
+    // Add mainCategory and subCategory columns to products
+    try {
+      await database.exec(`ALTER TABLE products ADD COLUMN mainCategory TEXT`);
+    } catch (error) {}
+    try {
+      await database.exec(`ALTER TABLE products ADD COLUMN subCategory TEXT`);
+    } catch (error) {}
+
+    // Add mainCategory and subCategory columns to styles
+    try {
+      await database.exec(`ALTER TABLE styles ADD COLUMN mainCategory TEXT`);
+    } catch (error) {}
+    try {
+      await database.exec(`ALTER TABLE styles ADD COLUMN subCategory TEXT`);
+    } catch (error) {}
+
+    // Create main categories table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS main_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        code TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create product categories table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS product_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        code TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Seed default main categories
+    const mainCategories = [
+      { name: 'Men', code: 'CM' },
+      { name: 'Women', code: 'CW' },
+      { name: 'Ladies', code: 'CL' },
+      { name: 'Kids', code: 'CK' },
+      { name: 'Unisex', code: 'CU' },
+      { name: 'Luxury', code: 'LX' }
+    ];
+
+    for (const cat of mainCategories) {
+      await database.run(`
+        INSERT OR IGNORE INTO main_categories (name, code)
+        VALUES (?, ?)
+      `, [cat.name, cat.code]);
+    }
+
+    // Seed default product categories
+    const productCategories = [
+      { name: 'Dress', code: 'DR' },
+      { name: 'Tops', code: 'TP' },
+      { name: 'Tops & Bottoms', code: 'TB' },
+      { name: 'Underwear', code: 'UN' },
+      { name: 'Sportwear', code: 'SP' },
+      { name: 'Newborn', code: 'NB' },
+      { name: 'Jackets', code: 'JK' },
+      { name: 'Pants', code: 'PN' },
+      { name: 'Tights', code: 'TH' },
+      { name: 'Pijama', code: 'PJ' }
+    ];
+
+    for (const cat of productCategories) {
+      await database.run(`
+        INSERT OR IGNORE INTO product_categories (name, code)
+        VALUES (?, ?)
+      `, [cat.name, cat.code]);
+    }
+
+    // Create telegram_groups table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS telegram_groups (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        type TEXT,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
     console.log('Database initialized successfully');
   } catch (error) {

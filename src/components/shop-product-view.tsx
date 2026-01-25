@@ -88,7 +88,7 @@ export function ShopProductView({ shopId, onAddToOrder }: ShopProductViewProps) 
   });
 
   const handleAddToOrder = (product: any) => {
-    if (product.variants) {
+    if (shop?.showVariantDetails) {
       // Detailed view - shop can select specific variants
       setSelectedProduct(product);
     } else {
@@ -225,7 +225,7 @@ export function ShopProductView({ shopId, onAddToOrder }: ShopProductViewProps) 
                   </div>
                 </div>
                 
-                {product.variants ? (
+                {shop?.showVariantDetails ? (
                   // Detailed view with variants
                   <div className="space-y-2">
                     <div className="flex items-center text-sm">
@@ -257,7 +257,7 @@ export function ShopProductView({ shopId, onAddToOrder }: ShopProductViewProps) 
                     </div>
                   </div>
                 ) : (
-                  // Aggregated view
+                  // Aggregated view (Simplified) - BUT showing availability as read-only
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Total Available</span>
@@ -265,25 +265,43 @@ export function ShopProductView({ shopId, onAddToOrder }: ShopProductViewProps) 
                         {product.totalAvailable}
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Variants are hidden. AI will automatically distribute your order.
+                    
+                    {/* Read-only variant breakdown */}
+                    <div className="mt-2 border rounded-md p-2 bg-muted/20">
+                      <p className="text-xs font-medium mb-1 text-muted-foreground">Available Stock:</p>
+                      <div className="max-h-24 overflow-y-auto text-xs space-y-1">
+                        {product.variants.map((v: any) => (
+                          <div key={v.id} className="flex justify-between">
+                            <span>{v.color} - {v.size}</span>
+                            <span className={v.stock > 0 ? "text-green-600 font-medium" : "text-red-500"}>
+                              {v.stock}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Order in packs of 12. Variants are automatically distributed based on availability.
                     </p>
                   </div>
                 )}
                 
                 {/* Stock Distribution Chart Toggle */}
-                <div className="mt-4">
-                  <StockDistributionChart 
-                    product={product}
-                    shopInventory={shopInventory}
-                    viewType="shop"
-                  />
-                </div>
+                {shop?.showVariantDetails && (
+                  <div className="mt-4">
+                    <StockDistributionChart 
+                      product={product}
+                      shopInventory={shopInventory}
+                      viewType="shop"
+                    />
+                  </div>
+                )}
                 
                 <Button 
                   className="w-full mt-4" 
                   onClick={() => handleAddToOrder(product)}
-                  disabled={(product.variants ? product.variants.some((v: any) => v.stock > 0) : product.totalAvailable > 0) === false}
+                  disabled={shop?.showVariantDetails ? product.variants.some((v: any) => v.stock > 0) === false : product.totalAvailable <= 0}
                 >
                   Add to Order
                 </Button>

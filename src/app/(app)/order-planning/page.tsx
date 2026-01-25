@@ -33,13 +33,16 @@ import {
   Plus, 
   Trash2, 
   ChevronRight, 
-  GanttChart,
-  BarChart3,
-  Download,
-  MoreHorizontal,
-  Pencil,
-  Send,
-  AlertCircle
+  GanttChart, 
+  BarChart3, 
+  Download, 
+  MoreHorizontal, 
+  Pencil, 
+  Send, 
+  AlertCircle, 
+  Layers, 
+  Shirt, 
+  ChevronDown 
 } from "lucide-react";
 import { useAuth } from '@/contexts/auth-context';
 import { 
@@ -56,15 +59,36 @@ import { useToast } from '@/hooks/use-toast';
 import { generateProductionPlanningPDF, generateOrderPDF, downloadPDF } from '@/lib/pdf-generator';
 import html2canvas from 'html2canvas';
 
+import { cn } from "@/lib/utils";
+import { MaterialRequisitionsDialog } from '@/components/production/material-requisitions-dialog';
+import { MarketingOrderComponent, updateMarketingOrderComponent, initializeOrderComponents } from '@/lib/marketing-orders';
+
+interface PlanningRow extends MarketingOrder {
+  displayId: string;
+  isComponent: boolean;
+  mainOrderId?: string;
+  componentId?: number;
+  componentName?: string;
+  orderIndex: number;
+  componentIndex?: number;
+  isMock?: boolean;
+}
+
 export default function OrderPlanningPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<MarketingOrder | null>(null);
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
   const [obItems, setObItems] = useState<OperationBulletinItem[]>([]);
   const [isOBDialogOpen, setIsOBDialogOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  
+  // Requisition Dialog State
+  const [isReqDialogOpen, setIsReqDialogOpen] = useState(false);
+  const [reqOrderId, setReqOrderId] = useState<string | null>(null);
+  const [reqOrderNum, setReqOrderNum] = useState<string>('');
 
   // Interaction State for Gantt
   const [interactingOrder, setInteractingOrder] = useState<string | null>(null);
@@ -101,12 +125,31 @@ export default function OrderPlanningPage() {
     return Math.round((480 * mp * (efficiency / 100)) / smv);
   };
 
-  const handleUpdateOrder = async (orderId: string, updates: Partial<MarketingOrder>) => {
-    const order = orders.find(o => o.id === orderId);
+  const handleUpdatePlanning = async (id: string, updates: any, isComponent: boolean = false, mainOrderId?: string) => {
+    if (id.includes('-mock-')) {
+      toast({ title: "Initialize Required", description: "Please use the 'Initialize Components' button in the menu first.", variant: "destructive" });
+      return;
+    }
+
+    let order: any;
+    if (isComponent) {
+      const parent = orders.find(o => o.id === mainOrderId);
+      const comp = parent?.components?.find(c => c.id === parseInt(id.split('-').pop() || ''));
+      if (!comp) return;
+      order = { 
+        ...comp, 
+        quantity: parent?.quantity,
+        efficiency: comp.efficiency !== undefined ? comp.efficiency : (parent?.efficiency || 70)
+      };
+    } else {
+      order = orders.find(o => o.id === id);
+    }
+    
     if (!order) return;
 
     const merged = { ...order, ...updates };
     
+    // Auto-calculations
     if ('smv' in updates || 'manpower' in updates || 'efficiency' in updates) {
       merged.sewingOutputPerDay = getAutoOutput(merged.smv || 0, merged.manpower || 0, merged.efficiency || 70);
       updates.sewingOutputPerDay = merged.sewingOutputPerDay;
@@ -126,15 +169,125 @@ export default function OrderPlanningPage() {
        updates.sewingFinishDate = merged.sewingFinishDate;
     }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+    // Update Local State
+    if (isComponent && mainOrderId) {
+      setOrders(prev => prev.map(o => {
+        if (o.id === mainOrderId) {
+          return {
+            ...o,
+            components: o.components?.map(c => c.id === parseInt(id.split('-').pop() || '') ? { ...c, ...updates } : c)
+          };
+        }
+        return o;
+      }));
+    } else {
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, ...updates } : o));
+    }
 
+    // Persist to DB
     try {
-      const success = await updateMarketingOrder(orderId, updates);
+      let success = false;
+      if (isComponent && mainOrderId) {
+        success = await updateMarketingOrderComponent(mainOrderId, parseInt(id.split('-').pop() || ''), updates);
+      } else {
+        success = await updateMarketingOrder(id, updates);
+      }
+      
       if (!success) {
         toast({ title: "Error", description: "Storage error. Please refresh.", variant: "destructive" });
       }
     } catch (error) {
-      console.error('Error updating order:', error);
+      console.error('Error updating planning:', error);
+    }
+  };
+
+  // Helper alias for backward compatibility or simpler calls
+  const handleUpdateOrder = (id: string, updates: any) => handleUpdatePlanning(id, updates);
+
+  const expandedOrders = React.useMemo<PlanningRow[]>(() => {
+    return orders.flatMap((order, oIdx) => {
+      if (order.components && order.components.length > 0) {
+        return order.components.map((comp, cIdx) => ({
+          ...order,
+          displayId: `${order.id}-${comp.id}`,
+          mainOrderId: order.id,
+          componentId: comp.id,
+          componentName: comp.componentName,
+          orderIndex: oIdx,
+          componentIndex: cIdx,
+          // Use component specific planning data
+          smv: comp.smv || 0,
+          manpower: comp.manpower || 0,
+          sewingOutputPerDay: comp.sewingOutputPerDay || 0,
+          operationDays: comp.operationDays || 0,
+          efficiency: comp.efficiency !== undefined ? comp.efficiency : (order.efficiency || 70),
+          sewingStartDate: comp.sewingStartDate,
+          sewingFinishDate: comp.sewingFinishDate,
+          cuttingStartDate: comp.cuttingStartDate,
+          cuttingFinishDate: comp.cuttingFinishDate,
+          packingStartDate: comp.packingStartDate,
+          packingFinishDate: comp.packingFinishDate,
+          isComponent: true
+        } as PlanningRow));
+      }
+
+      // Auto-split if piecesPerSet > 1 OR style has components, but no components yet
+      const styleCompList = order.styleComponents ? JSON.parse(order.styleComponents) : [];
+      const hasStyleComponents = Array.isArray(styleCompList) && styleCompList.length > 0;
+      
+      if ((order.piecesPerSet && order.piecesPerSet > 1) || hasStyleComponents) {
+        const count = hasStyleComponents ? styleCompList.length : (order.piecesPerSet || 0);
+        return Array.from({ length: count }).map((_, cIdx) => ({
+          ...order,
+          displayId: `${order.id}-mock-${cIdx}`,
+          mainOrderId: order.id,
+          orderIndex: oIdx,
+          componentIndex: cIdx,
+          isComponent: true,
+          isMock: true,
+          componentName: hasStyleComponents 
+            ? styleCompList[cIdx].name 
+            : (order.piecesPerSet === 2 ? (cIdx === 0 ? 'Top' : 'Bottom') : `Part ${cIdx + 1}`),
+          smv: 0,
+          manpower: 0,
+          sewingOutputPerDay: 0,
+          operationDays: 0,
+          efficiency: order.efficiency || 70,
+        } as PlanningRow));
+     }
+
+      return [{ ...order, displayId: order.id, isComponent: false, orderIndex: oIdx } as PlanningRow];
+    });
+  }, [orders]);
+
+  const handleInitializeComponents = async (order: MarketingOrder) => {
+    const styleCompList = order.styleComponents ? JSON.parse(order.styleComponents) : [];
+    const hasStyleComponents = Array.isArray(styleCompList) && styleCompList.length > 0;
+    
+    const names = hasStyleComponents 
+      ? styleCompList.map((c: any) => c.name)
+      : (order.piecesPerSet === 2 ? ['Top', 'Bottom'] : Array.from({length: order.piecesPerSet || 0}, (_, i) => `Part ${i+1}`));
+      
+    if (names.length === 0) {
+      toast({ title: "No Parts Defined", description: "This product doesn't have multiple parts defined in Style or Order.", variant: "destructive" });
+      return;
+    }
+    
+    if (!confirm(`Initialize ${names.length} components (${names.join(', ')}) for order ${order.orderNumber}?`)) return;
+    
+    setLoading(true);
+    try {
+      const success = await initializeOrderComponents(order.id, names);
+      if (success) {
+        toast({ title: "Success", description: "Components initialized for planning." });
+        fetchOrders();
+      } else {
+        toast({ title: "Error", description: "Failed to initialize components.", variant: "destructive" });
+      }
+    } catch (error) {
+       console.error(error);
+    } finally {
+       setLoading(false);
     }
   };
 
@@ -210,11 +363,11 @@ export default function OrderPlanningPage() {
     }
   };
 
-  const moveRow = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
+  const moveRow = (oIdx: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? oIdx - 1 : oIdx + 1;
     if (newIndex < 0 || newIndex >= orders.length) return;
     const newOrders = [...orders];
-    const item = newOrders.splice(index, 1)[0];
+    const item = newOrders.splice(oIdx, 1)[0];
     newOrders.splice(newIndex, 0, item);
     setOrders(newOrders);
     // Note: Re-sequencing is purely visual here unless we persist sequence field
@@ -275,8 +428,13 @@ export default function OrderPlanningPage() {
     };
   }, [interactingOrder, interactionType, orders, startX]);
 
-  const openOBDialog = async (order: MarketingOrder) => {
+  const openOBDialog = async (order: PlanningRow) => {
+    if (order.isMock) {
+      toast({ title: "Initialize First", description: "Initialize components before adding operation details.", variant: "destructive" });
+      return;
+    }
     setSelectedOrder(order);
+    setSelectedComponent(order.isComponent ? (order.componentName || null) : null);
     const items = await getOperationBulletin(order.id, order.productCode);
     setObItems(items);
     setIsOBDialogOpen(true);
@@ -285,24 +443,38 @@ export default function OrderPlanningPage() {
   const handleSaveOB = async () => {
     if (!selectedOrder) return;
     try {
-      // Calculate totals from breakdown
-      const totalSMV = obItems.reduce((acc, item) => acc + (item.smv || 0), 0);
-      const totalManpower = obItems.reduce((acc, item) => acc + (item.manpower || 0), 0);
+      // Calculate totals for the selected component (or total if none)
+      const componentItems = selectedComponent 
+        ? obItems.filter(i => i.componentName === selectedComponent)
+        : obItems;
+        
+      const totalSMV = componentItems.reduce((acc, item) => acc + (item.smv || 0), 0);
+      const totalManpower = componentItems.reduce((acc, item) => acc + (item.manpower || 0), 0);
       
       const success = await saveOperationBulletin(obItems, selectedOrder.id);
       
       if (success) {
-        // Update the order with calculated SMV and Manpower
-        await updateMarketingOrder(selectedOrder.id, {
-          smv: totalSMV,
-          manpower: totalManpower
-        });
-        
-        // Update local state to reflect changes instantly
-        handleUpdateOrder(selectedOrder.id, {
-          smv: totalSMV,
-          manpower: totalManpower
-        });
+        if (selectedComponent && selectedOrder.components) {
+          const comp = selectedOrder.components.find(c => c.componentName === selectedComponent);
+          if (comp && comp.id) {
+             const displayId = `${selectedOrder.id}-${comp.id}`;
+             await handleUpdatePlanning(displayId, {
+               smv: totalSMV,
+               manpower: totalManpower
+             }, true, selectedOrder.id);
+          }
+        } else {
+          // Update the main order with calculated SMV and Manpower
+          await updateMarketingOrder(selectedOrder.id, {
+            smv: totalSMV,
+            manpower: totalManpower
+          });
+          
+          handleUpdateOrder(selectedOrder.id, {
+            smv: totalSMV,
+            manpower: totalManpower
+          });
+        }
 
         toast({ title: "Success", description: "Operation bulletin saved and planning data updated." });
         setIsOBDialogOpen(false);
@@ -316,7 +488,14 @@ export default function OrderPlanningPage() {
 
   const addOBRow = () => {
     const nextSeq = obItems.length > 0 ? Math.max(...obItems.map(i => i.sequence)) + 1 : 1;
-    setObItems([...obItems, { sequence: nextSeq, operationName: '', machineType: '', smv: 0, manpower: 1 }]);
+    setObItems([...obItems, { 
+      sequence: nextSeq, 
+      operationName: '', 
+      machineType: '', 
+      smv: 0, 
+      manpower: 1,
+      componentName: selectedComponent || undefined
+    }]);
   };
 
   const removeOBRow = (index: number) => {
@@ -331,14 +510,14 @@ export default function OrderPlanningPage() {
 
   const ganttChartRef = useRef<HTMLDivElement>(null);
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (type: 'full' | 'cutting' | 'sewing' | 'packing' = 'full') => {
     setIsExporting(true);
-    toast({ title: "Preparing PDF", description: "Capturing planning data and charts..." });
+    toast({ title: `Preparing ${type.toUpperCase()} PDF`, description: "Capturing planning data..." });
 
     try {
-      // Capture the Gantt chart as an image
+      // Capture the Gantt chart as an image (only for full plan)
       let ganttImageData: string | undefined;
-      if (ganttChartRef.current) {
+      if (type === 'full' && ganttChartRef.current) {
         try {
           const canvas = await html2canvas(ganttChartRef.current, {
             scale: 2,
@@ -352,11 +531,24 @@ export default function OrderPlanningPage() {
         }
       }
 
+      // If Sewing Plan, fetch OB items for each expanded order
+      let obData: Record<string, any[]> | undefined;
+      if (type === 'sewing') {
+        obData = {};
+        for (const order of expandedOrders) {
+          // Identify order ID and optionally component name
+          const ob = await getOperationBulletin(order.id, order.componentName || undefined);
+          if (ob && ob.length > 0) {
+            obData[order.displayId] = ob;
+          }
+        }
+      }
+
       // Generate PDF using the established pattern
-      const pdfUrl = await generateProductionPlanningPDF(orders, ganttImageData);
-      downloadPDF(pdfUrl, `Production_Planning_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
+      const pdfUrl = await generateProductionPlanningPDF(expandedOrders, ganttImageData, type, obData);
+      downloadPDF(pdfUrl, `${type.charAt(0).toUpperCase() + type.slice(1)}_Planning_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
       
-      toast({ title: "Success", description: "Planning report exported successfully" });
+      toast({ title: "Success", description: `${type.charAt(0).toUpperCase() + type.slice(1)} report exported successfully` });
     } catch (error) {
       console.error('PDF Export Error:', error);
       toast({ title: "Export Failed", description: "Could not generate PDF report", variant: "destructive" });
@@ -379,15 +571,27 @@ export default function OrderPlanningPage() {
           <p className="text-muted-foreground">Automated sequencing and duration control.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
-            onClick={handleExportPDF} 
-            variant="outline" 
-            className="border-primary/20 hover:bg-primary/5 text-primary"
-            disabled={isExporting}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {isExporting ? 'Exporting...' : 'Export PDF'}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="border-primary/20 hover:bg-primary/5 text-primary"
+                disabled={isExporting}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {isExporting ? 'Exporting...' : 'Export PDF'}
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Report Type</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleExportPDF('full')}>Full Planning Report</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPDF('cutting')}>Cutting Plan PDF</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPDF('sewing')}>Sewing Plan & OB PDF</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPDF('packing')}>Packing Plan PDF</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button onClick={fetchOrders} variant="secondary" size="sm" className="h-[40px]">
             Refresh Data
           </Button>
@@ -407,6 +611,7 @@ export default function OrderPlanningPage() {
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead className="w-[80px]">SEQ</TableHead>
+                    <TableHead className="w-[60px]">IMAGE</TableHead>
                     <TableHead className="min-w-[120px]">ORDER NO / PRODUCT</TableHead>
                     <TableHead>PLACEMENT</TableHead>
                     <TableHead>DELIVERY</TableHead>
@@ -427,29 +632,79 @@ export default function OrderPlanningPage() {
                     <TableRow>
                       <TableCell colSpan={14} className="h-32 text-center text-xs">Loading production data...</TableCell>
                     </TableRow>
-                  ) : orders.map((order, idx) => (
-                    <TableRow key={order.id} className="hover:bg-primary/5 transition-colors group">
-                      <TableCell className="font-medium p-2">
+                  ) : expandedOrders.map((order, idx) => (
+                    <TableRow 
+                      key={order.displayId} 
+                      className={cn(
+                        "hover:bg-primary/5 transition-colors group", 
+                        order.isComponent && "bg-slate-50/50",
+                        order.isComponent && order.componentIndex !== 0 && "border-t-0"
+                      )}
+                    >
+                      <TableCell className="font-medium p-2 align-top">
                         <div className="flex items-center space-x-1">
-                          <span className="w-4 text-[10px]">{idx + 1}</span>
-                          <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity no-print">
-                            <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => moveRow(idx, 'up')} disabled={idx === 0}>
-                              <ChevronRight className="h-3 w-3 -rotate-90" />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => moveRow(idx, 'down')} disabled={idx === orders.length - 1}>
-                              <ChevronRight className="h-3 w-3 rotate-90" />
-                            </Button>
-                          </div>
+                          <span className="w-6 text-[10px] font-bold">
+                            {(!order.isComponent || order.componentIndex === 0) ? (
+                              <div className="flex items-center gap-1">
+                                <span>{order.orderIndex + 1}</span>
+                              </div>
+                            ) : null}
+                          </span>
+                          {(!order.isComponent || order.componentIndex === 0) && (
+                            <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity no-print">
+                              <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => moveRow(order.orderIndex, 'up')} disabled={order.orderIndex === 0}>
+                                <ChevronRight className="h-3 w-3 -rotate-90" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => moveRow(order.orderIndex, 'down')} disabled={order.orderIndex === orders.length - 1}>
+                                <ChevronRight className="h-3 w-3 rotate-90" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="p-2 align-top">
+                        {(!order.isComponent || order.componentIndex === 0) ? (
+                          <div className="h-10 w-10 rounded-md border bg-muted/30 flex items-center justify-center overflow-hidden shadow-sm">
+                            {order.imageUrl ? (
+                              <img src={order.imageUrl} alt={order.productCode} className="h-full w-full object-cover" />
+                            ) : (
+                              <Shirt className="h-5 w-5 text-muted-foreground/30" />
+                            )}
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="align-top">
                         <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-[10px]">{order.orderNumber}</span>
-                          <span className="text-[9px] text-muted-foreground">{order.productCode}</span>
-                          {order.isNewProduct && (
-                            <Badge variant="outline" className="w-fit text-[8px] h-4 px-1 border-blue-200 text-blue-600 bg-blue-50">
-                              New Product
-                            </Badge>
+                          <div className="flex items-center gap-2">
+                             {(!order.isComponent || order.componentIndex === 0) ? (
+                               <span className="font-semibold text-[10px]">{order.orderNumber}</span>
+                             ) : (
+                               <span className="text-[10px] text-muted-foreground/40 italic">-- same order --</span>
+                             )}
+                             {order.isComponent && (
+                               <Badge variant="secondary" className={cn("text-[8px] h-4 px-1 uppercase font-bold", order.isMock ? "bg-slate-200 text-slate-500" : "bg-amber-100 text-amber-700")}>
+                                 {order.componentName}
+                               </Badge>
+                             )}
+                          </div>
+                          {(!order.isComponent || order.componentIndex === 0) && (
+                            <>
+                              <span className="text-[9px] text-muted-foreground">{order.productCode}</span>
+                              {order.isNewProduct && (
+                                <Badge variant="outline" className="w-fit text-[8px] h-4 px-1 border-blue-200 text-blue-600 bg-blue-50">
+                                  New Product
+                                </Badge>
+                              )}
+                              {order.isMock && (
+                                <Button 
+                                  variant="link" 
+                                  className="h-4 p-0 text-[8px] text-blue-600 justify-start"
+                                  onClick={() => handleInitializeComponents(order)}
+                                >
+                                  Initialize {order.piecesPerSet} Parts
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </TableCell>
@@ -464,7 +719,7 @@ export default function OrderPlanningPage() {
                       </TableCell>
                       <TableCell className="text-[10px]">{order.plannedDeliveryDate}</TableCell>
                       <TableCell className="text-right font-semibold text-[10px]">{order.quantity}</TableCell>
-                      <TableCell className="text-right">
+                       <TableCell className="text-right">
                         <div className="flex flex-col gap-1 items-end">
                            <div className="flex items-center gap-1">
                              <span className="text-[8px] text-muted-foreground">S:</span>
@@ -473,7 +728,7 @@ export default function OrderPlanningPage() {
                                 step="0.01" 
                                 className="w-10 h-5 text-right text-[9px] p-0 border-none bg-transparent hover:bg-muted/20"
                                 value={order.smv || 0}
-                                onChange={(e) => handleUpdateOrder(order.id, { smv: parseFloat(e.target.value) })}
+                                onChange={(e) => handleUpdatePlanning(order.displayId, { smv: parseFloat(e.target.value) }, order.isComponent, order.mainOrderId)}
                               />
                            </div>
                            <div className="flex items-center gap-1">
@@ -482,8 +737,18 @@ export default function OrderPlanningPage() {
                                 type="number" 
                                 className="w-10 h-5 text-right text-[9px] p-0 border-none bg-transparent hover:bg-muted/20"
                                 value={order.manpower || 0}
-                                onChange={(e) => handleUpdateOrder(order.id, { manpower: parseInt(e.target.value) })}
+                                onChange={(e) => handleUpdatePlanning(order.displayId, { manpower: parseInt(e.target.value) }, order.isComponent, order.mainOrderId)}
                               />
+                           </div>
+                           <div className="flex items-center gap-1">
+                             <span className="text-[8px] text-muted-foreground">E:</span>
+                             <Input 
+                                type="number" 
+                                className="w-10 h-5 text-right text-[9px] p-0 border-none bg-transparent hover:bg-muted/20"
+                                value={order.efficiency || 0}
+                                onChange={(e) => handleUpdatePlanning(order.displayId, { efficiency: parseFloat(e.target.value) }, order.isComponent, order.mainOrderId)}
+                              />
+                              <span className="text-[8px] text-muted-foreground">%</span>
                            </div>
                         </div>
                       </TableCell>
@@ -501,14 +766,14 @@ export default function OrderPlanningPage() {
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
                               value={order.cuttingStartDate || ''}
-                              onChange={(e) => handleUpdateOrder(order.id, { cuttingStartDate: e.target.value })}
+                              onChange={(e) => handleUpdatePlanning(order.displayId, { cuttingStartDate: e.target.value }, order.isComponent, order.mainOrderId)}
                               placeholder="Start"
                            />
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
                               value={order.cuttingFinishDate || ''}
-                              onChange={(e) => handleUpdateOrder(order.id, { cuttingFinishDate: e.target.value })}
+                              onChange={(e) => handleUpdatePlanning(order.displayId, { cuttingFinishDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                          </div>
                       </TableCell>
@@ -520,7 +785,7 @@ export default function OrderPlanningPage() {
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
                               value={order.sewingStartDate || ''}
-                              onChange={(e) => handleUpdateOrder(order.id, { sewingStartDate: e.target.value })}
+                              onChange={(e) => handleUpdatePlanning(order.displayId, { sewingStartDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                            <div className="text-[8px] font-medium text-center text-green-700">
                              {order.sewingFinishDate || '-'}
@@ -535,13 +800,13 @@ export default function OrderPlanningPage() {
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
                               value={order.packingStartDate || ''}
-                              onChange={(e) => handleUpdateOrder(order.id, { packingStartDate: e.target.value })}
+                              onChange={(e) => handleUpdatePlanning(order.displayId, { packingStartDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
                               value={order.packingFinishDate || ''}
-                              onChange={(e) => handleUpdateOrder(order.id, { packingFinishDate: e.target.value })}
+                              onChange={(e) => handleUpdatePlanning(order.displayId, { packingFinishDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                          </div>
                       </TableCell>
@@ -573,12 +838,32 @@ export default function OrderPlanningPage() {
                                 Release to Production
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => {
+                                  setReqOrderId(order.id);
+                                  setReqOrderNum(order.orderNumber);
+                                  setIsReqDialogOpen(true);
+                                }}
+                              >
+                                <Layers className="mr-2 h-4 w-4" />
+                                Material Requisitions
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
                                 onClick={() => handleExportOrderPDF(order)}
                               >
                                 <Download className="mr-2 h-4 w-4" />
                                 Export PDF
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                               <DropdownMenuSeparator />
+                              {order.isMock && (
+                                <DropdownMenuItem
+                                  onClick={() => handleInitializeComponents(order)}
+                                  className="text-blue-600 font-semibold"
+                                >
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Initialize Components
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => handleDeleteOrder(order.id)}
                                 className="text-destructive focus:text-destructive"
@@ -633,47 +918,48 @@ export default function OrderPlanningPage() {
                       ))}
                     </div>
 
-                    {orders.map((order, idx) => {
-                      const sewingStartStr = order.sewingStartDate;
-                      const duration = Math.max(1, order.operationDays || 1);
-                      const day = sewingStartStr ? new Date(sewingStartStr).getDate() : null;
-                      const colorHue = 210 + (idx * 40) % 150;
+                     {expandedOrders.map((order, idx) => {
+                       const sewingStartStr = order.sewingStartDate;
+                       const duration = Math.max(1, order.operationDays || 1);
+                       const day = sewingStartStr ? new Date(sewingStartStr).getDate() : null;
+                       const colorHue = 210 + (idx * 40) % 150;
 
-                      return (
-                        <div key={order.id} className="flex h-10 group/gantt relative hover:bg-muted/5 transition-colors z-10">
-                          <div className="w-[180px] shrink-0 sticky left-0 bg-background/80 backdrop-blur-md z-20 border-r px-4 flex items-center text-[9px] truncate font-medium group-hover/gantt:text-primary transition-colors">
-                            {order.orderNumber}
-                          </div>
-                          <div className="flex-1 flex gap-0 relative">
-                            <div className="w-[1100px] h-full" /> 
-
-                            {day !== null && (
-                              <div 
-                                className={`absolute h-7 top-1.5 cursor-move flex items-center px-2 text-[9px] truncate rounded shadow-sm transition-all group-hover/gantt:shadow-md ${interactingOrder === order.id ? 'ring-2 ring-primary ring-offset-1 z-30 scale-[1.01]' : 'z-10'}`}
-                                style={{ 
-                                  left: `${(day - 1) * 35 + 4}px`, 
-                                  width: `${duration * 35}px`,
-                                  backgroundColor: `hsla(${colorHue}, 70%, 50%, 0.15)`,
-                                  borderLeft: `3px solid hsla(${colorHue}, 70%, 50%, 0.8)`,
-                                  color: `hsla(${colorHue}, 70%, 30%, 1)`
-                                }}
-                                onMouseDown={(e) => onInteractionStart(e, order, 'move')}
-                              >
-                                <span className="font-bold flex-1 truncate">{duration}d - {order.productCode}</span>
-                                
-                                <div 
-                                  className="absolute right-0 top-0 w-2 h-full cursor-ew-resize hover:bg-black/10 transition-colors rounded-r no-print"
-                                  onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                    onInteractionStart(e, order, 'resize');
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                       return (
+                         <div key={order.displayId} className="flex h-10 group/gantt relative hover:bg-muted/5 transition-colors z-10">
+                           <div className="w-[180px] shrink-0 sticky left-0 bg-background/80 backdrop-blur-md z-20 border-r px-4 flex items-center text-[9px] truncate font-medium group-hover/gantt:text-primary transition-colors gap-1">
+                             <span className="truncate flex-1">{order.orderNumber}</span>
+                             {order.isComponent && <Badge className="text-[6px] p-0.5 px-1 h-3 bg-amber-50 text-amber-600 border-amber-200">{order.componentName}</Badge>}
+                           </div>
+                           <div className="flex-1 flex gap-0 relative">
+                             <div className="w-[1100px] h-full" /> 
+ 
+                             {day !== null && (
+                               <div 
+                                 className={`absolute h-7 top-1.5 cursor-move flex items-center px-2 text-[9px] truncate rounded shadow-sm transition-all group-hover/gantt:shadow-md ${interactingOrder === order.displayId ? 'ring-2 ring-primary ring-offset-1 z-30 scale-[1.01]' : 'z-10'}`}
+                                 style={{ 
+                                   left: `${(day - 1) * 35 + 4}px`, 
+                                   width: `${duration * 35}px`,
+                                   backgroundColor: `hsla(${colorHue}, 70%, 50%, 0.15)`,
+                                   borderLeft: `3px solid hsla(${colorHue}, 70%, 50%, 0.8)`,
+                                   color: `hsla(${colorHue}, 70%, 30%, 1)`
+                                 }}
+                                 onMouseDown={(e) => onInteractionStart(e, order as any, 'move')}
+                               >
+                                 <span className="font-bold flex-1 truncate">{duration}d - {order.isComponent ? order.componentName : order.productCode}</span>
+                                 
+                                 <div 
+                                   className="absolute right-0 top-0 w-2 h-full cursor-ew-resize hover:bg-black/10 transition-colors rounded-r no-print"
+                                   onMouseDown={(e) => {
+                                     e.stopPropagation();
+                                     onInteractionStart(e, order as any, 'resize');
+                                   }}
+                                 />
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       );
+                     })}
                   </div>
                 </div>
               </div>
@@ -685,9 +971,15 @@ export default function OrderPlanningPage() {
       <Dialog open={isOBDialogOpen} onOpenChange={setIsOBDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col p-0 glass-morphism border-none shadow-2xl">
           <DialogHeader className="p-6 pb-2 bg-primary/5 border-b">
-            <DialogTitle className="flex items-center text-xl">
-              Operation Bulletin - {selectedOrder?.productCode}
-              <Badge className="ml-4 bg-primary/20 text-primary border-none">{selectedOrder?.productName}</Badge>
+            <DialogTitle className="flex items-center text-xl justify-between w-full pr-8">
+              <div className="flex items-center">
+                OB - {selectedOrder?.productName}
+                {selectedComponent && <Badge className="ml-4 bg-amber-100 text-amber-700 border-amber-200">{selectedComponent}</Badge>}
+              </div>
+              <div className="text-xs font-normal text-muted-foreground flex gap-4">
+                 <span>Code: {selectedOrder?.productCode}</span>
+                 {selectedOrder?.orderNumber && <span>Order: {selectedOrder.orderNumber}</span>}
+              </div>
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -695,6 +987,7 @@ export default function OrderPlanningPage() {
               <TableHeader className="bg-muted/50">
                 <TableRow>
                   <TableHead className="w-[80px]">Seq</TableHead>
+                  <TableHead>Component</TableHead>
                   <TableHead>Operation Name</TableHead>
                   <TableHead>Machine Type</TableHead>
                   <TableHead className="text-right">SMV</TableHead>
@@ -703,56 +996,83 @@ export default function OrderPlanningPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {obItems.map((item, index) => (
-                  <TableRow key={index} className="group hover:bg-primary/5 transition-colors">
-                    <TableCell>
-                      <Input 
-                        type="number" 
-                        value={item.sequence} 
-                        onChange={(e) => updateOBItem(index, 'sequence', parseInt(e.target.value))}
-                        className="h-8 text-center text-xs"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input 
-                        value={item.operationName} 
-                        placeholder="e.g. Front Pocket Join"
-                        onChange={(e) => updateOBItem(index, 'operationName', e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input 
-                        value={item.machineType} 
-                        placeholder="SNLS / Overlock"
-                        onChange={(e) => updateOBItem(index, 'machineType', e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input 
-                        type="number" 
-                        step="0.01"
-                        value={item.smv} 
-                        onChange={(e) => updateOBItem(index, 'smv', parseFloat(e.target.value))}
-                        className="h-8 text-right font-medium text-xs"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input 
-                        type="number" 
-                        value={item.manpower} 
-                        onChange={(e) => updateOBItem(index, 'manpower', parseInt(e.target.value))}
-                        className="h-8 text-right font-medium text-xs"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => removeOBRow(index)} className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive/10">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {obItems
+                  .filter(item => !selectedComponent || item.componentName === selectedComponent)
+                  .map((item, index) => {
+                    // Find actual index in real list for updates
+                    const actualIndex = obItems.indexOf(item);
+                    return (
+                      <TableRow key={index} className="group hover:bg-primary/5 transition-colors">
+                        <TableCell>
+                          <Input 
+                            type="number" 
+                            value={item.sequence} 
+                            onChange={(e) => updateOBItem(actualIndex, 'sequence', parseInt(e.target.value))}
+                            className="h-8 text-center text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {selectedOrder?.components && selectedOrder.components.length > 0 ? (
+                            <select 
+                              className="h-8 w-full text-xs rounded-md border border-input bg-transparent px-2"
+                              value={item.componentName || ''}
+                              onChange={(e) => updateOBItem(actualIndex, 'componentName', e.target.value)}
+                            >
+                              <option value="">(Select Part)</option>
+                              {selectedOrder.components.map(c => (
+                                <option key={c.id} value={c.componentName}>{c.componentName}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Input 
+                              value={item.componentName || ''} 
+                              placeholder="Main"
+                              onChange={(e) => updateOBItem(actualIndex, 'componentName', e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Input 
+                            value={item.operationName} 
+                            placeholder="e.g. Front Pocket Join"
+                            onChange={(e) => updateOBItem(actualIndex, 'operationName', e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input 
+                            value={item.machineType} 
+                            placeholder="SNLS / Overlock"
+                            onChange={(e) => updateOBItem(actualIndex, 'machineType', e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input 
+                            type="number" 
+                            step="0.01"
+                            value={item.smv} 
+                            onChange={(e) => updateOBItem(actualIndex, 'smv', parseFloat(e.target.value))}
+                            className="h-8 text-right font-medium text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input 
+                            type="number" 
+                            value={item.manpower} 
+                            onChange={(e) => updateOBItem(actualIndex, 'manpower', parseInt(e.target.value))}
+                            className="h-8 text-right font-medium text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={() => removeOBRow(actualIndex)} className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive/10">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
             <Button onClick={addOBRow} variant="outline" className="w-full mt-4 border-dashed border-2 bg-muted/20 hover:bg-muted/40 transition-colors">
@@ -761,12 +1081,26 @@ export default function OrderPlanningPage() {
 
             <div className="grid grid-cols-2 gap-4 mt-8 p-6 bg-primary/5 rounded-2xl border border-primary/10">
               <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Line SMV</span>
-                <span className="font-bold text-2xl text-primary">{obItems.reduce((acc, i) => acc + (i.smv || 0), 0).toFixed(3)}</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  {selectedComponent ? `SMV (${selectedComponent})` : 'Total Line SMV'}
+                </span>
+                <span className="font-bold text-2xl text-primary">
+                  {(selectedComponent 
+                    ? obItems.filter(i => i.componentName === selectedComponent).reduce((acc, i) => acc + (i.smv || 0), 0)
+                    : obItems.reduce((acc, i) => acc + (i.smv || 0), 0)
+                  ).toFixed(3)}
+                </span>
               </div>
               <div className="flex flex-col text-right">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Manpower</span>
-                <span className="font-bold text-2xl text-primary">{obItems.reduce((acc, i) => acc + (i.manpower || 0), 0)}</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                   {selectedComponent ? `MP (${selectedComponent})` : 'Total Manpower'}
+                </span>
+                <span className="font-bold text-2xl text-primary">
+                  {selectedComponent 
+                    ? obItems.filter(i => i.componentName === selectedComponent).reduce((acc, i) => acc + (i.manpower || 0), 0)
+                    : obItems.reduce((acc, i) => acc + (i.manpower || 0), 0)
+                  }
+                </span>
               </div>
             </div>
           </div>
@@ -776,6 +1110,13 @@ export default function OrderPlanningPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MaterialRequisitionsDialog 
+        orderId={reqOrderId || ''}
+        orderNumber={reqOrderNum}
+        isOpen={isReqDialogOpen}
+        onOpenChange={setIsReqDialogOpen}
+      />
     </div>
   );
 }

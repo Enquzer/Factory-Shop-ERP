@@ -9,6 +9,15 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { authenticateUser } from "@/lib/auth";
 import { LoadingBar } from "@/components/loading-bar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 
 export function HomepageLoginForm() {
   const [username, setUsername] = useState("");
@@ -17,6 +26,12 @@ export function HomepageLoginForm() {
   const [isAttemptingLogin, setIsAttemptingLogin] = useState(false);
   const router = useRouter();
   const { login: factoryLogin, isLoggingIn, user: currentUser } = useAuth();
+  const { toast } = useToast();
+
+  // Forgot Password State
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
+  const [resetUsername, setResetUsername] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +50,44 @@ export function HomepageLoginForm() {
     } catch (err) {
       setError("An error occurred during login");
       setIsAttemptingLogin(false);
+    }
+  };
+
+  const handleForgotPasswordSubmit = async () => {
+    if (!resetUsername) return;
+    
+    setIsResetting(true);
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: resetUsername }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+            title: "Request Sent",
+            description: data.message || "If the account exists, a reset request has been sent.",
+        });
+        setIsForgotPasswordOpen(false);
+        setResetUsername("");
+      } else {
+        toast({
+            title: "Error",
+            description: data.error || "Failed to send request",
+            variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "An error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResetting(false);
     }
   };
   
@@ -128,12 +181,59 @@ export function HomepageLoginForm() {
             {error && (
               <div className="text-red-500 text-sm">{error}</div>
             )}
-            <Button type="submit" className="w-full" disabled={isLoggingIn}>
-              {isLoggingIn ? "Logging in..." : "Login"}
+              <Button type="submit" className="w-full" disabled={isLoggingIn}>
+                {isLoggingIn ? "Logging in..." : "Login"}
+              </Button>
+              <div className="flex justify-center">
+                <Button 
+                  type="button" 
+                  variant="link" 
+                  className="text-sm text-primary hover:underline px-0"
+                  onClick={() => setIsForgotPasswordOpen(true)}
+                >
+                  Forgot Password?
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Enter your username to request a password reset from the administrator.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="reset-username">Username</Label>
+              <Input
+                id="reset-username"
+                value={resetUsername}
+                onChange={(e) => setResetUsername(e.target.value)}
+                placeholder="Enter your username"
+              />
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-start">
+            <Button 
+              type="button" 
+              onClick={handleForgotPasswordSubmit} 
+              disabled={isResetting || !resetUsername}
+            >
+              {isResetting ? "Sending..." : "Request Reset"}
             </Button>
-          </form>
-        </CardContent>
-      </Card>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsForgotPasswordOpen(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

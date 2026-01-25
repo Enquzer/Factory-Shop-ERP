@@ -90,10 +90,20 @@ async function imageToBase64(url: string): Promise<string> {
   });
 }
 
-// Function to convert image URL to base64 (server-side compatible)
+// Function to safely convert ArrayBuffer to Base64 without stack size limits
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Function to convert image URL to base64 (server-side and client-side robust)
 async function imageUrlToBase64(url: string): Promise<string> {
   try {
-    // Handle empty or invalid URLs
     if (!url || url.trim() === '') {
       throw new Error('Empty URL provided');
     }
@@ -102,56 +112,75 @@ async function imageUrlToBase64(url: string): Promise<string> {
     if (url.startsWith('http')) {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+      
       const arrayBuffer = await response.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
       const contentType = response.headers.get('content-type') || 'image/png';
+      
+      // Use chunked conversion or robust method
+      let base64 = '';
+      if (typeof window === 'undefined') {
+        const buffer = Buffer.from(arrayBuffer);
+        base64 = buffer.toString('base64');
+      } else {
+        base64 = arrayBufferToBase64(arrayBuffer);
+      }
+      
       return `data:${contentType};base64,${base64}`;
     }
     
     // For relative URLs, try to resolve them properly
-    // Check if we're running server-side
     if (typeof window === 'undefined') {
-      // Server-side: Use Node.js file system to read the image file directly
+      // Server-side: Use Node.js file system
       const fs = await import('fs');
       const path = await import('path');
       
       // Construct the full path to the image file
-      const imagePath = path.join(process.cwd(), 'public', url.startsWith('/') ? url.substring(1) : url);
+      const cleanUrl = url.startsWith('/') ? url.substring(1) : url;
+      // Also handle public dir
+      const pathsToTry = [
+        path.join(process.cwd(), 'public', cleanUrl),
+        path.join(process.cwd(), cleanUrl)
+      ];
       
-      // Check if file exists
-      if (fs.existsSync(imagePath)) {
-        const imageBuffer = fs.readFileSync(imagePath);
-        const base64 = imageBuffer.toString('base64');
-        // Determine content type based on file extension
-        let contentType = 'image/png';
-        if (url.toLowerCase().endsWith('.jpg') || url.toLowerCase().endsWith('.jpeg')) {
-          contentType = 'image/jpeg';
-        } else if (url.toLowerCase().endsWith('.gif')) {
-          contentType = 'image/gif';
+      for (const imagePath of pathsToTry) {
+        if (fs.existsSync(imagePath)) {
+          const imageBuffer = fs.readFileSync(imagePath);
+          const base64 = imageBuffer.toString('base64');
+          let contentType = 'image/png';
+          if (url.toLowerCase().endsWith('.jpg') || url.toLowerCase().endsWith('.jpeg')) {
+            contentType = 'image/jpeg';
+          } else if (url.toLowerCase().endsWith('.gif')) {
+            contentType = 'image/gif';
+          }
+          return `data:${contentType};base64,${base64}`;
         }
-        return `data:${contentType};base64,${base64}`;
-      } else {
-        throw new Error(`Image file not found: ${imagePath}`);
       }
+      throw new Error(`Image file not found: ${url}`);
     } else {
-      // Client-side: Use fetch with proper base URL
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-      const resolvedUrl = url.startsWith('/') ? `${baseUrl}${url}` : `${baseUrl}/${url}`;
+      // Client-side: Use fetch with current origin if relative
+      const resolvedUrl = url.startsWith('/') ? url : `/${url}`;
       const response = await fetch(resolvedUrl);
       if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+      
       const arrayBuffer = await response.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
       const contentType = response.headers.get('content-type') || 'image/png';
+      const base64 = arrayBufferToBase64(arrayBuffer);
+      
       return `data:${contentType};base64,${base64}`;
     }
   } catch (error) {
-    console.warn('Failed to convert image to base64:', error);
+    console.warn(`Failed code to convert image to base64 for URL ${url}:`, error);
     throw error;
   }
 }
 
 // Function to generate a production planning PDF
-export async function generateProductionPlanningPDF(orders: MarketingOrder[], ganttImageData?: string): Promise<string> {
+export async function generateProductionPlanningPDF(
+  orders: MarketingOrder[], 
+  ganttImageData?: string,
+  reportType: 'full' | 'cutting' | 'sewing' | 'packing' = 'full',
+  operationBulletins?: Record<string, any[]>
+): Promise<string> {
   try {
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -159,28 +188,121 @@ export async function generateProductionPlanningPDF(orders: MarketingOrder[], ga
       format: 'a4'
     });
 
-    await addHeaderAndLogo(doc, 'Production Planning Report');
+    const title = reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Planning Report';
+    await addHeaderAndLogo(doc, title);
     
+    // Fetch unique images first to avoid redundant requests
+    const imageCache: Record<string, string | null> = {};
+    const imagePromises = orders.map(async (order: any) => {
+      // Logic: Only show image for the first component of an order (to match UI)
+      // or if it's not a component at all.
+      const isFirstComponent = !order.isComponent || order.componentIndex === 0;
+      
+      if (order.imageUrl && isFirstComponent) {
+        if (imageCache[order.imageUrl]) return imageCache[order.imageUrl];
+        
+        try {
+          const b64 = await imageUrlToBase64(order.imageUrl);
+          imageCache[order.imageUrl] = b64;
+          return b64;
+        } catch (error) {
+          console.warn(`Could not load image for ${order.productCode}:`, error);
+          return null;
+        }
+      }
+      return null;
+    });
+
+    const images = await Promise.all(imagePromises);
+
+    // Define columns based on report type
+    let head: string[][] = [];
+    let columnStyles: any = {
+      0: { cellWidth: 8 },
+      1: { cellWidth: 15 }
+    };
+
+    if (reportType === 'cutting') {
+      head = [['SEQ', 'IMAGE', 'ORDER NO / PRODUCT', 'PLACEMENT', 'DELIVERY', 'QTY', 'CUTTING START', 'CUTTING FINISH']];
+      columnStyles = { ...columnStyles, 5: { halign: 'right' } };
+    } else if (reportType === 'sewing') {
+      head = [['SEQ', 'IMAGE', 'ORDER NO / PRODUCT', 'PLACEMENT', 'DELIVERY', 'QTY', 'SEWING START', 'SEWING FINISH']];
+      columnStyles = { ...columnStyles, 5: { halign: 'right' } };
+    } else if (reportType === 'packing') {
+      head = [['SEQ', 'IMAGE', 'ORDER NO / PRODUCT', 'PLACEMENT', 'DELIVERY', 'QTY', 'PACKING START', 'PACKING FINISH']];
+      columnStyles = { ...columnStyles, 5: { halign: 'right' } };
+    } else {
+      // Full Plan
+      head = [['SEQ', 'IMAGE', 'ORDER NO', 'CODE', 'QTY', 'PCS/SET', 'SMV', 'MP', 'EFF%', 'O/P', 'DAYS', 'CUTTING', 'SEWING', 'PACKING']];
+      columnStyles = { 
+        ...columnStyles, 
+        4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 
+        7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' } 
+      };
+    }
+
     // Add table
-    const tableData = orders.map((order, idx) => [
-      (idx + 1).toString(),
-      order.orderNumber || '',
-      order.productCode || '',
-      order.quantity?.toString() || '0',
-      (order.piecesPerSet || 1).toString(),
-      (order.smv || 0).toFixed(2),
-      (order.manpower || 0).toString(),
-      `${(order.efficiency || 70).toFixed(1)}%`,
-      (order.sewingOutputPerDay || 0).toString(),
-      (order.operationDays || 0).toString(),
-      order.sewingStartDate || '',
-      order.sewingFinishDate || '',
-      (order.remarks || '').substring(0, 30)
-    ]);
+    const tableData = (orders as any[]).map((order, idx) => {
+      const isComp = order.isComponent === true;
+      const compName = order.componentName ? ` (${order.componentName})` : '';
+      const orderProduct = `${order.orderNumber || ''}${compName} / ${order.productCode || ''}`;
+      
+      if (reportType === 'cutting') {
+        return [
+          (idx + 1).toString(),
+          '',
+          orderProduct,
+          order.orderPlacementDate || '',
+          order.plannedDeliveryDate || '',
+          order.quantity?.toString() || '0',
+          order.cuttingStartDate || '',
+          order.cuttingFinishDate || ''
+        ];
+      } else if (reportType === 'sewing') {
+        return [
+          (idx + 1).toString(),
+          '',
+          orderProduct,
+          order.orderPlacementDate || '',
+          order.plannedDeliveryDate || '',
+          order.quantity?.toString() || '0',
+          order.sewingStartDate || '',
+          order.sewingFinishDate || ''
+        ];
+      } else if (reportType === 'packing') {
+        return [
+          (idx + 1).toString(),
+          '',
+          orderProduct,
+          order.orderPlacementDate || '',
+          order.plannedDeliveryDate || '',
+          order.quantity?.toString() || '0',
+          order.packingStartDate || '',
+          order.packingFinishDate || ''
+        ];
+      } else {
+        return [
+          (idx + 1).toString(),
+          '', // Placeholder for image
+          order.orderNumber || '',
+          order.productCode || '',
+          order.quantity?.toString() || '0',
+          (order.piecesPerSet || 1).toString(),
+          (order.smv || 0).toFixed(2),
+          (order.manpower || 0).toString(),
+          `${(order.efficiency || 70).toFixed(1)}%`,
+          (order.sewingOutputPerDay || 0).toString(),
+          (order.operationDays || 0).toString(),
+          order.cuttingStartDate || '',
+          order.sewingStartDate || '',
+          order.packingStartDate || ''
+        ];
+      }
+    });
 
     (doc as any).autoTable({
       startY: 55,
-      head: [['SEQ', 'ORDER NO', 'CODE', 'QTY', 'PCS/SET', 'SMV', 'MP', 'EFF%', 'O/P', 'DAYS', 'START', 'FINISH', 'REMARKS']],
+      head: head,
       body: tableData,
       theme: 'grid',
       headStyles: {
@@ -192,24 +314,67 @@ export async function generateProductionPlanningPDF(orders: MarketingOrder[], ga
       styles: {
         fontSize: 7,
         cellPadding: 1,
-        overflow: 'linebreak'
+        overflow: 'linebreak',
+        valign: 'middle'
       },
-      columnStyles: {
-        0: { cellWidth: 10 },
-        3: { halign: 'right' },
-        4: { halign: 'right' },
-        5: { halign: 'right' },
-        6: { halign: 'right' },
-        7: { halign: 'right' },
-        8: { halign: 'right' },
-        9: { halign: 'right' }
+      columnStyles: columnStyles,
+      didDrawCell: (data: any) => {
+        if (data.column.index === 1 && data.cell.section === 'body') {
+          const rowIndex = data.row.index;
+          const imageBase64 = images[rowIndex];
+          
+          if (imageBase64) {
+            try {
+              const padding = 1;
+              const imgW = data.cell.width - (padding * 2);
+              const imgH = data.cell.height - (padding * 2);
+              doc.addImage(imageBase64, 'PNG', data.cell.x + padding, data.cell.y + padding, imgW, imgH);
+            } catch (error) {
+              console.warn('Error adding image to cell:', error);
+            }
+          }
+        }
       }
     });
 
     let currentY = (doc as any).lastAutoTable.finalY + 10;
 
-    // Add Gantt Chart Image if provided
-    if (ganttImageData) {
+    // For Sewing Plan, add Operation Bulletin for each order
+    if (reportType === 'sewing' && operationBulletins) {
+      orders.forEach((order: any) => {
+        const key = order.displayId || order.id;
+        const obData = operationBulletins[key];
+        
+        if (obData && obData.length > 0) {
+          // Check if we need a new page
+          if (currentY > 160) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          const compLabel = order.componentName ? ` - ${order.componentName}` : '';
+          doc.text(`Operation Bulletin: ${order.orderNumber} / ${order.productCode}${compLabel}`, 15, currentY);
+          currentY += 5;
+
+          (doc as any).autoTable({
+            startY: currentY,
+            head: [['Seq', 'Operation', 'Machine', 'SMV', 'MP']],
+            body: obData.map(item => [item.sequence, item.operationName, item.machineType, item.smv?.toFixed(2), item.manpower]),
+            theme: 'striped',
+            styles: { fontSize: 7, cellPadding: 1 },
+            headStyles: { fillColor: [52, 73, 94] },
+            margin: { left: 15 }
+          });
+
+          currentY = (doc as any).lastAutoTable.finalY + 10;
+        }
+      });
+    }
+
+    // Add Gantt Chart Image if provided (mostly for full plan)
+    if (ganttImageData && reportType === 'full') {
       // Check if we need a new page for the chart
       if (currentY > 140) {
         doc.addPage();
@@ -223,10 +388,8 @@ export async function generateProductionPlanningPDF(orders: MarketingOrder[], ga
         currentY += 5;
       }
 
-      // Add the image
-      // Landscape A4 is 297mm wide. Margin 10mm each side -> 277mm available.
       const imgWidth = 277;
-      const imgHeight = 100; // Adjusted height
+      const imgHeight = 100;
       doc.addImage(ganttImageData, 'PNG', 10, currentY, imgWidth, imgHeight);
       currentY += imgHeight + 10;
     }

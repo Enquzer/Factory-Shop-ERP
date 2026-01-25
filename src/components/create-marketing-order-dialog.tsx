@@ -11,10 +11,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast";
 import { getProducts, Product } from "@/lib/products";
 import { createMarketingOrder, MarketingOrderItem } from "@/lib/marketing-orders";
-import { PlusCircle, Trash2, Upload, Image as ImageIcon, Search, Check, ChevronsUpDown } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { DistributionPlannerDialog } from "./marketing-orders/distribution-planner-dialog";
+import { PlusCircle, Trash2, Upload, Image as ImageIcon, Search, Check, ChevronsUpDown, Calculator } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface CreateMarketingOrderDialogProps {
   open: boolean;
@@ -66,6 +70,7 @@ export function CreateMarketingOrderDialog({
   
   const [searchTerm, setSearchTerm] = useState("");
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [isPlannerOpen, setIsPlannerOpen] = useState(false);
   
   // Validation state
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -158,25 +163,44 @@ export function CreateMarketingOrderDialog({
     setter(file);
   };
 
-  const addItem = () => {
-    if (!itemSize || !itemColor || itemQuantity <= 0) {
+  const handlePlannerConfirm = (plannedItems: any[]) => {
+    // Convert planner items to order items
+    const newItems = plannedItems.map(item => ({
+      orderId: "", 
+      size: item.size,
+      color: item.color,
+      quantity: item.quantity
+    }));
+    
+    // Append to existing items
+    setItems(prev => [...prev, ...newItems]);
+    
+    // Calculate total
+    const currentTotal = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const newTotal = newItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+    setQuantity(currentTotal + newTotal);
+  };
+
+  const addItem = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    
+    if (!itemSize.trim() || !itemColor.trim() || itemQuantity <= 0) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all item fields with valid values.",
+        description: "Please fill in Size, Color, and a Quantity greater than zero.",
         variant: "destructive",
       });
       return;
     }
 
-    setItems([
-      ...items,
-      {
-        orderId: "", // Will be set when creating the order
-        size: itemSize,
-        color: itemColor,
-        quantity: itemQuantity
-      }
-    ]);
+    const newItem: MarketingOrderItem = {
+      orderId: "", 
+      size: itemSize.trim(),
+      color: itemColor.trim(),
+      quantity: itemQuantity
+    };
+
+    setItems(prevItems => [...prevItems, newItem]);
 
     // Reset item form
     setItemSize("");
@@ -185,12 +209,12 @@ export function CreateMarketingOrderDialog({
   };
 
   const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
+    setItems(prev => prev.filter((_, i) => i !== index));
   };
 
   // Update the total quantity whenever items change
   useEffect(() => {
-    const total = items.reduce((sum, item) => sum + item.quantity, 0);
+    const total = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     setQuantity(total);
   }, [items]);
 
@@ -207,8 +231,14 @@ export function CreateMarketingOrderDialog({
       newErrors.productCode = "Format: XX-XXX, XX-XXX/XX, XX-XXXX, or XX-XX-XXX/XX";
     }
     
+    // Check if there are items and if the total quantity is greater than zero
     if (items.length === 0) {
       newErrors.items = "At least one item is required";
+    } else {
+      const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+      if (totalQty <= 0) {
+        newErrors.items = "Total quantity must be greater than zero. Please enter quantities for your items.";
+      }
     }
     
     if (isNewProduct) {
@@ -609,52 +639,121 @@ export function CreateMarketingOrderDialog({
              </div>
           </div>
 
-          {/* Items */}
-          <div className="space-y-4">
-             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-medium">Order Quantity</h3>
-              <div className="text-sm font-medium">Total: {quantity}</div>
-            </div>
-            
-            <div className="flex gap-2 items-end">
-               <div className="w-24"><Label className="text-xs">Size</Label><Input value={itemSize} onChange={(e) => setItemSize(e.target.value)} placeholder="S" /></div>
-               <div className="w-24"><Label className="text-xs">Color</Label><Input value={itemColor} onChange={(e) => setItemColor(e.target.value)} placeholder="Red" /></div>
-               <div className="w-24"><Label className="text-xs">Qty</Label><Input type="number" value={itemQuantity || ""} onChange={(e) => setItemQuantity(Number(e.target.value))} /></div>
-               <Button onClick={addItem} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add</Button>
-            </div>
-            
-            {items.length > 0 && (
-              <div className="border rounded-md max-h-[150px] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted sticky top-0">
-                    <tr><th className="px-4 py-2 text-left">Size</th><th className="px-4 py-2 text-left">Color</th><th className="px-4 py-2 text-left">Qty</th><th className="w-10"></th></tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, index) => (
-                      <tr key={index} className="border-t">
-                        <td className="px-4 py-2">{item.size}</td>
-                        <td className="px-4 py-2">{item.color}</td>
-                        <td className="px-4 py-2">
-                           <Input type="number" className="h-7 w-20" value={item.quantity} 
-                            onChange={(e) => {
-                              const newItems = [...items];
-                              newItems[index].quantity = Number(e.target.value);
-                              setItems(newItems);
-                            }} 
-                           />
-                        </td>
-                        <td className="px-4 py-2">
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => removeItem(index)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* Order Quantity & Distribution */}
+          <div className="space-y-4 border-2 border-primary/10 rounded-xl p-6 bg-primary/5">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h3 className="text-xl font-black text-primary flex items-center gap-2">
+                  <Calculator className="h-6 w-6" />
+                  Order Breakdown & Distribution
+                </h3>
+                <p className="text-xs text-muted-foreground font-medium">Use the smart planner for fair shop allocation or enter manually.</p>
               </div>
-            )}
-             {errors.items && <p className="text-red-500 text-sm">{errors.items}</p>}
+              
+              <div className="flex gap-2 w-full md:w-auto">
+                <Button 
+                  type="button" 
+                  size="lg"
+                  className="flex-1 md:flex-none gap-2 font-black shadow-lg shadow-primary/20 bg-primary hover:scale-105 transition-transform"
+                  onClick={() => setIsPlannerOpen(true)}
+                >
+                  <Calculator className="h-5 w-5" />
+                  Smart Distribution Planner
+                </Button>
+              </div>
+            </div>
+
+            <Separator className="bg-primary/10" />
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              {/* Manual Entry Sidebar */}
+              <div className="md:col-span-1 space-y-4 border-r pr-6">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Manual Adjustment</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase">Size</Label>
+                    <Input value={itemSize} onChange={(e) => setItemSize(e.target.value.toUpperCase())} placeholder="e.g. XL" className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase">Color</Label>
+                    <Input value={itemColor} onChange={(e) => setItemColor(e.target.value)} placeholder="e.g. Red" className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase">Quantity</Label>
+                    <Input type="number" value={itemQuantity || ""} onChange={(e) => setItemQuantity(Number(e.target.value))} className="h-8 text-xs" />
+                  </div>
+                  <Button type="button" onClick={addItem} size="sm" variant="outline" className="w-full border-dashed">
+                    <PlusCircle className="mr-2 h-3 w-3" /> Add Row
+                  </Button>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="md:col-span-3 space-y-3">
+                <div className="flex justify-between items-end">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Order Items Summary</h4>
+                  <div className="bg-primary/10 px-3 py-1 rounded-full">
+                    <span className="text-xs font-bold text-primary">Total Pieces: {quantity.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+                  <ScrollArea className="h-[250px]">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 sticky top-0 z-10">
+                        <tr className="text-[10px] font-black uppercase text-muted-foreground">
+                          <th className="px-4 py-3 text-left">Color</th>
+                          <th className="px-4 py-3 text-left">Size</th>
+                          <th className="px-4 py-3 text-right">Quantity</th>
+                          <th className="w-12"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {items.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground italic text-xs">
+                              No items added yet. Use the Smart Planner to begin.
+                            </td>
+                          </tr>
+                        ) : (
+                          items.map((item, index) => (
+                            <tr key={index} className="hover:bg-muted/30 transition-colors">
+                              <td className="px-4 py-2 font-bold text-primary">{item.color}</td>
+                              <td className="px-4 py-2"><Badge variant="outline" className="font-mono">{item.size}</Badge></td>
+                              <td className="px-6 py-2">
+                                <Input 
+                                  type="number" 
+                                  className="h-7 w-24 text-right font-black" 
+                                  value={item.quantity} 
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    newItems[index].quantity = Math.max(0, Number(e.target.value));
+                                    setItems(newItems);
+                                  }} 
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => removeItem(index)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </ScrollArea>
+                </div>
+                {errors.items && <p className="text-destructive text-[10px] font-bold uppercase">{errors.items}</p>}
+              </div>
+            </div>
+
+            <DistributionPlannerDialog 
+              open={isPlannerOpen} 
+              onOpenChange={setIsPlannerOpen}
+              onConfirm={handlePlannerConfirm}
+              defaultQuantity={1200}
+            />
           </div>
 
         </div>

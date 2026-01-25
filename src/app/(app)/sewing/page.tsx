@@ -35,6 +35,8 @@ import {
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { DailyProductionForm } from '@/components/daily-production-form';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ClipboardList, X } from 'lucide-react';
 
 export default function SewingDashboardPage() {
   const { user, isLoading } = useAuth();
@@ -273,7 +275,7 @@ export default function SewingDashboardPage() {
                   <TableHead className="w-[100px]">Product</TableHead>
                   <TableHead>Order Info</TableHead>
                   <TableHead>Execution Plan</TableHead>
-                  <TableHead>QC Status</TableHead>
+                  <TableHead>QC Status (In-Process)</TableHead>
                   <TableHead>Output Progress</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Operations</TableHead>
@@ -337,15 +339,35 @@ export default function SewingDashboardPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={cn(
-                            "text-[10px] font-bold uppercase",
-                            (order.qualityInspectionStatus === 'Passed' || order.qualityInspectionStatus === 'Approved') ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                            (order.qualityInspectionStatus === 'Failed' || order.qualityInspectionStatus === 'Rejected') ? "bg-red-50 text-red-700 border-red-200" :
-                            order.qualityInspectionStatus === 'Rework' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                            "bg-gray-50 text-gray-500 border-gray-200"
-                          )}>
-                             {order.qualityInspectionStatus || 'No Report'}
-                          </Badge>
+                          {(() => {
+                            const status = order.qualityInspectionStatus;
+                            const stage = order.qualityInspectionStage;
+                            const currentStatus = order.status;
+
+                            // Map order status to expected inspection stage
+                            let expectedStage = '';
+                            if (currentStatus === 'Sample Making') expectedStage = 'Sample';
+                            else if (currentStatus === 'Cutting') expectedStage = 'Inline-Cutting';
+                            else if (currentStatus === 'Sewing') expectedStage = 'Inline-Sewing';
+                            else if (['Finishing', 'Quality Inspection', 'Packing'].includes(currentStatus)) expectedStage = 'Final';
+
+                            const isMismatch = status && status !== 'Pending' && stage !== expectedStage;
+                            const displayStatus = isMismatch ? 'Pending' : (status || 'No Report');
+                            const displayStage = isMismatch ? expectedStage : (stage || '');
+
+                            return (
+                              <Badge variant="outline" className={cn(
+                                "text-[10px] font-bold uppercase",
+                                (displayStatus === 'Passed' || displayStatus === 'Approved') ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                (displayStatus === 'Failed' || displayStatus === 'Rejected') ? "bg-red-50 text-red-700 border-red-200" :
+                                (displayStatus === 'Rework' || displayStatus === 'Pending') ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                "bg-gray-50 text-gray-500 border-gray-200"
+                              )}>
+                                {displayStage && <span className="mr-1 opacity-70">[{displayStage}]</span>}
+                                {displayStatus}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <div className="w-48 space-y-2">
@@ -459,7 +481,7 @@ export default function SewingDashboardPage() {
 
       {/* Operation Breakdown Dialog */}
       <Dialog open={isOBDialogOpen} onOpenChange={setIsOBDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
           <DialogHeader className="p-6 bg-gradient-to-r from-primary/10 to-transparent">
             <DialogTitle className="text-2xl font-bold flex items-center gap-2">
               <ClipboardList className="h-6 w-6 text-primary" />
@@ -467,32 +489,41 @@ export default function SewingDashboardPage() {
             </DialogTitle>
             <CardDescription>{selectedOrder?.productName} | Total Qty: {selectedOrder?.quantity}</CardDescription>
           </DialogHeader>
-          <div className="overflow-y-auto p-6 pt-0">
-            <Table>
-              <TableHeader className="bg-gray-50 sticky top-0">
-                <TableRow>
-                  <TableHead className="w-16">Seq</TableHead>
-                  <TableHead>Operation Name</TableHead>
-                  <TableHead>Machine Type</TableHead>
-                  <TableHead className="text-right">SMV</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {obItems.map((item, idx) => (
-                  <TableRow key={idx} className="hover:bg-gray-50">
-                    <TableCell className="font-mono font-medium">{item.sequence}</TableCell>
-                    <TableCell className="font-medium">{item.operationName}</TableCell>
-                    <TableCell>
-                       <Badge variant="secondary" className="font-normal">{item.machineType}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-bold text-primary">{item.smv}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="flex-1 overflow-hidden p-6 pt-0">
+            {/* Group items by component */}
+            {(() => {
+              const components = Array.from(new Set(obItems.map(item => item.componentName || 'General'))).sort();
+              
+              if (components.length <= 1) {
+                return (
+                  <div className="overflow-y-auto max-h-[50vh]">
+                    <OperationBreakdownTable items={obItems} />
+                  </div>
+                );
+              }
+
+              return (
+                <Tabs defaultValue={components[0]} className="w-full h-full flex flex-col">
+                  <TabsList className="mb-4 bg-muted/50 p-1">
+                    {components.map(comp => (
+                      <TabsTrigger key={comp} value={comp} className="capitalize">
+                        {comp} ({obItems.filter(i => (i.componentName || 'General') === comp).length})
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  <div className="flex-1 overflow-y-auto">
+                    {components.map(comp => (
+                      <TabsContent key={comp} value={comp} className="mt-0 focus-visible:outline-none">
+                        <OperationBreakdownTable items={obItems.filter(i => (i.componentName || 'General') === comp)} />
+                      </TabsContent>
+                    ))}
+                  </div>
+                </Tabs>
+              );
+            })()}
           </div>
           <DialogFooter className="p-4 border-t bg-gray-50/50">
-             <Button onClick={() => setIsOBDialogOpen(false)}>Close Breakdown View</Button>
+             <Button onClick={() => setIsOBDialogOpen(false)} className="shadow-md">Close Breakdown View</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -518,6 +549,8 @@ export default function SewingDashboardPage() {
                 orderStatus={selectedOrder.status}
                 userRole="sewing"
                 piecesPerSet={selectedOrder.piecesPerSet}
+                plannedOutputPerDay={selectedOrder.sewingOutputPerDay}
+                components={selectedOrder.components}
                 onStatusUpdate={() => {
                   fetchOrders();
                   // Don't close immediately if they want to enter more
@@ -536,47 +569,29 @@ export default function SewingDashboardPage() {
   );
 }
 
-// Additional icons needed
-function ClipboardList(props: any) {
+function OperationBreakdownTable({ items }: { items: OperationBulletinItem[] }) {
   return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-      <path d="M12 11h4" />
-      <path d="M12 16h4" />
-      <path d="M8 11h.01" />
-      <path d="M8 16h.01" />
-    </svg>
-  )
-}
-
-function X(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  )
+    <Table className="border rounded-md overflow-hidden">
+      <TableHeader className="bg-muted/50 sticky top-0 z-10 transition-colors">
+        <TableRow>
+          <TableHead className="w-16 font-bold text-[10px] uppercase text-muted-foreground px-4">Seq</TableHead>
+          <TableHead className="font-bold text-[10px] uppercase text-muted-foreground px-4">Operation Name</TableHead>
+          <TableHead className="font-bold text-[10px] uppercase text-muted-foreground px-4">Machine Type</TableHead>
+          <TableHead className="text-right font-bold text-[10px] uppercase text-muted-foreground px-4">SMV</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item, idx) => (
+          <TableRow key={idx} className="hover:bg-muted/30 transition-colors border-b last:border-0 h-11">
+            <TableCell className="font-mono text-xs text-muted-foreground px-4">{item.sequence}</TableCell>
+            <TableCell className="font-semibold text-sm px-4">{item.operationName}</TableCell>
+            <TableCell className="px-4">
+              <Badge variant="outline" className="font-normal bg-white text-[10px] uppercase tracking-wider h-5 px-1.5">{item.machineType}</Badge>
+            </TableCell>
+            <TableCell className="text-right font-bold text-primary px-4">{item.smv.toFixed(2)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 }

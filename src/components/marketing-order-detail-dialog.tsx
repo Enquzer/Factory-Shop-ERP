@@ -67,11 +67,12 @@ export function MarketingOrderDetailDialog({
   const { toast } = useToast();
   const { user } = useAuth();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'progress'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'progress' | 'production'>('details');
   const [totalProduced, setTotalProduced] = useState<number>(0);
   
   const userRole = user?.role;
-  const canEdit = userRole === 'factory' || userRole === 'marketing';
+  const isFactory = userRole === 'factory';
+  const canEdit = isFactory || userRole === 'marketing';
   
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -99,6 +100,13 @@ export function MarketingOrderDetailDialog({
         return 'bg-gray-100 text-gray-800';
     }
   };
+  
+  // Update state if role changes or if order is completed
+  useEffect(() => {
+    if (activeTab === 'production' && !isFactory) {
+      setActiveTab('details');
+    }
+  }, [isFactory]);
 
   // Fetch total produced quantity
   useEffect(() => {
@@ -194,6 +202,15 @@ export function MarketingOrderDetailDialog({
             >
               Order Details
             </button>
+            {isFactory && (
+              <button
+                className={`px-4 py-2 font-medium text-sm flex items-center ${activeTab === 'production' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}
+                onClick={() => setActiveTab('production')}
+              >
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Production Entry
+              </button>
+            )}
             <button
               className={`px-4 py-2 font-medium text-sm flex items-center ${activeTab === 'progress' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-muted-foreground'}`}
               onClick={() => setActiveTab('progress')}
@@ -203,250 +220,163 @@ export function MarketingOrderDetailDialog({
             </button>
           </div>
           
-          {activeTab === 'details' ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pr-6">
-              <div className="md:col-span-2">
-                <h3 className="font-semibold text-lg mb-2">Order Items</h3>
-                <div className="space-y-4">
-                  {order.items.map((item, index) => (
-                    <div key={index} className="flex items-center gap-4 p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <h4 className="font-medium">{item.color} {item.size}</h4>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="text-sm">Qty: {item.quantity}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+          <div className="py-4">
+            {activeTab === 'details' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pr-6">
+                <div className="md:col-span-2">
+                  <h3 className="font-semibold text-lg mb-2">Order Items Matrix</h3>
+                  <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b">
+                          <th className="px-4 py-2 text-left font-black text-slate-500 uppercase text-[10px] w-32">Color \ Size</th>
+                          {[...new Set(order.items.map(i => i.size))].sort().map(size => (
+                            <th key={size} className="px-4 py-2 text-center font-black text-slate-800 uppercase text-xs border-l">{size}</th>
+                          ))}
+                          <th className="px-4 py-2 text-center font-black text-primary uppercase text-xs border-l bg-primary/5">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {[...new Set(order.items.map(i => i.color))].sort().map(color => (
+                          <tr key={color} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-4 py-2 font-bold text-slate-700 flex items-center gap-2">
+                               <div className="h-3 w-3 rounded-full border shadow-sm" style={{ backgroundColor: color.toLowerCase() }}></div>
+                               {color}
+                            </td>
+                            {[...new Set(order.items.map(i => i.size))].sort().map(size => {
+                              const item = order.items.find(i => i.color === color && i.size === size);
+                              return (
+                                <td key={size} className="px-4 py-2 text-center font-mono font-bold text-slate-600 border-l">
+                                  {item ? item.quantity.toLocaleString() : "-"}
+                                </td>
+                              );
+                            })}
+                            <td className="px-4 py-2 text-center font-black text-primary bg-primary/5 border-l">
+                              {order.items
+                                .filter(i => i.color === color)
+                                .reduce((sum, i) => sum + i.quantity, 0)
+                                .toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-slate-900 text-white font-bold">
+                        <tr>
+                          <td className="px-4 py-2 text-[9px] uppercase tracking-widest text-slate-400">GRAND TOTAL</td>
+                          {[...new Set(order.items.map(i => i.size))].sort().map(size => (
+                            <td key={size} className="px-4 py-2 text-center border-l border-slate-700">
+                               {order.items
+                                .filter(i => i.size === size)
+                                .reduce((sum, i) => sum + i.quantity, 0)
+                                .toLocaleString()}
+                            </td>
+                          ))}
+                          <td className="px-4 py-2 text-center text-primary bg-primary/20 border-l border-slate-700">
+                             {order.quantity.toLocaleString()}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
                 
-                {/* Daily Production Status Form */}
-                {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && (
-                  <div className="mt-6">
+                <div className="md:col-span-1">
+                  {order.imageUrl && (
+                    <div className="relative h-48 w-full rounded-md overflow-hidden border mb-4">
+                      <Image 
+                        src={order.imageUrl} 
+                        alt={order.productName} 
+                        fill 
+                        sizes="(max-width: 768px) 100vw, 33vw"
+                        style={{ objectFit: "cover" }} 
+                      />
+                    </div>
+                  )}
+                  <h3 className="font-semibold text-lg mb-2">Order Summary</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Product:</span>
+                      <span className="font-medium">{order.productName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Code:</span>
+                      <span>{order.productCode}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total Quantity:</span>
+                      <span>{order.quantity}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Produced:</span>
+                      <span>{totalProduced}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Remaining:</span>
+                      <span>{order.quantity - totalProduced}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge className={getStatusColor(order.status)}>
+                        {order.status}
+                      </Badge>
+                    </div>
+                    <Separator className="my-2" />
+                    <div className="grid grid-cols-1 gap-2 text-xs">
+                       <div className="flex justify-between">
+                          <span className="text-muted-foreground">Placed:</span>
+                          <span>{order.orderPlacementDate ? new Date(order.orderPlacementDate).toLocaleDateString() : '-'}</span>
+                       </div>
+                       <div className="flex justify-between">
+                          <span className="text-muted-foreground">Deadline:</span>
+                          <span className="font-bold text-red-600">{order.plannedDeliveryDate ? new Date(order.plannedDeliveryDate).toLocaleDateString() : '-'}</span>
+                       </div>
+                    </div>
+                    {order.description && (
+                      <div className="mt-4 pt-4 border-t">
+                        <span className="text-xs font-bold text-slate-400 uppercase">Notes:</span>
+                        <p className="text-xs mt-1 text-slate-600 leading-relaxed italic">"{order.description}"</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'production' && isFactory && (
+              <div className="space-y-6 pr-6">
+                {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) ? (
+                  <>
                     <DailyProductionForm 
                       orderId={order.id} 
                       items={order.items} 
                       totalQuantity={order.quantity}
                       onStatusUpdate={handleStatusUpdate} 
-                      orderStatus={order.status} // Pass order status
+                      orderStatus={order.status}
                       userRole={userRole}
                     />
-                    
-                    {!order.isPlanningApproved && userRole !== 'factory' && userRole !== 'planning' && (
+                    {!order.isPlanningApproved && userRole !== 'planning' && (
                       <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-3 text-amber-800 text-sm">
                         <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
                         <p>Planning "Go-ahead" is pending. Full system access for this order is restricted until approved by Planning.</p>
                       </div>
                     )}
+                  </>
+                ) : (
+                  <div className="p-12 text-center border-2 border-dashed rounded-xl">
+                     <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                     <h3 className="text-lg font-bold">Process Completed</h3>
+                     <p className="text-muted-foreground">This order is already completed/cancelled. No further production entries allowed.</p>
                   </div>
                 )}
               </div>
-              
-              <div>
-                {order.imageUrl && (
-                  <div className="relative h-48 w-full rounded-md overflow-hidden border mb-4">
-                    <Image 
-                      src={order.imageUrl} 
-                      alt={order.productName} 
-                      fill 
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      style={{ objectFit: "cover" }} 
-                    />
-                  </div>
-                )}
-                <h3 className="font-semibold text-lg mb-2">Order Summary</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Product:</span>
-                    <span className="font-medium">{order.productName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Code:</span>
-                    <span>{order.productCode}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total Quantity:</span>
-                    <span>{order.quantity}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Produced:</span>
-                    <span>{totalProduced}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Remaining:</span>
-                    <span>{order.quantity - totalProduced}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Status:</span>
-                    <Badge className={getStatusColor(order.status)}>
-                      {order.status}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Created By:</span>
-                    <span>{order.createdBy}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Created At:</span>
-                    <span>{new Date(order.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  
-                  {/* New date fields */}
-                  {order.orderPlacementDate && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground flex items-center">
-                        <Calendar className="mr-1 h-4 w-4" />
-                        Placement Date:
-                      </span>
-                      <span>{new Date(order.orderPlacementDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  
-                  {order.plannedDeliveryDate && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground flex items-center">
-                        <Calendar className="mr-1 h-4 w-4" />
-                        Delivery Date:
-                      </span>
-                      <span>{new Date(order.plannedDeliveryDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  
-                  {/* Sample status tracking fields */}
-                  {order.sizeSetSampleApproved && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground flex items-center">
-                        <Flag className="mr-1 h-4 w-4" />
-                        Sample Approved:
-                      </span>
-                      <span>{new Date(order.sizeSetSampleApproved).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  
-                  {order.productionStartDate && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground flex items-center">
-                        <Factory className="mr-1 h-4 w-4" />
-                        Production Start:
-                      </span>
-                      <span>{new Date(order.productionStartDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  
-                  {order.productionFinishedDate && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground flex items-center">
-                        <CheckCircle className="mr-1 h-4 w-4" />
-                        Production Finish:
-                      </span>
-                      <span>{new Date(order.productionFinishedDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  
-                  {/* Process completion dates */}
-                  {order.planningCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <ClipboardList className="mr-1 h-3 w-3" />
-                        Planning:
-                      </span>
-                      <span>{new Date(order.planningCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.sampleCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <FlaskConical className="mr-1 h-3 w-3" />
-                        Sample:
-                      </span>
-                      <span>{new Date(order.sampleCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.cuttingCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <Scissors className="mr-1 h-3 w-3" />
-                        Cutting:
-                      </span>
-                      <span>{new Date(order.cuttingCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.sewingCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <Factory className="mr-1 h-3 w-3" />
-                        Sewing:
-                      </span>
-                      <span>{new Date(order.sewingCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.finishingCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <CheckCircle className="mr-1 h-3 w-3" />
-                        Finishing:
-                      </span>
-                      <span>{new Date(order.finishingCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.qualityInspectionCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <CheckCircle className="mr-1 h-3 w-3" />
-                        Quality:
-                      </span>
-                      <span>{new Date(order.qualityInspectionCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.packingCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <Package className="mr-1 h-3 w-3" />
-                        Packing:
-                      </span>
-                      <span>{new Date(order.packingCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {order.deliveryCompletionDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center">
-                        <Truck className="mr-1 h-3 w-3" />
-                        Delivery:
-                      </span>
-                      <span>{new Date(order.deliveryCompletionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  
-                  {order.completedDate && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Completed At:</span>
-                      <span>{new Date(order.completedDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  <Separator className="my-2" />
-                  {order.description && (
-                    <div>
-                      <span className="text-muted-foreground">Description:</span>
-                      <p className="mt-1">{order.description}</p>
-                    </div>
-                  )}
-                  {order.isCompleted && (
-                    <div className="mt-3 p-3 bg-green-50 rounded border border-green-200">
-                      <p className="text-sm text-green-800">
-                        <span className="font-medium">Inventory Update:</span> Factory inventory has been updated with the produced quantities. 
-                        Product is now available for shop orders.
-                      </p>
-                    </div>
-                  )}
-                </div>
+            )}
+
+            {activeTab === 'progress' && (
+              <div className="pr-6">
+                <DailyProductionChart orderId={order.id} totalQuantity={order.quantity} />
               </div>
-            </div>
-          ) : (
-            <div className="pr-6">
-              <DailyProductionChart orderId={order.id} totalQuantity={order.quantity} />
-            </div>
-          )}
-          
+            )}
+          </div>
           {/* Status Progress */}
           <div className="mt-6 pr-6">
             <h3 className="font-semibold text-lg mb-2">Production Progress</h3>
@@ -483,7 +413,7 @@ export function MarketingOrderDetailDialog({
               <BarChart3 className="mr-2 h-4 w-4" />
               Download Report
             </Button>
-            {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && canEdit && (
+            {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && userRole === 'factory' && (
               <>
                 <Button variant="outline" onClick={() => onUpdateStatus(order.id, 'Cutting' as MarketingOrderStatus)}>
                   <Scissors className="mr-2 h-4 w-4" />
@@ -505,11 +435,13 @@ export function MarketingOrderDetailDialog({
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Complete
                 </Button>
-                <Button variant="destructive" onClick={() => onCancel(order.id)}>
-                  <X className="mr-2 h-4 w-4" />
-                  Cancel
-                </Button>
               </>
+            )}
+            {!order.isCompleted && order.status !== ('Cancelled' as MarketingOrderStatus) && canEdit && (
+              <Button variant="destructive" onClick={() => onCancel(order.id)}>
+                <X className="mr-2 h-4 w-4" />
+                Cancel
+              </Button>
             )}
             {canEdit && (
               <Button variant="destructive" onClick={openDeleteDialog}>

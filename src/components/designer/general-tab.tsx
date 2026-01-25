@@ -9,13 +9,60 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Loader2, Plus } from 'lucide-react';
 
 interface GeneralTabProps {
   style: Partial<Style>;
   updateStyle: (updates: Partial<Style>) => void;
 }
 
+import React, { useState, useEffect } from 'react';
+
+interface Category {
+  id: number;
+  name: string;
+  code: string;
+}
+
 export function GeneralTab({ style, updateStyle }: GeneralTabProps) {
+  const [mainCategories, setMainCategories] = useState<Category[]>([]);
+  const [productCategories, setProductCategories] = useState<Category[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/categories/main').then(res => res.json()).then(setMainCategories);
+    fetch('/api/categories/product').then(res => res.json()).then(setProductCategories);
+  }, []);
+
+  const handleCategoryChange = async (type: 'main' | 'sub', value: string) => {
+    const updates: any = { [type === 'main' ? 'mainCategory' : 'subCategory']: value };
+    updateStyle(updates);
+
+    // Auto-generate code if both are selected
+    const mainValue = type === 'main' ? value : style.mainCategory;
+    const subValue = type === 'sub' ? value : style.subCategory;
+
+    if (mainValue && subValue) {
+      const main = mainCategories.find(c => c.name === mainValue);
+      const sub = productCategories.find(c => c.name === subValue);
+
+      if (main && sub) {
+        setIsGenerating(true);
+        try {
+          const res = await fetch(`/api/categories/next-code?mainCode=${main.code}&productCode=${sub.code}`);
+          const data = await res.json();
+          if (data.code) {
+            updateStyle({ ...updates, number: data.code });
+          }
+        } catch (error) {
+          console.error("Code generation failed", error);
+        } finally {
+          setIsGenerating(false);
+        }
+      }
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-6">
@@ -37,13 +84,57 @@ export function GeneralTab({ style, updateStyle }: GeneralTabProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="number">Style Number</Label>
-                <Input 
-                    id="number" 
-                    value={style.number || ''} 
-                    onChange={e => updateStyle({ number: e.target.value })} 
-                    placeholder="e.g. STY-2024-001"
-                />
+                <div className="relative">
+                  <Input 
+                      id="number" 
+                      value={style.number || ''} 
+                      onChange={e => updateStyle({ number: e.target.value })} 
+                      placeholder="e.g. CL-DR-001"
+                      className={isGenerating ? "pr-10" : ""}
+                  />
+                  {isGenerating && (
+                    <div className="absolute right-3 top-2.5">
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400">Format: [Main]-[Cat]-[Seq]. Sequential numbers are unique per category.</p>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Main Category</Label>
+                    <Select 
+                      value={style.mainCategory || ""} 
+                      onValueChange={(val) => handleCategoryChange('main', val)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Main Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mainCategories.map(cat => (
+                          <SelectItem key={cat.id} value={cat.name}>{cat.name} ({cat.code})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-2">
+                    <Label>Product Category</Label>
+                    <Select 
+                      value={style.subCategory || ""} 
+                      onValueChange={(val) => handleCategoryChange('sub', val)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Product Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {productCategories.map(cat => (
+                          <SelectItem key={cat.id} value={cat.name}>{cat.name} ({cat.code})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -57,12 +148,12 @@ export function GeneralTab({ style, updateStyle }: GeneralTabProps) {
                     />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="category">Category</Label>
+                    <Label htmlFor="category">Legacy Tag (Optional)</Label>
                     <Input 
                         id="category" 
                         value={style.category || ''} 
                         onChange={e => updateStyle({ category: e.target.value })} 
-                        placeholder="e.g. Dresses"
+                        placeholder="e.g. Summer Collection"
                     />
                 </div>
             </div>
@@ -78,6 +169,72 @@ export function GeneralTab({ style, updateStyle }: GeneralTabProps) {
               />
             </div>
           </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Multi-Component Setup</CardTitle>
+                <CardDescription>Define parts for sets (e.g. 2-Piece Suit = Jacket x1, Pant x1).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    {(!style.components || style.components.length === 0) && (
+                         <div className="text-sm text-slate-500 bg-slate-50 p-2 rounded">
+                            Default: Single Component ("Main")
+                         </div>
+                    )}
+                    {style.components && style.components.map((comp, idx) => (
+                        <div key={idx} className="flex gap-2 items-end">
+                            <div className="flex-1 space-y-1">
+                                <Label className="text-xs">Component Name</Label>
+                                <Input 
+                                    value={comp.name} 
+                                    onChange={(e) => {
+                                        const newComps = [...(style.components || [])];
+                                        newComps[idx].name = e.target.value;
+                                        updateStyle({ components: newComps });
+                                    }}
+                                    placeholder="e.g. Jacket"
+                                />
+                            </div>
+                            <div className="w-20 space-y-1">
+                                <Label className="text-xs">Ratio</Label>
+                                <Input 
+                                    type="number" 
+                                    value={comp.ratio}
+                                    onChange={(e) => {
+                                        const newComps = [...(style.components || [])];
+                                        newComps[idx].ratio = parseInt(e.target.value) || 1;
+                                        updateStyle({ components: newComps });
+                                    }}
+                                />
+                            </div>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500"
+                                onClick={() => {
+                                    const newComps = style.components!.filter((_, i) => i !== idx);
+                                    updateStyle({ components: newComps });
+                                }}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            </Button>
+                        </div>
+                    ))}
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full mt-2"
+                        onClick={() => {
+                            const newComps = [...(style.components || []), { name: 'New Component', ratio: 1 }];
+                            updateStyle({ components: newComps });
+                        }}
+                    >
+                        <Plus className="mr-2 h-4 w-4" /> Add Component
+                    </Button>
+                </div>
+            </CardContent>
         </Card>
 
         <Card>

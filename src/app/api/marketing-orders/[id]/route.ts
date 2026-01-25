@@ -50,7 +50,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
     
     // Check roles allowed to modify orders (including status updates and planning)
-    const allowedRoles = ['factory', 'marketing', 'planning', 'sample_maker', 'sewing', 'packing'];
+    const allowedRoles = ['factory', 'marketing', 'planning', 'sample_maker', 'sewing', 'packing', 'store'];
     if (!allowedRoles.includes(user.role)) {
       return NextResponse.json({ error: `Forbidden: ${user.role} role cannot modify marketing orders` }, { status: 403 });
     }
@@ -58,204 +58,172 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     console.log('PUT /api/marketing-orders/:id called with id:', params.id);
     
     const orderData = await request.json();
-    console.log('Order data received:', orderData);
-    
+    const currentOrderData = await getMarketingOrderByIdFromDB(params.id);
     const success = await updateMarketingOrderInDB(params.id, orderData);
     
-    console.log('Update marketing order result:', success);
-    
     if (success) {
-      // If the order is marked as completed, update the product to be ready for delivery
-      // and update factory inventory with the produced quantities
-      if (orderData.isCompleted) {
+      const db = await getDb();
+      
+      // 1. Handle price and product code updates if provided (e.g. from Store Receive page)
+      if (orderData.items && orderData.items.length > 0) {
+        const firstItem = orderData.items[0];
+        const { price, productCode } = firstItem;
+        
+        const currentOrder = await db.get('SELECT productCode FROM marketing_orders WHERE id = ?', params.id);
+        
+        if (currentOrder) {
+          if (price > 0) {
+            await db.run('UPDATE products SET price = ? WHERE productCode = ?', price, currentOrder.productCode);
+          }
+          
+          if (productCode && productCode !== currentOrder.productCode) {
+            try {
+              await db.run('UPDATE products SET productCode = ? WHERE productCode = ?', productCode, currentOrder.productCode);
+              await db.run('UPDATE marketing_orders SET productCode = ? WHERE id = ?', productCode, params.id);
+              currentOrder.productCode = productCode;
+            } catch (err) {
+              console.error('Failed to update product code:', err);
+            }
+          }
+        }
+      }
+
+      // 2. Handle Handover to Store (Inventory Update)
+      // This happens when the status is changed to 'Store' (usually from Packing)
+      // We check if it was not 'Store' before, but is now 'Store', OR if isCompleted is being set to true for the first time
+      // AND we check our new inventoryAdded flag to prevent double counting
+      const isTransitioningToStore = currentOrderData && currentOrderData.status !== 'Store' && orderData.status === 'Store';
+      const isFinishingRegistration = currentOrderData && !currentOrderData.isCompleted && orderData.isCompleted;
+      const alreadyAdded = await db.get('SELECT inventoryAdded FROM marketing_orders WHERE id = ?', params.id).then((r: { inventoryAdded: number } | undefined) => r?.inventoryAdded === 1);
+
+      if ((isTransitioningToStore || isFinishingRegistration) && !alreadyAdded) {
         try {
-          const db = await getDb();
-          
-          // Update the product to be ready for delivery
-          await db.run(`
-            UPDATE products 
-            SET readyToDeliver = 1 
-            WHERE productCode = (
-              SELECT productCode FROM marketing_orders WHERE id = ?
-            )
-          `, params.id);
-          
-          console.log('Product marked as ready to deliver for order:', params.id);
-          
-          // Get the order details including items
-          const order = await db.get(`
-            SELECT id, productCode, quantity FROM marketing_orders WHERE id = ?
-          `, params.id);
+          const order = await db.get(`SELECT id, productCode, productName, status FROM marketing_orders WHERE id = ?`, params.id);
           
           if (order) {
-            // Get the order items (size/color breakdown)
-            const orderItems = await db.all(`
-              SELECT size, color, quantity FROM marketing_order_items WHERE orderId = ?
-            `, order.id);
-            
-            // Get the product details
-            const product = await db.get(`
-              SELECT id, productCode, name, price, imageUrl 
-              FROM products 
+            // Mark product as ready to deliver if it's not already
+            await db.run(`
+              UPDATE products 
+              SET readyToDeliver = 1 
               WHERE productCode = ?
             `, order.productCode);
+
+            const orderItems = await db.all(`SELECT size, color, quantity FROM marketing_order_items WHERE orderId = ?`, order.id);
+            const product = await db.get(`SELECT id, name FROM products WHERE productCode = ?`, order.productCode);
             
             if (product) {
-              // Update factory inventory for each item in the order
+              console.log(`Adding items from marketing order ${order.id} to factory inventory for product ${product.id}`);
               for (const item of orderItems) {
-                // Find the corresponding product variant
+                const quantity = Math.floor(Math.max(0, Number(item.quantity || 0)));
+                if (quantity <= 0) continue;
+
                 const variant = await db.get(`
-                  SELECT pv.id, pv.stock
-                  FROM product_variants pv
+                  SELECT pv.id, pv.stock FROM product_variants pv
                   JOIN products p ON pv.productId = p.id
                   WHERE p.productCode = ? AND pv.size = ? AND pv.color = ?
                 `, order.productCode, item.size, item.color);
                 
                 if (variant) {
-                  // Update the factory inventory by adding the produced quantity
-                  const newStock = variant.stock + item.quantity;
-                  await db.run(`
-                    UPDATE product_variants 
-                    SET stock = ? 
-                    WHERE id = ?
-                  `, newStock, variant.id);
-                  
-                  console.log(`Updated factory inventory for variant ${variant.id}: ${variant.stock} -> ${newStock}`);
+                  await db.run(`UPDATE product_variants SET stock = stock + ? WHERE id = ?`, quantity, variant.id);
                 } else {
-                  // Variant doesn't exist, create a new one
-                  console.log(`Variant not found for product ${order.productCode}, size ${item.size}, color ${item.color}. Creating new variant.`);
-                  
-                  // Generate a new variant ID
                   const newVariantId = `VAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                  
-                  // Insert the new variant
                   await db.run(`
                     INSERT INTO product_variants (id, productId, color, size, stock)
                     VALUES (?, ?, ?, ?, ?)
-                  `, newVariantId, product.id, item.color, item.size, item.quantity);
-                  
-                  console.log(`Created new variant ${newVariantId} for product ${product.id}`);
+                  `, newVariantId, product.id, item.color || 'Standard', item.size || 'M', quantity);
                 }
               }
               
-              // Get all product variants (including newly created ones)
-              const variants = await db.all(`
-                SELECT id, color, size, stock, imageUrl 
-                FROM product_variants 
-                WHERE productId = ?
-              `, product.id);
-              
-              // Remove the automatic population of shop inventories
-              // Shops will only get inventory when they actually order products
-              
-              // Create notification for shops about the new product/variants
-              try {
-                await createNotification({
-                  userType: 'shop',
-                  title: 'New Product Variant Available',
-                  description: `New variant(s) of product "${product.name}" are now available for ordering.`,
-                  href: '/shop/products',
-                });
-              } catch (notificationError) {
-                console.error('Failed to create shop notification:', notificationError);
-              }
-            }
-          }
-        } catch (productError) {
-          console.error('Error updating product readyToDeliver status or populating shop inventory:', productError);
-        }
-      }
-      
-      // Notify the next team based on the new status
-      if (orderData.status) {
-        let targetTeam = '';
-        let targetHref = '';
-        
-        switch (orderData.status) {
-          case 'Planning':
-            targetTeam = 'planning';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Sample Making':
-            targetTeam = 'sample_maker';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Cutting':
-            targetTeam = 'cutting';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Sewing':
-            targetTeam = 'sewing';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Finishing':
-            targetTeam = 'finishing';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Quality Inspection':
-            targetTeam = 'quality_inspection';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Packing':
-            targetTeam = 'packing';
-            targetHref = '/production-dashboard';
-            break;
-          case 'Delivery':
-            targetTeam = 'factory';
-            targetHref = '/marketing-orders';
-            break;
-        }
-        
-        if (targetTeam) {
-          try {
-            // Get order number for notification
-            const db = await getDb();
-            const order = await db.get('SELECT orderNumber, productName FROM marketing_orders WHERE id = ?', params.id);
-            
-            if (order) {
+              // Set the flag so we don't add inventory again
+              await db.run('UPDATE marketing_orders SET inventoryAdded = 1 WHERE id = ?', params.id);
+
+              // Notify shops about new stock availability
               await createNotification({
-                userType: targetTeam as any,
-                title: 'Order Status Updated',
-                description: `Order ${order.orderNumber} for ${order.productName} is now in "${orderData.status}" stage.`,
-                href: targetHref,
+                userType: 'shop',
+                title: 'Inventory Updated from Factory',
+                description: `New stock of "${product.name}" has been received by the store and is now available.`,
+                href: '/shop/products',
               });
             }
-          } catch (notificationError) {
-            console.error('Failed to create status change notification:', notificationError);
           }
+        } catch (error) {
+          console.error('Error in handover to store logic:', error);
         }
       }
-      
-      // Notify planning approval
+
+      // 3. Notify relevant teams about status change & Handle Requisitions
+      if (orderData.status) {
+        const order = await db.get('SELECT orderNumber, productName, productCode, quantity FROM marketing_orders WHERE id = ?', params.id);
+        
+        // Trigger Requisitions if moving to Planning
+        if (orderData.status === 'Planning' && order) {
+          try {
+            const product = await db.get('SELECT id FROM products WHERE productCode = ?', order.productCode);
+            if (product) {
+              const { generateMaterialRequisitionsForOrder } = await import('@/lib/bom');
+              await generateMaterialRequisitionsForOrder(params.id, order.quantity, product.id);
+            }
+          } catch (e) {
+            console.error('Failed to auto-generate requisitions:', e);
+          }
+        }
+
+        const statusConfigs: Record<string, { team: string, href: string }> = {
+          'Planning': { team: 'planning', href: '/production-dashboard' },
+          'Sample Making': { team: 'sample_maker', href: '/production-dashboard' },
+          'Cutting': { team: 'cutting', href: '/production-dashboard' },
+          'Sewing': { team: 'sewing', href: '/production-dashboard' },
+          'Finishing': { team: 'finishing', href: '/production-dashboard' },
+          'Quality Inspection': { team: 'quality_inspection', href: '/production-dashboard' },
+          'Packing': { team: 'packing', href: '/production-dashboard' },
+          'Store': { team: 'store', href: '/store/dashboard' },
+          'Delivery': { team: 'factory', href: '/marketing-orders' }
+        };
+        
+        const config = statusConfigs[orderData.status];
+        if (config && order) {
+          await createNotification({
+            userType: config.team as any,
+            title: 'Order Status Updated',
+            description: `Order ${order.orderNumber} for ${order.productName} is now in "${orderData.status}" stage.`,
+            href: config.href,
+          });
+        }
+      }
+
+      // 4. Notify planning approval
       if (orderData.isPlanningApproved) {
-        try {
-          const db = await getDb();
-          const order = await db.get('SELECT orderNumber, productName FROM marketing_orders WHERE id = ?', params.id);
-          if (order) {
-            await createNotification({
-              userType: 'sample_maker',
-              title: 'Planning Go-ahead Received',
-              description: `Order ${order.orderNumber} for ${order.productName} has been approved by Planning.`,
-              href: '/production-dashboard',
-            });
-          }
-        } catch (notificationError) {
-          console.error('Failed to create planning approval notification:', notificationError);
+        const order = await db.get('SELECT orderNumber, productName FROM marketing_orders WHERE id = ?', params.id);
+        if (order) {
+          await createNotification({
+            userType: 'sample_maker',
+            title: 'Planning Go-ahead Received',
+            description: `Order ${order.orderNumber} for ${order.productName} has been approved by Planning.`,
+            href: '/production-dashboard',
+          });
         }
       }
-      
-      console.log('Marketing order updated successfully');
+
+      // 5. Notify QC for inspection
+      if (orderData.qualityInspectionStatus === 'Pending') {
+        const order = await db.get('SELECT orderNumber, productName FROM marketing_orders WHERE id = ?', params.id);
+        if (order) {
+          await createNotification({
+            userType: 'quality_inspection',
+            title: 'Inspection Requested',
+            description: `Order ${order.orderNumber} for ${order.productName} is ready for quality inspection.`,
+            href: '/quality-inspection',
+          });
+        }
+      }
+
       return NextResponse.json({ message: 'Marketing order updated successfully' });
     } else {
-      console.error('Failed to update marketing order - updateMarketingOrderInDB returned false');
       return NextResponse.json({ error: 'Failed to update marketing order' }, { status: 500 });
     }
   } catch (error: any) {
     console.error('Error updating marketing order:', error);
-    return NextResponse.json({ 
-      error: 'Failed to update marketing order', 
-      details: error.message 
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update marketing order', details: error.message }, { status: 500 });
   }
 }
 
@@ -263,23 +231,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await authenticateRequest(request);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
     if (user.role !== 'factory' && user.role !== 'marketing') {
-      return NextResponse.json({ error: 'Forbidden: Only factory or marketing can delete orders' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const success = await deleteMarketingOrderFromDB(params.id);
-    
-    if (success) {
-      return NextResponse.json({ message: 'Marketing order deleted successfully' });
-    } else {
-      return NextResponse.json({ error: 'Failed to delete marketing order' }, { status: 500 });
-    }
+    return success ? NextResponse.json({ message: 'Deleted' }) : NextResponse.json({ error: 'Failed' }, { status: 500 });
   } catch (error) {
-    console.error('Error deleting marketing order:', error);
-    return NextResponse.json({ error: 'Failed to delete marketing order' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }

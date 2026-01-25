@@ -101,6 +101,7 @@ export function ShopDetailDialog({ shop, open, onOpenChange }: { shop: Shop; ope
                             <div className="space-y-2 text-sm text-muted-foreground">
                                 <p><strong>TIN:</strong> {shop.tinNumber || "Not provided"}</p>
                                 <p><strong>Trade License:</strong> {shop.tradeLicenseNumber || "Not provided"}</p>
+                                <p><strong>Telegram Channel:</strong> {shop.telegram_channel_id || "Not configured"}</p>
                                 {shop.createdAt && (
                                     <p><strong>Registered:</strong> {new Date(shop.createdAt).toLocaleString()}</p>
                                 )}

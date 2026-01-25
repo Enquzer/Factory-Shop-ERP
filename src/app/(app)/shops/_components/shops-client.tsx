@@ -20,7 +20,7 @@ import { ShopDetailDialog } from '@/components/shop-detail-dialog';
 import { EditShopDialog } from '@/components/edit-shop-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/auth-context';
-import { deleteShop } from '@/lib/shops'; // Import deleteShop function
+import { deleteShop, updateShop } from '@/lib/shops'; // Import shop helper functions
 import { BulkSelectionTable } from "@/components/bulk-selection-table";
 import { BulkActions } from "@/components/bulk-actions";
 
@@ -243,15 +243,9 @@ export function ShopsClientPage({ initialShops, onShopsUpdate }: { initialShops:
     
     const toggleShopStatus = async (shop: Shop, newStatus: 'Active' | 'Inactive' | 'Pending') => {
         try {
-            const response = await fetch(`/api/shops?id=${shop.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ status: newStatus }),
-            });
+            const success = await updateShop(shop.id, { status: newStatus });
 
-            if (!response.ok) {
+            if (!success) {
                 throw new Error('Failed to update shop status');
             }
 

@@ -36,7 +36,7 @@ export async function addItemsToShopInventory(shopId: string, items: Omit<ShopIn
     for (const item of items) {
       await db.run(`
         INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, MAX(0, ?), ?)
       `,
         shopId,
         item.productId,
@@ -66,9 +66,9 @@ export async function updateShopInventoryItemStock(shopId: string, productVarian
     const db = await getDb();
     const result = await db.run(`
       UPDATE shop_inventory 
-      SET stock = ? 
+      SET stock = MAX(0, ?) 
       WHERE shopId = ? AND productVariantId = ?
-    `, newStock, shopId, productVariantId);
+    `, Math.floor(Math.max(0, Number(newStock))), shopId, productVariantId);
     const updated = (result.changes || 0) > 0;
     if (updated) {
       // Reset the database cache to ensure subsequent queries get fresh data

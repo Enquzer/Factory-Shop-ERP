@@ -18,7 +18,9 @@ export const shopSchema = z.object({
   status: z.enum(['Active', 'Inactive', 'Pending']).optional(),
   // New fields for variant visibility control
   showVariantDetails: z.boolean().optional(),
-  maxVisibleVariants: z.number().min(1).max(1000).optional()
+  maxVisibleVariants: z.number().min(1).max(1000).optional(),
+  // New field for Telegram integration
+  telegram_channel_id: z.string().max(50, 'Telegram channel ID must be less than 50 characters').optional().nullable()
   // Removed aiDistributionMode field
 });
 

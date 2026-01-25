@@ -15,6 +15,7 @@ interface StatusStep {
 const ORDER_STATUS_FLOW: StatusStep[] = [
   { status: 'Pending', label: 'Order Placed', description: 'Order created by shop' },
   { status: 'Awaiting Payment', label: 'Payment Awaiting', description: 'Order confirmed by factory' },
+  { status: 'Payment Slip Attached', label: 'Slip Uploaded', description: 'Payment slip uploaded by shop' },
   { status: 'Paid', label: 'Payment Confirmed', description: 'Payment verified by factory' },
   { status: 'Dispatched', label: 'Order Dispatched', description: 'Order shipped by factory' },
   { status: 'Delivered', label: 'Order Delivered', description: 'Order received by shop' },

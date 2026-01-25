@@ -55,6 +55,7 @@ export default function OrderDetailsPage() {
   const statusColors: Record<string, string> = {
     'Pending': 'bg-gray-100 text-gray-800',
     'Awaiting Payment': 'bg-yellow-100 text-yellow-800',
+    'Payment Slip Attached': 'bg-blue-100 text-blue-800',
     'Paid': 'bg-green-100 text-green-800',
     'Released': 'bg-indigo-100 text-indigo-800 border-indigo-200',
     'Dispatched': 'bg-blue-100 text-blue-800',
@@ -167,13 +168,25 @@ export default function OrderDetailsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                 <div className="relative h-64 w-full rounded-lg overflow-hidden border bg-gray-50">
-                    <Image 
-                       src={order.paymentSlipUrl} 
-                       alt="Payment Receipt" 
-                       fill
-                       className="object-contain"
-                     />
+                 <div className="relative h-64 w-full rounded-lg overflow-hidden border bg-gray-50 flex items-center justify-center">
+                    {order.paymentSlipUrl.toLowerCase().endsWith('.pdf') ? (
+                       <div className="flex flex-col items-center justify-center p-6">
+                          <FileText className="h-20 w-20 text-blue-500 mb-4" />
+                          <p className="font-medium mb-4 text-center">PDF Payment Receipt</p>
+                          <Button asChild>
+                             <a href={order.paymentSlipUrl} target="_blank" rel="noopener noreferrer">
+                                Download/View PDF
+                             </a>
+                          </Button>
+                       </div>
+                    ) : (
+                       <Image 
+                          src={order.paymentSlipUrl} 
+                          alt="Payment Receipt" 
+                          fill
+                          className="object-contain"
+                       />
+                    )}
                  </div>
                  <div className="mt-4 flex justify-end">
                     <Button variant="outline" onClick={() => window.open(order.paymentSlipUrl, '_blank')}>
@@ -242,13 +255,20 @@ export default function OrderDetailsPage() {
                         <span>Status:</span>
                         <Badge variant="outline">{order.status}</Badge>
                     </div>
-                    {order.status === 'Awaiting Payment' && (
+                    {(order.status === 'Awaiting Payment' || order.status === 'Payment Slip Attached') && (
                         <div className="space-y-3">
-                            <div className="p-3 bg-yellow-50 text-yellow-800 text-xs rounded-md">
-                                Shop has marked this as paid. Please verify the receipt.
-                            </div>
+                            {!order.paymentSlipUrl ? (
+                                <div className="p-3 bg-red-50 text-red-800 text-xs rounded-md border border-red-100 italic">
+                                    Awaiting payment slip upload. Finance cannot verify payment until the shop attaches a receipt.
+                                </div>
+                            ) : (
+                                <div className="p-3 bg-yellow-50 text-yellow-800 text-xs rounded-md border border-yellow-100">
+                                    Shop has uploaded a payment slip. Please verify the receipt below before confirming.
+                                </div>
+                            )}
                             <Button 
                                 className="w-full bg-green-600 hover:bg-green-700"
+                                disabled={!order.paymentSlipUrl}
                                 onClick={async () => {
                                     try {
                                         setLoading(true);
@@ -338,7 +358,7 @@ export default function OrderDetailsPage() {
                     )}
                     
                     {/* Request Payment Section */}
-                    {(order.status === 'Pending' || order.status === 'Awaiting Payment') && (
+                    {(order.status === 'Pending' || order.status === 'Awaiting Payment' || order.status === 'Payment Slip Attached') && (
                       <div className="mt-4 pt-4 border-t">
                         {order.paymentRequested ? (
                             <div className="p-3 bg-orange-100 text-orange-800 text-center rounded-md font-medium text-sm border border-orange-200">

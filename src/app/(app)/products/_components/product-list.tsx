@@ -197,24 +197,32 @@ export function ProductList({
         
         setUpdatingStatus(prev => ({ ...prev, [product.id]: true }));
         try {
+            console.log(`Toggling product ${product.id} availability to ${checked}`);
             const success = await updateProduct(product.id, {
                 readyToDeliver: checked ? 1 : 0
             });
             
             if (success) {
-                // Update local state
-                setProductsState(prev => 
-                    prev.map(p => 
-                        p.id === product.id 
-                            ? { ...p, readyToDeliver: checked ? 1 : 0 } 
-                            : p
-                    )
-                );
-                
                 toast({
                     title: "Product Status Updated",
                     description: `Product "${product.name}" is now ${checked ? 'available' : 'unavailable'} for ordering.`,
                 });
+
+                // Refresh the product list from server to ensure state is synced
+                try {
+                    const updatedProducts = await getProducts(true);
+                    setProductsState(updatedProducts);
+                } catch (refreshError) {
+                    console.error('Error refreshing products:', refreshError);
+                    // Fallback to local update if refresh fails
+                    setProductsState(prev => 
+                        prev.map(p => 
+                            p.id === product.id 
+                                ? { ...p, readyToDeliver: checked ? 1 : 0 } 
+                                : p
+                        )
+                    );
+                }
             } else {
                 throw new Error('Failed to update product status');
             }
@@ -225,6 +233,8 @@ export function ProductList({
                 description: "Failed to update product status. Please try again.",
                 variant: "destructive",
             });
+            // Revert the switch if it was toggled optimistically (if we implemented that, but we didn't)
+            // We waited for success before changing state, so UI is still consistent with previous state
         } finally {
             setUpdatingStatus(prev => ({ ...prev, [product.id]: false }));
         }

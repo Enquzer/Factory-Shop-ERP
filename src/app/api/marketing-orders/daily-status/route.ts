@@ -29,13 +29,35 @@ export async function POST(request: Request) {
     const success = await updateDailyProductionStatus(statusData);
     
     if (success) {
+      // Log to Production Ledger (Module C requirement)
+      try {
+          console.log('Logging production activity for stage:', statusData.processStage);
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { logProductionActivity } = require('@/lib/production-ledger');
+          await logProductionActivity({
+              orderId: statusData.orderId,
+              processType: statusData.processStage,
+              quantity: statusData.quantity,
+              componentName: statusData.componentName || 'General',
+              userId: null,
+              notes: statusData.isTotalUpdate ? 'Total Update' : `${statusData.size}-${statusData.color} - ${statusData.status}`
+          });
+      } catch (e) {
+          console.error("Failed to log production ledger (non-fatal):", e);
+      }
+
       return NextResponse.json({ message: 'Daily production status updated successfully' });
     } else {
-      return NextResponse.json({ error: 'Failed to update daily production status' }, { status: 500 });
+      console.error('updateDailyProductionStatus returned false for:', statusData);
+      return NextResponse.json({ error: 'Failed to update daily production status in DB' }, { status: 500 });
     }
   } catch (error: any) {
-    console.error('Error updating daily production status:', error);
-    return NextResponse.json({ error: 'Failed to update daily production status', details: error.message }, { status: 500 });
+    console.error('Error in daily-status POST API:', error);
+    return NextResponse.json({ 
+      error: 'Failed to update daily production status', 
+      details: error.message,
+      stack: error.stack 
+    }, { status: 500 });
   }
 }
 

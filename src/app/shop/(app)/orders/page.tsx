@@ -153,6 +153,9 @@ export default function ShopOrdersPage() {
             
             const uploadResponse = await fetch('/api/upload', {
                 method: 'POST',
+                headers: {
+                    ...createAuthHeaders()
+                },
                 body: formData,
             });
 
@@ -160,16 +163,16 @@ export default function ShopOrdersPage() {
                 throw new Error('Failed to upload payment slip');
             }
 
-            const { imageUrl } = await uploadResponse.json();
+            const { url } = await uploadResponse.json();
 
-            // Then, confirm payment with the image URL
+            // Then, confirm payment with the URL
             const response = await fetch(`/api/orders/${selectedOrderForPayment.id}/payment`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     ...createAuthHeaders()
                 },
-                body: JSON.stringify({ paymentSlipUrl: imageUrl }),
+                body: JSON.stringify({ paymentSlipUrl: url }),
             });
 
             if (!response.ok) {
@@ -258,7 +261,7 @@ export default function ShopOrdersPage() {
                     variant="outline" 
                     size="sm" 
                     onClick={() => handleConfirmPayment(order)}
-                    disabled={isOrderClosed || order.status !== 'Awaiting Payment'}
+                    disabled={isOrderClosed || (order.status !== 'Awaiting Payment' && order.status !== 'Pending' && order.status !== 'Payment Slip Attached')}
                 >
                     Confirm Payment
                 </Button>
@@ -277,7 +280,9 @@ export default function ShopOrdersPage() {
     const statusVariants: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
         Pending: 'default',
         'Awaiting Payment': 'secondary',
+        'Payment Slip Attached': 'outline',
         Paid: 'outline',
+        Released: 'outline',
         Dispatched: 'outline',
         Delivered: 'secondary',
         Cancelled: 'destructive'
@@ -370,7 +375,7 @@ export default function ShopOrdersPage() {
                                 <input
                                     type="file"
                                     ref={fileInputRef}
-                                    accept="image/*"
+                                    accept="image/*,application/pdf"
                                     onChange={handleFileChange}
                                     className="hidden"
                                 />
@@ -386,16 +391,28 @@ export default function ShopOrdersPage() {
                                     </Button>
                                 ) : (
                                     <div className="relative">
-                                        <img 
-                                            src={paymentSlipPreview} 
-                                            alt="Payment slip preview" 
-                                            className="w-full h-48 object-contain border rounded"
-                                        />
+                                        {paymentSlipFile?.type === 'application/pdf' ? (
+                                            <div className="w-full h-48 flex flex-col items-center justify-center border rounded bg-muted/30">
+                                                <FileText className="h-16 w-16 text-primary mb-2" />
+                                                <span className="text-sm font-medium text-center px-4 truncate w-full">
+                                                    {paymentSlipFile.name}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground mt-1">
+                                                    PDF Document
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <img 
+                                                src={paymentSlipPreview} 
+                                                alt="Payment slip preview" 
+                                                className="w-full h-48 object-contain border rounded"
+                                            />
+                                        )}
                                         <Button
                                             type="button"
                                             variant="ghost"
                                             size="icon"
-                                            className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-md"
+                                            className="absolute top-2 right-2 bg-white/80 hover:bg-white rounded-full p-1 shadow-md"
                                             onClick={removePaymentSlip}
                                         >
                                             <X className="w-4 h-4" />
@@ -490,6 +507,7 @@ export default function ShopOrdersPage() {
                         <SelectItem value="All">All Statuses</SelectItem>
                         <SelectItem value="Pending">Pending</SelectItem>
                         <SelectItem value="Awaiting Payment">Awaiting Payment</SelectItem>
+                        <SelectItem value="Payment Slip Attached">Payment Slip Attached</SelectItem>
                         <SelectItem value="Paid">Paid</SelectItem>
                         <SelectItem value="Dispatched">Dispatched</SelectItem>
                         <SelectItem value="Delivered">Delivered</SelectItem>

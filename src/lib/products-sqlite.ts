@@ -35,10 +35,10 @@ export type Product = {
   
   // Advanced Production Fields
   piecesPerSet?: number;
-  sampleDevelopmentStatus?: string;
-  sampleQuotationStatus?: string;
-  sampleSizeSetStatus?: string;
-  sampleCounterStatus?: string;
+  sampleDevelopmentStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleQuotationStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleSizeSetStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleCounterStatus?: 'Pending' | 'In Progress' | 'Completed';
   sampleApprovedBy?: string;
   sampleApprovedDate?: string;
 };
@@ -245,7 +245,7 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
       const variantId = `VAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       await db.run(`
         INSERT INTO product_variants (id, productId, color, size, stock, imageUrl)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, MAX(0, ?), ?)
       `, [variantId, productId, variant.color, variant.size, variant.stock, variant.imageUrl]);
       
       variants.push({
@@ -482,7 +482,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
             variantValues.push(variant.size);
           }
           if (variant.stock !== undefined) {
-            variantFields.push('stock = ?');
+            variantFields.push('stock = MAX(0, ?)');
             variantValues.push(variant.stock);
           }
           if (variant.imageUrl !== undefined) {
@@ -505,7 +505,7 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
             
             const insertResult = await db.run(`
               INSERT INTO product_variants (id, productId, color, size, stock, imageUrl)
-              VALUES (?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, MAX(0, ?), ?)
             `, [variant.id, id, variant.color, variant.size, variant.stock, variant.imageUrl || null]);
             console.log('Insert variant result:', insertResult);
           } else {
@@ -615,8 +615,8 @@ export async function updateVariantStock(variantId: string, newStock: number): P
     const db = await getDb();
     
     const result = await db.run(`
-      UPDATE product_variants SET stock = ? WHERE id = ?
-    `, [newStock, variantId]);
+      UPDATE product_variants SET stock = MAX(0, ?) WHERE id = ?
+    `, [Math.floor(Math.max(0, Number(newStock))), variantId]);
     const updated = (result.changes || 0) > 0;
     if (updated) {
       // Reset the database cache to ensure subsequent queries get fresh data
@@ -676,12 +676,15 @@ export async function updateShopInventoryOnReplenishment(productId: string, vari
     let updated = false;
     // Update stock for each shop and create notifications
     for (const shop of shopsWithVariant) {
+      const validQuantity = Math.floor(Math.max(0, Number(quantityAdded)));
+      if (validQuantity <= 0) continue;
+
       // Update the shop's inventory
       const result = await db.run(`
         UPDATE shop_inventory 
         SET stock = stock + ? 
         WHERE shopId = ? AND productVariantId = ?
-      `, [quantityAdded, shop.shopId, variantId]);
+      `, [validQuantity, shop.shopId, variantId]);
       
       if (result.changes > 0) {
         updated = true;

@@ -51,6 +51,7 @@ import { getProducts } from "@/lib/products";
 import { calculateDemandWeights } from "@/lib/variant-demand";
 import { useShopInventory } from "@/hooks/use-shop-inventory";
 import { StockDistributionToggle } from "@/components/stock-distribution-toggle";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 // Fixed TypeScript error with useShopInventory hook usage
 
@@ -73,6 +74,68 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
     const [quantities, setQuantities] = useState<OrderQuantities>({});
     const [isReadyToDeliver, setIsReadyToDeliver] = useState(product.readyToDeliver === 1);
     const [updatingStatus, setUpdatingStatus] = useState(false);
+    
+    // Shop settings for simplified view
+    const [shopSettings, setShopSettings] = useState<{ showVariantDetails: boolean } | null>(null);
+    const [simplifiedQuantity, setSimplifiedQuantity] = useState(12);
+    const [previewDistribution, setPreviewDistribution] = useState<Map<string, number>>(new Map());
+
+    // Fetch shop settings if user is a shop
+    useEffect(() => {
+        if (user && user.role === 'shop') {
+             // Pass the username, not the id, as user.id likely doesn't match shop.id
+             fetch(`/api/shops?username=${user.username}`)
+                .then(res => res.json())
+                .then(data => {
+                    // Start of Selection
+                    if (data && typeof data.showVariantDetails !== 'undefined') {
+                        setShopSettings({ showVariantDetails: !!data.showVariantDetails });
+                    }
+                })
+                .catch(err => console.error("Error fetching shop settings:", err));
+        }
+    }, [user]);
+
+    // Calculate distribution when in simplified mode
+    useEffect(() => {
+        if (shopSettings && !shopSettings.showVariantDetails && simplifiedQuantity > 0) {
+             // Dynamically import to avoid server-side issues if any
+             import("@/lib/ai-distribution").then(({ distributeOrderQuantity }) => {
+                 const dist = distributeOrderQuantity(
+                    product.variants as any[], 
+                    simplifiedQuantity,
+                    'proportional'
+                 );
+                 setPreviewDistribution(dist);
+                 
+                 // Convert distribution map to quantities object for compatibility
+                 const newQuantities: OrderQuantities = {};
+                 dist.forEach((qty, variantId) => {
+                     newQuantities[variantId] = qty;
+                 });
+                 setQuantities(newQuantities);
+             });
+        }
+    }, [shopSettings, simplifiedQuantity, product.variants]);
+
+    const handleSimplifiedQuantityChange = (value: string) => {
+        const numValue = parseInt(value);
+        if (!isNaN(numValue) && numValue >= 0) {
+          // Round to nearest multiple of 12
+          const rounded = Math.round(numValue / 12) * 12;
+          setSimplifiedQuantity(rounded || 12);
+        }
+    };
+
+    const handleSimplifiedIncrement = () => {
+        setSimplifiedQuantity(prev => prev + 12);
+    };
+
+    const handleSimplifiedDecrement = () => {
+        setSimplifiedQuantity(prev => Math.max(12, prev - 12));
+    };
+
+    const isSimplifiedMode = user?.role === 'shop' && shopSettings && !shopSettings.showVariantDetails;
     
     // Marketing order state
     const [isMarketingOrderDialogOpen, setIsMarketingOrderDialogOpen] = useState(false);
@@ -227,20 +290,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
           return variant ? variant.stock : 0;
         }
         
-        // For shop users, check the shop inventory first
-        const inventoryStock = getAvailableStock(variantId);
-        
-        // If shop has stock, return that
-        if (inventoryStock > 0) {
-          const orderedQuantity = orderItems
-            .filter(item => item.variant.id === variantId)
-            .reduce((sum, item) => sum + item.quantity, 0);
-          return inventoryStock - orderedQuantity;
-        }
-        
-        // If shop has no stock, check factory stock
-        const variant = product.variants.find(v => v.id === variantId);
-        return variant ? variant.stock : 0;
+        // For shop users, strictly return the shop inventory
+        // We do not subtract orderedQuantity because we are ordering (buying), not selling from inventory
+        return getAvailableStock(variantId);
       };
 
     const handleQuantityChange = (variantId: string, amount: number) => {
@@ -427,7 +479,13 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                     const mainImageName = `${marketingProductCode.toUpperCase()}_main.${marketingMainImage.name.split('.').pop()}`;
                     formData.append('filename', mainImageName);
                     
-                    const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+                    const uploadRes = await fetch('/api/upload', { 
+                        method: 'POST', 
+                        headers: {
+                            ...createAuthHeaders()
+                        },
+                        body: formData 
+                    });
                     if (uploadRes.ok) {
                         const res = await uploadRes.json();
                         orderData.imageUrl = res.imageUrl;
@@ -473,7 +531,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             <DialogDescription>
               {user?.role === 'factory' 
                 ? "Place a marketing order for production with detailed size and color breakdown." 
-                : "Select the color, size, and quantity you wish to order. Unit Price: ETB " + product.price.toFixed(2)}
+                : isSimplifiedMode
+                   ? "Enter bulk quantity (multiples of 12). Variants are distributed automatically. Unit Price: ETB " + product.price.toFixed(2)
+                   : "Select the color, size, and quantity you wish to order. Unit Price: ETB " + product.price.toFixed(2)}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 max-h-[65vh] overflow-y-auto pr-4">
@@ -513,7 +573,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                    <span className="text-sm">
                      {product.variants.reduce((total, variant) => {
                        const availableStock = getRealTimeAvailableStock(variant.id);
-                       return total + availableStock;
+                       return total + Math.max(0, availableStock);
                      }, 0)} units available in your inventory
                    </span>
                  </div>
@@ -521,6 +581,82 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                    This shows the total quantity of this product available in your shop inventory.
                  </p>
                </div>
+             )}
+             
+             {isSimplifiedMode && (
+                 <div className="space-y-6 mb-6">
+                     <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/20">
+                         <Label htmlFor="simplified-quantity" className="text-lg font-medium mb-4">
+                             Order Quantity (Packs of 12)
+                         </Label>
+                         <div className="flex items-center gap-4">
+                           <Button 
+                             type="button" 
+                             variant="outline" 
+                             size="icon" 
+                             className="h-12 w-12"
+                             onClick={handleSimplifiedDecrement}
+                             disabled={simplifiedQuantity <= 12}
+                           >
+                             <MinusCircle className="h-6 w-6" />
+                           </Button>
+                           <Input
+                             id="simplified-quantity"
+                             type="number"
+                             min="12"
+                             step="12"
+                             value={simplifiedQuantity}
+                             onChange={(e) => handleSimplifiedQuantityChange(e.target.value)}
+                             className="text-center w-32 h-12 text-xl font-bold"
+                           />
+                           <Button 
+                             type="button" 
+                             variant="outline" 
+                             size="icon" 
+                             className="h-12 w-12"
+                             onClick={handleSimplifiedIncrement}
+                           >
+                             <PlusCircle className="h-6 w-6" />
+                           </Button>
+                         </div>
+                     </div>
+                     
+                     <div className="rounded-lg border p-4">
+                        <h4 className="font-medium mb-3">Automatic Distribution Preview</h4>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="p-2 text-left">Color</th>
+                                  <th className="p-2 text-left">Size</th>
+                                  <th className="p-2 text-right">Qty</th>
+                                  <th className="p-2 text-right">Factory Stock</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {product.variants.map((variant) => {
+                                  const qty = quantities[variant.id] || 0;
+                                  if (qty === 0 && variant.stock === 0) return null;
+                                  return (
+                                    <tr key={variant.id} className="border-t">
+                                      <td className="p-2">{variant.color}</td>
+                                      <td className="p-2">{variant.size}</td>
+                                      <td className="p-2 text-right font-bold text-primary">
+                                        {qty > 0 ? qty : '-'}
+                                      </td>
+                                      <td className="p-2 text-right">
+                                        <Badge variant={variant.stock > 0 ? 'outline' : 'destructive'}>
+                                            {Math.max(0, variant.stock)}
+                                        </Badge>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                        </div>
+                     </div>
+                 </div>
              )}
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -532,7 +668,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                 src={imageUrl} 
                                 alt={`${product.name} - ${color}`} 
                                 fill 
-                                sizes="(max-width: 768px) 100vw, 50vw"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 400px"
                                 style={{objectFit: 'cover'}} 
                                 // Add error handling for blob URLs
                                 onError={(e) => {
@@ -642,14 +778,14 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                   ))}
                   
                   {/* Shop view - show variants with stock info */}
-                  {user?.role === 'shop' && Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
+                  {user?.role === 'shop' && !isSimplifiedMode && Object.entries(variantsByColor).map(([color, { imageUrl, variants }]) => (
                       <Card key={color} className="overflow-hidden">
                           <div className="relative h-48 w-full">
                               <Image 
                                 src={imageUrl} 
                                 alt={`${product.name} - ${color}`} 
                                 fill 
-                                sizes="(max-width: 768px) 100vw, 50vw"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 400px"
                                 style={{objectFit: 'cover'}} 
                                 // Add error handling for blob URLs
                                 onError={(e) => {
@@ -760,6 +896,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
              </div>
              
              {/* Stock Distribution Chart Toggle */}
+             {!isSimplifiedMode && (
              <div className="mt-6">
                <StockDistributionToggle 
                  product={product}
@@ -767,6 +904,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                  viewType={user?.role === 'factory' ? 'factory' : 'shop'}
                />
              </div>
+             )}
              
           </div>
           <DialogFooter className="flex-col sm:items-end gap-4 border-t pt-4">
@@ -796,9 +934,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                           Place Marketing Order ({totalSelected})
                       </Button>
                   ) : (
-                      <Button onClick={() => handleAddAllToOrder()} disabled={totalSelected === 0} className="w-full sm:w-auto">
+                      <Button onClick={() => handleAddAllToOrder()} disabled={totalSelected === 0 || (isSimplifiedMode && totalSelected % 12 !== 0)} className="w-full sm:w-auto">
                           <ShoppingCart className="mr-2 h-4 w-4" />
-                          Add ({totalSelected}) to Order
+                          {isSimplifiedMode ? "Confirm & Place Order" : `Add ({totalSelected}) to Order`}
                       </Button>
                   )}
               </div>

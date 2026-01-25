@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { MarketingOrderItem, MarketingOrderStatus } from '@/lib/marketing-orders';
+import { Badge } from '@/components/ui/badge';
 import { VelocityProductionGrid } from './velocity-production-grid';
 
 interface DailyProductionFormProps {
@@ -25,9 +26,11 @@ interface DailyProductionFormProps {
   orderStatus?: MarketingOrderStatus; // Add order status prop
   userRole?: string;
   piecesPerSet?: number;
+  plannedOutputPerDay?: number;
+  components?: any[];
 }
 
-export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpdate, orderStatus, userRole, piecesPerSet = 1 }: DailyProductionFormProps) {
+export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpdate, orderStatus, userRole, piecesPerSet = 1, plannedOutputPerDay, components }: DailyProductionFormProps) {
   const { toast } = useToast();
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [mode, setMode] = useState<'breakdown' | 'total'>('breakdown');
@@ -37,42 +40,45 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     quantity: 0, 
     status: 'In Progress' 
   });
-  const [isVelocityGridSaving, setIsVelocityGridSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [dailyProductionStatus, setDailyProductionStatus] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
   // Fetch total produced quantity
-  useEffect(() => {
-    const fetchTotalProduced = async () => {
-      try {
-        const response = await fetch(`/api/marketing-orders/total-produced?orderId=${orderId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setTotalProduced(data.totalProduced || 0);
-        }
-      } catch (error) {
-        console.error('Error fetching total produced quantity:', error);
+  const fetchTotalProduced = async () => {
+    try {
+      const response = await fetch(`/api/marketing-orders/total-produced?orderId=${orderId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTotalProduced(data.totalProduced || 0);
       }
-    };
-    
-    fetchTotalProduced();
-  }, [orderId, onStatusUpdate]);
+    } catch (error) {
+      console.error('Error fetching total produced quantity:', error);
+    }
+  };
+
+  // Fetch history
+  const fetchHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/marketing-orders/daily-status?orderId=${orderId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data);
+        setDailyProductionStatus(data);
+      }
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
   
-  // Fetch daily production status for breakdown calculations
   useEffect(() => {
-    const fetchDailyStatus = async () => {
-      try {
-        const response = await fetch(`/api/marketing-orders/daily-status?orderId=${orderId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setDailyProductionStatus(data);
-        }
-      } catch (error) {
-        console.error('Error fetching daily production status:', error);
-      }
-    };
-    
     if (orderId) {
-      fetchDailyStatus();
+      fetchTotalProduced();
+      fetchHistory();
     }
   }, [orderId]);
   
@@ -93,14 +99,28 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
       quantity: 0,
       status: 'In Progress'
     });
-  }, [items, totalQuantity]);
+  }, [items]);
+
+  // Auto-select process stage based on user role
+  useEffect(() => {
+    if (!userRole) return;
+    const roleToStage: Record<string, string> = {
+      'planning': 'Planning',
+      'sample_maker': 'Sample Making',
+      'cutting': 'Cutting',
+      'sewing': 'Sewing',
+      'finishing': 'Finishing',
+      'packing': 'Packing',
+    };
+    if (roleToStage[userRole]) {
+       setTotalUpdate(prev => ({ ...prev, processStage: roleToStage[userRole] }));
+    }
+  }, [userRole]);
 
   const handleQuantityChange = (size: string, color: string, quantity: number) => {
     const key = `${size}-${color}`;
     const newQuantity = Math.max(0, quantity);
     
-    // Get current total for this item from database
-    // For now, we'll just validate against the planned quantity
     const item = items.find(i => i.size === size && i.color === color);
     if (item && newQuantity > item.quantity) {
       toast({
@@ -134,7 +154,6 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
   const handleTotalQuantityChange = (quantity: number) => {
     const newQuantity = Math.max(0, quantity);
     
-    // Validate that total quantity doesn't exceed order quantity
     if (newQuantity > totalQuantity) {
       toast({
         title: "Validation Error",
@@ -144,7 +163,6 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
       return;
     }
     
-    // Also validate that it doesn't exceed remaining quantity
     if (newQuantity > (totalQuantity - totalProduced)) {
       toast({
         title: "Validation Error",
@@ -161,202 +179,155 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
   };
 
   const handleTotalStatusChange = (status: string) => {
-    setTotalUpdate(prev => ({
-      ...prev,
-      status
-    }));
+    setTotalUpdate(prev => ({ ...prev, status }));
   };
 
   const handleProcessStageChange = (stage: string) => {
-    setTotalUpdate(prev => ({
-      ...prev,
-      processStage: stage
-    }));
+    setTotalUpdate(prev => ({ ...prev, processStage: stage }));
   };
 
   const handleModeChange = (value: string) => {
     setMode(value as 'breakdown' | 'total');
   };
   
-  // Calculate current department total for an item based on daily production status
+  const getHistoryTotal = (stage: string, size: string, color: string, component?: string) => {
+    return history
+      .filter(entry => 
+        entry.processStage === stage && 
+        entry.size === size && 
+        entry.color === color && 
+        (!component || entry.componentName === component)
+      )
+      .reduce((sum, entry) => sum + entry.quantity, 0);
+  };
+
   const getCurrentDepartmentTotal = (size: string, color: string) => {
     return dailyProductionStatus
       .filter(status => status.size === size && status.color === color)
       .reduce((sum, status) => sum + status.quantity, 0);
   };
 
-  // Validate process stage dependency rules
   const validateProcessStage = (selectedStage: string): boolean => {
-    // If no order status is provided, allow all stages
     if (!orderStatus) return true;
-    
-    // Define the process sequence
     const processSequence: MarketingOrderStatus[] = [
-      'Placed Order',
-      'Planning',
-      'Sample Making',
-      'Cutting', 
-      'Sewing', 
-      'Finishing',
-      'Quality Inspection',
-      'Packing', 
-      'Delivery'
+      'Placed Order', 'Planning', 'Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection', 'Packing', 'Delivery'
     ];
-    
-    // Find the index of the selected stage and current order status
     const selectedStageIndex = processSequence.indexOf(selectedStage as MarketingOrderStatus);
     const currentOrderStatusIndex = processSequence.indexOf(orderStatus);
-    
-    // If selected stage is the current order status, it's always allowed
-    if (selectedStageIndex === currentOrderStatusIndex) return true;
-    
-    // If selected stage is before current order status, it's allowed (partial progress)
-    if (selectedStageIndex < currentOrderStatusIndex) return true;
-    
-    // If selected stage is the next stage after current, it's allowed
-    if (selectedStageIndex === currentOrderStatusIndex + 1) return true;
-    
-    // If selected stage is more than one step ahead, check if previous stage has progress
-    if (selectedStageIndex > currentOrderStatusIndex + 1) {
-      // For now, we'll allow it but in a real implementation, we'd check if there's
-      // recorded progress in the intermediate stages
-      return true;
-    }
-    
-    return false;
+    if (selectedStageIndex <= currentOrderStatusIndex + 1) return true;
+    return true; // Simplified for now
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleNotifyQC = async () => {
     try {
+      // Determine the inspection stage based on current order status
+      let inspectionStage = 'Inline-Sewing';
+      if (orderStatus === 'Sample Making') inspectionStage = 'Sample';
+      else if (orderStatus === 'Cutting') inspectionStage = 'Inline-Cutting';
+      else if (orderStatus === 'Sewing') inspectionStage = 'Inline-Sewing';
+      else if (['Finishing', 'Quality Inspection', 'Packing'].includes(orderStatus || '')) inspectionStage = 'Final';
+
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`/api/marketing-orders/${orderId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ 
+          qualityInspectionStatus: 'Pending',
+          qualityInspectionStage: inspectionStage
+        })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "QC Notified",
+          description: `Quality Control department has been notified for ${inspectionStage} inspection.`,
+        });
+        onStatusUpdate();
+      } else {
+        throw new Error('Failed to notify QC');
+      }
+    } catch (error) {
+      console.error('Error notifying QC:', error);
+      toast({
+        title: "Error",
+        description: "Failed to notify QC. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // State for component selection (Sewing stage)
+  const [selectedCompId, setSelectedCompId] = useState<string>("");
+
+  useEffect(() => {
+    const isSewing = totalUpdate.processStage === 'Sewing' || userRole === 'sewing';
+    if (isSewing && components && components.length > 0) {
+      // Only set if not already set or override if needed. 
+      // For simplicity, just ensure a value is selected if we are in sewing mode.
+      setSelectedCompId(prev => prev || components[0].componentName);
+    }
+  }, [userRole, components, totalUpdate.processStage]);
+
+  const performSubmit = async (updatesObject?: Record<string, { quantity: number; status: string }>) => {
+    setIsSaving(true);
+    try {
+      const targetUpdates = updatesObject || statusUpdates;
+      const currentStage = totalUpdate.processStage;
+
+      if (!currentStage) {
+        toast({ title: "Authorization Error", description: "Your role is not authorized for production entry.", variant: "destructive" });
+        setIsSaving(false);
+        return;
+      }
+      
       if (mode === 'total') {
-        // Validate that process stage is selected
-        if (!totalUpdate.processStage) {
-          toast({
-            title: "Validation Error",
-            description: "Please select a production process stage.",
-            variant: "destructive",
-          });
-          return;
-        }
+        const token = localStorage.getItem('authToken');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         
-        // Validate process stage dependency
-        if (!validateProcessStage(totalUpdate.processStage)) {
-          toast({
-            title: "Validation Error",
-            description: `Cannot record progress for ${totalUpdate.processStage} stage. Please ensure previous stages have been started.`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // Validate that total quantity doesn't exceed order quantity
-        if (totalUpdate.quantity > totalQuantity) {
-          toast({
-            title: "Validation Error",
-            description: `Total quantity cannot exceed order quantity of ${totalQuantity}`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // Validate that it doesn't exceed remaining quantity
-        const remaining = totalQuantity - totalProduced;
-        if (totalUpdate.quantity > remaining) {
-          toast({
-            title: "Validation Error",
-            description: `Total quantity cannot exceed remaining quantity of ${remaining}`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // Submit total quantity update
         const response = await fetch('/api/marketing-orders/daily-status', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify({
             orderId,
             date,
             quantity: totalUpdate.quantity,
             status: totalUpdate.status,
-            processStage: totalUpdate.processStage, // Add process stage to the request
+            processStage: currentStage,
+            componentName: ((currentStage === 'Sewing' || userRole === 'sewing') && components && components.length > 1) ? selectedCompId : null,
             isTotalUpdate: true
           }),
         });
         
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.error || 'Failed to update daily production status');
+          throw new Error(error.details || error.error || 'Failed to update daily production status');
         }
       } else {
-        // For breakdown mode, validate that process stage is selected
-        if (!totalUpdate.processStage) {
-          toast({
-            title: "Validation Error",
-            description: "Please select a production process stage.",
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // Validate process stage dependency
-        if (!validateProcessStage(totalUpdate.processStage)) {
-          toast({
-            title: "Validation Error",
-            description: `Cannot record progress for ${totalUpdate.processStage} stage. Please ensure previous stages have been started.`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // For breakdown mode, validate and submit each item
-        // First calculate total of all breakdown quantities
         let breakdownTotal = 0;
-        for (const [key, update] of Object.entries(statusUpdates)) {
+        for (const update of Object.values(targetUpdates)) {
           breakdownTotal += update.quantity;
         }
         
-        // Validate that breakdown total doesn't exceed remaining quantity
-        const remaining = totalQuantity - totalProduced;
-        if (breakdownTotal > remaining) {
-          toast({
-            title: "Validation Error",
-            description: `Total breakdown quantity cannot exceed remaining quantity of ${remaining}`,
-            variant: "destructive",
-          });
+        if (breakdownTotal === 0) {
+          toast({ title: "No Data", description: "Please enter production quantities before saving.", variant: "destructive" });
+          setIsSaving(false);
           return;
         }
-        
-        // Validate each item quantity
-        for (const [key, update] of Object.entries(statusUpdates)) {
+
+        const promises = Object.entries(targetUpdates).map(async ([key, update]) => {
           const [size, color] = key.split('-');
-          const item = items.find(i => i.size === size && i.color === color);
-          
-          if (item && update.quantity > item.quantity) {
-            toast({
-              title: "Validation Error",
-              description: `Quantity for ${size} ${color} cannot exceed planned quantity of ${item.quantity}`,
-              variant: "destructive",
-            });
-            return;
-          }
-        }
-        
-        // Submit each status update
-        const promises = Object.entries(statusUpdates).map(async ([key, update]) => {
-          const [size, color] = key.split('-');
-          
-          // Only submit if quantity > 0
           if (update.quantity > 0) {
+            const token = localStorage.getItem('authToken');
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             const response = await fetch('/api/marketing-orders/daily-status', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+              headers,
               body: JSON.stringify({
                 orderId,
                 date,
@@ -364,218 +335,445 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                 color,
                 quantity: update.quantity,
                 status: update.status,
-                processStage: totalUpdate.processStage, // Add process stage to the request
+                processStage: currentStage,
+                componentName: ((currentStage === 'Sewing' || userRole === 'sewing') && components && components.length > 1) ? selectedCompId : null,
                 isTotalUpdate: false
               }),
             });
             
             if (!response.ok) {
               const error = await response.json();
-              throw new Error(error.error || 'Failed to update daily production status');
+              throw new Error(error.details || error.error || 'Failed to update daily production status');
             }
-            
             return response.json();
           }
         });
         
-        // Filter out undefined promises (for items with 0 quantity)
         await Promise.all(promises.filter(Boolean));
       }
       
-      toast({
-        title: "Success",
-        description: "Daily production status updated successfully.",
-      });
+      toast({ title: "Success", description: "Daily production status updated successfully." });
       
-      // Refresh total produced quantity
+      if (mode === 'total') {
+        setTotalUpdate(prev => ({ ...prev, quantity: 0 }));
+      } else {
+        const resetUpdates: Record<string, { quantity: number; status: string }> = {};
+        items.forEach(item => {
+          resetUpdates[`${item.size}-${item.color}`] = { quantity: 0, status: 'In Progress' };
+        });
+        setStatusUpdates(resetUpdates);
+      }
+
+      fetchTotalProduced();
+      fetchHistory();
       onStatusUpdate();
     } catch (error: any) {
       console.error('Error updating daily production status:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to update daily production status. Please try again.",
+        description: error.message || "Failed to update daily production status.",
         variant: "destructive",
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    performSubmit();
+  };
+
+  // Calculate Production Summary (Sets + Stray Components)
+  const productionSummary = useMemo(() => {
+    if (!components || components.length <= 1) {
+      // For single component products, just return the sets based on sewing history
+      const sets: any[] = [];
+      const grouped: Record<string, number> = {};
+      
+      history.forEach(entry => {
+        if (entry.processStage !== 'Sewing' || entry.isTotalUpdate) return;
+        const key = `${entry.color}-${entry.size}`;
+        grouped[key] = (grouped[key] || 0) + entry.quantity;
+      });
+
+      Object.entries(grouped).forEach(([key, qty]) => {
+        const [color, size] = key.split('-');
+        if (qty > 0) sets.push({ color, size, quantity: qty });
+      });
+
+      return { sets, strays: [] };
+    }
+
+    const grouped: Record<string, Record<string, number>> = {};
+    
+    // Process history: Only look at Sewing stage for component completion
+    history.forEach(entry => {
+      if (entry.processStage !== 'Sewing' || entry.isTotalUpdate) return;
+      
+      const key = `${entry.color}-${entry.size}`;
+      if (!grouped[key]) grouped[key] = {};
+      
+      const compName = entry.componentName || 'General';
+      grouped[key][compName] = (grouped[key][compName] || 0) + entry.quantity;
+    });
+
+    const sets: any[] = [];
+    const strays: any[] = [];
+
+    Object.entries(grouped).forEach(([variantKey, componentQtys]) => {
+      const [color, size] = variantKey.split('-');
+      
+      // 1. Calculate matching sets (intersection of all components)
+      let minSets = Infinity;
+      components.forEach(comp => {
+        const qty = componentQtys[comp.componentName] || 0;
+        minSets = Math.min(minSets, qty);
+      });
+      if (minSets === Infinity) minSets = 0;
+
+      if (minSets > 0) {
+        sets.push({
+          color,
+          size,
+          quantity: minSets,
+          details: components.map(c => `${c.componentName}: ${componentQtys[c.componentName] || 0}`).join(', ')
+        });
+      }
+
+      // 2. Calculate Stray/WIP Components (Sewn but not yet matched into a set)
+      components.forEach(comp => {
+        const totalSewn = componentQtys[comp.componentName] || 0;
+        const strayQty = totalSewn - minSets;
+        if (strayQty > 0) {
+          strays.push({ color, size, component: comp.componentName, quantity: strayQty });
+        }
+      });
+    });
+
+    return { sets, strays };
+  }, [history, components]);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Daily Production Status</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="date">Date</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  className="border-accent focus:ring-accent"
-                />
-              </div>
-              <div>
-                <Label htmlFor="mode">Mode</Label>
-                <Select value={mode} onValueChange={handleModeChange}>
-                  <SelectTrigger className="w-full border-accent focus:ring-accent">
-                    <SelectValue placeholder="Select mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="breakdown">Size/Color Breakdown</SelectItem>
-                    <SelectItem value="total">Total Quantity</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="bg-blue-50 p-3 rounded-md">
-                <div className="text-sm font-medium">Placed vs Produced</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Placed: {totalQuantity} units
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Produced: {totalProduced} units
-                </div>
-                <div className="text-xs font-medium mt-1">
-                  Remaining: {totalQuantity - totalProduced} units
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Based on order total vs produced
-                </div>
-              </div>
+    <div className="space-y-6">
+      <Card className="border-none shadow-md">
+        <CardHeader className="bg-primary/5 rounded-t-xl">
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+               <span>Production Entry</span>
+               <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 uppercase text-[10px] font-bold">
+                  Stage: {totalUpdate.processStage || userRole}
+               </Badge>
             </div>
-            
-            {mode === 'total' ? (
-              <div className="border rounded-lg p-4">
-                <h3 className="font-medium mb-3">Total Production Update</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="processStage">Process Stage *</Label>
-                    <Select value={totalUpdate.processStage || ""} onValueChange={handleProcessStageChange}>
-                      <SelectTrigger className="w-full border-accent focus:ring-accent">
-                        <SelectValue placeholder="Select process stage" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(!userRole || userRole === 'factory' || userRole === 'planning') && <SelectItem value="Planning">Planning</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'sample_maker') && <SelectItem value="Sample Making">Sample Making</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'cutting') && <SelectItem value="Cutting">Cutting</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'sewing' || userRole === 'finishing') && <SelectItem value="Sewing">Sewing</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'finishing' || userRole === 'packing') && <SelectItem value="Finishing">Finishing</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'quality_inspection' || userRole === 'packing') && <SelectItem value="Quality Inspection">Quality Inspection</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'packing') && <SelectItem value="Packing">Packing</SelectItem>}
-                        {(!userRole || userRole === 'factory') && <SelectItem value="Delivery">Delivery</SelectItem>}
-                      </SelectContent>
-                    </Select>
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={handleNotifyQC}
+              >
+                Notify QC for Inspection
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="date" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Production Date</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                    className="border-gray-200"
+                  />
+                </div>
+                
+                {/* Component Selector (Only for Sewing if multiple components exist) */}
+                {(totalUpdate.processStage === 'Sewing' || userRole === 'sewing') && components && components.length > 1 ? (
+                   <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product Component *</Label>
+                      <Select value={selectedCompId} onValueChange={setSelectedCompId}>
+                        <SelectTrigger className="w-full border-blue-200 bg-blue-50/30">
+                          <SelectValue placeholder="Select component" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {components.map((comp) => (
+                             <SelectItem key={comp.id || comp.componentName} value={comp.componentName}>
+                               {comp.componentName}
+                             </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                   </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Order Progression</Label>
+                    <div className="h-10 flex items-center px-4 bg-gray-50 border border-dashed rounded-md text-sm text-muted-foreground">
+                      {userRole === 'packing' ? 'Unified Product Tracking' : 'Single Component Tracking'}
+                    </div>
                   </div>
+                )}
+
+                <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex items-center justify-between">
                   <div>
-                    <Label htmlFor="totalQuantity">Produced Quantity (Today)</Label>
-                    <Input
-                      id="totalQuantity"
-                      type="number"
-                      min="0"
-                      max={totalQuantity - totalProduced}
-                      value={totalUpdate.quantity}
-                      onChange={(e) => handleTotalQuantityChange(parseInt(e.target.value) || 0)}
-                      className="w-full border-accent focus:ring-accent"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Max: {totalQuantity - totalProduced} units
-                    </p>
+                    <div className="text-xs font-bold uppercase tracking-wider text-blue-600">Balance Units</div>
+                    <div className="text-2xl font-black text-blue-900">{totalQuantity - totalProduced}</div>
                   </div>
-                  <div>
-                    <Label htmlFor="totalStatus">Status</Label>
-                    <select
-                      id="totalStatus"
-                      value={totalUpdate.status}
-                      onChange={(e) => handleTotalStatusChange(e.target.value)}
-                      className="border rounded p-2 w-full"
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Completed">Completed</option>
-                      <option value="On Hold">On Hold</option>
-                    </select>
+                  <div className="text-right">
+                    <div className="text-[10px] text-muted-foreground">Total: {totalQuantity}</div>
+                    <div className="text-[10px] text-green-600 font-medium">Recorded: {totalProduced}</div>
                   </div>
                 </div>
               </div>
-            ) : (
-              <div>
-                <div className="border rounded-lg p-4 mb-4">
-                  <h3 className="font-medium mb-3">Size/Color Breakdown Production Update</h3>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Enter production quantities for each size and color combination
-                  </p>
-                  {/* Process Stage Selection for Size/Color Breakdown */}
-                  <div className="mb-4">
-                    <Label htmlFor="processStageBreakdown">Process Stage *</Label>
-                    <Select value={totalUpdate.processStage || ""} onValueChange={handleProcessStageChange}>
-                      <SelectTrigger className="w-full border-accent focus:ring-accent">
-                        <SelectValue placeholder="Select process stage" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(!userRole || userRole === 'factory' || userRole === 'planning') && <SelectItem value="Planning">Planning</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'sample_maker') && <SelectItem value="Sample Making">Sample Making</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'cutting') && <SelectItem value="Cutting">Cutting</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'sewing' || userRole === 'finishing') && <SelectItem value="Sewing">Sewing</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'finishing' || userRole === 'packing') && <SelectItem value="Finishing">Finishing</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'quality_inspection' || userRole === 'packing') && <SelectItem value="Quality Inspection">Quality Inspection</SelectItem>}
-                        {(!userRole || userRole === 'factory' || userRole === 'packing') && <SelectItem value="Packing">Packing</SelectItem>}
-                        {(!userRole || userRole === 'factory') && <SelectItem value="Delivery">Delivery</SelectItem>}
-                      </SelectContent>
-                    </Select>
+
+              <div className="flex items-center gap-2 border-b pb-4">
+                <Button 
+                  type="button" 
+                  variant={mode === 'breakdown' ? 'default' : 'ghost'} 
+                  onClick={() => handleModeChange('breakdown')}
+                  className="rounded-full px-6 h-8 text-xs"
+                >
+                  Size/Color Breakdown
+                </Button>
+                <Button 
+                  type="button" 
+                  variant={mode === 'total' ? 'default' : 'ghost'} 
+                  onClick={() => handleModeChange('total')}
+                  className="rounded-full px-6 h-8 text-xs"
+                >
+                  Total Quantity Only
+                </Button>
+              </div>
+              
+              {mode === 'total' ? (
+                <div className="p-4 bg-gray-50 rounded-xl space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="totalQuantity">Produced Today</Label>
+                      <Input
+                        id="totalQuantity"
+                        type="number"
+                        min="0"
+                        value={totalUpdate.quantity || ''}
+                        onChange={(e) => handleTotalQuantityChange(parseInt(e.target.value) || 0)}
+                        placeholder="Enter units..."
+                        className="text-lg font-bold"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="totalStatus">Status</Label>
+                      <Select value={totalUpdate.status} onValueChange={handleTotalStatusChange}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="In Progress">In Progress</SelectItem>
+                          <SelectItem value="Completed">Completed</SelectItem>
+                          <SelectItem value="On Hold">On Hold</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  {totalUpdate.processStage && (
+                  <Button type="submit" disabled={isSaving} className="w-full h-12 text-md font-bold">
+                    {isSaving ? 'Processing...' : 'FINISHED UPDATING STATUS'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
                     <VelocityProductionGrid
                       orderId={orderId}
                       orderNumber={orderId}
-                      styleCode="G-90"
+                      styleCode={items[0]?.color || 'Standard'}
                       totalOrderQty={totalQuantity}
-                      items={items.map(item => ({
-                        id: `${item.size}-${item.color}`,
-                        size: item.size,
-                        color: item.color,
-                        plannedQuantity: item.quantity,
-                        previousDepartmentTotal: item.quantity, // For now, using planned quantity as previous department total
-                        currentDepartmentTotal: getCurrentDepartmentTotal(item.size, item.color)
-                      }))}
-                      userRole={userRole as any || 'cutting'}
-                      onSave={(updates) => {
-                        setIsVelocityGridSaving(true);
+                      componentName={userRole === 'sewing' ? selectedCompId : undefined}
+                      items={items.map(item => {
+                        const previousStage = userRole === 'sewing' ? 'Cutting' : 'Planning';
+                        const currentStage = totalUpdate.processStage || 'Sewing';
                         
-                        // Update the statusUpdates state with new values
+                        return {
+                          id: `${item.size}-${item.color}`,
+                          size: item.size,
+                          color: item.color,
+                          plannedQuantity: item.quantity,
+                          previousDepartmentTotal: getHistoryTotal(previousStage, item.size, item.color, (userRole === 'sewing' || userRole === 'cutting') ? selectedCompId : undefined),
+                          currentDepartmentTotal: getHistoryTotal(currentStage, item.size, item.color, (userRole === 'sewing' || userRole === 'cutting') ? selectedCompId : undefined)
+                        };
+                      })}
+                      userRole={(userRole as any) || 'sewing'}
+                      plannedOutputPerDay={plannedOutputPerDay}
+                      onSave={(updates) => {
                         const newStatusUpdates: Record<string, { quantity: number; status: string }> = {};
                         updates.forEach(update => {
                           const [size, color] = update.id.split('-');
-                          const key = `${size}-${color}`;
-                          newStatusUpdates[key] = {
+                          newStatusUpdates[`${size}-${color}`] = {
                             quantity: update.quantity,
-                            status: statusUpdates[key]?.status || 'In Progress'
+                            status: statusUpdates[`${size}-${color}`]?.status || 'In Progress'
                           };
                         });
-                        
-                        setStatusUpdates(newStatusUpdates);
-                        
-                        // Simulate API call delay then reset saving state
-                        setTimeout(() => {
-                          setIsVelocityGridSaving(false);
-                        }, 500);
+                        performSubmit(newStatusUpdates);
                       }}
-                      isLoading={isVelocityGridSaving}
+                      isLoading={isSaving}
                     />
-                  )}
                 </div>
-              </div>
-            )}
-            
-            <div className="flex justify-end">
-              <Button type="submit">Update Daily Status</Button>
+              )}
             </div>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Production Summary Cards */}
+      {(productionSummary.sets.length > 0 || productionSummary.strays.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Full Sets Ready */}
+          {productionSummary.sets.length > 0 && (
+            <Card className="border-none shadow-md overflow-hidden bg-green-50/30">
+              <CardHeader className="bg-green-100/50 border-b py-3 px-4">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-green-800">
+                  <div className="w-1.5 h-4 bg-green-600 rounded-full" />
+                  FULL SETS READY TO PACK
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-green-50/50">
+                    <TableRow>
+                      <TableHead className="py-2 text-[10px] uppercase font-bold text-green-800">Size/Color</TableHead>
+                      <TableHead className="py-2 text-right text-[10px] uppercase font-bold text-green-800">Qty</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productionSummary.sets.map((set: any, idx: number) => (
+                      <TableRow key={idx} className="bg-white/50 border-green-100">
+                        <TableCell className="py-2 font-mono text-[10px] font-bold">{set.color} / {set.size}</TableCell>
+                        <TableCell className="py-2 text-right">
+                          <Badge className="bg-green-600 text-white text-[10px] px-2 py-0">
+                            {set.quantity} Sets
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Stray/WIP Components */}
+          {productionSummary.strays.length > 0 && (
+            <Card className="border-none shadow-md overflow-hidden bg-amber-50/30">
+              <CardHeader className="bg-amber-100/50 border-b py-3 px-4">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-800">
+                  <div className="w-1.5 h-4 bg-amber-600 rounded-full" />
+                  STRAY / WIP COMPONENTS (UNMATCHED)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-amber-50/50">
+                    <TableRow>
+                      <TableHead className="py-2 text-[10px] uppercase font-bold text-amber-800">Size/Color</TableHead>
+                      <TableHead className="py-2 text-[10px] uppercase font-bold text-amber-800">Component</TableHead>
+                      <TableHead className="py-2 text-right text-[10px] uppercase font-bold text-amber-800">Stray Qty</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productionSummary.strays.map((stray: any, idx: number) => (
+                      <TableRow key={idx} className="bg-white/50 border-amber-100">
+                        <TableCell className="py-2 font-mono text-[10px] font-bold">{stray.color} / {stray.size}</TableCell>
+                        <TableCell className="py-2">
+                           <Badge variant="outline" className="text-[9px] font-bold border-amber-200 text-amber-700 bg-white">
+                             {stray.component}
+                           </Badge>
+                        </TableCell>
+                        <TableCell className="py-2 text-right">
+                          <span className="text-amber-700 font-bold text-xs">{stray.quantity} pcs</span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Sewing History Section */}
+      <Card className="border-none shadow-md overflow-hidden">
+        <CardHeader className="bg-gray-50 border-b">
+          <CardTitle className="text-lg font-bold flex items-center gap-2">
+            <div className="w-2 h-6 bg-primary rounded-full" />
+            Sewing Output History
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-gray-50/50">
+              <TableRow>
+                <TableHead className="text-[11px] uppercase font-bold">Date</TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">Process</TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">Component</TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">Size/Color</TableHead>
+                <TableHead className="text-right text-[11px] uppercase font-bold">Quantity</TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoadingHistory ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground animate-pulse">Loading history...</TableCell>
+                </TableRow>
+              ) : history.length > 0 ? (
+                history.map((entry, idx) => (
+                  <TableRow key={idx} className="group hover:bg-gray-50/50">
+                    <TableCell className="font-medium text-xs">{entry.date}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold bg-white">{entry.processStage || 'Sewing'}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {entry.componentName ? (
+                        <Badge variant="secondary" className="text-[10px] uppercase font-bold bg-blue-50 text-blue-700 border-blue-100">
+                          {entry.componentName}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-[10px] italic">
+                          {entry.processStage === 'Sewing' ? 'Main / General' : 'N/A'}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {entry.isTotalUpdate ? (
+                        <span className="text-muted-foreground italic text-xs">Total Update</span>
+                      ) : (
+                        <span className="font-mono text-[10px]">{entry.color} / {entry.size}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-blue-600 text-xs">{entry.quantity}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          entry.status === 'Completed' ? 'bg-green-500' : 
+                          entry.status === 'In Progress' ? 'bg-blue-500' : 'bg-gray-400'
+                        }`} />
+                        <span className="text-[10px]">{entry.status}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">No production history recorded yet.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

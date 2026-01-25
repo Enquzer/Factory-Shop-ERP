@@ -165,7 +165,7 @@ export function MeasurementCanvas({
             onMouseLeave={() => { setIsDrawing(false); setCurrentArrow(null); }}
         >
             {imageUrl ? (
-                <img src={imageUrl} className="w-full h-full object-contain pointer-events-none" alt="Guide" />
+                <img src={imageUrl} className="absolute inset-0 w-full h-full object-contain pointer-events-none" alt="Guide" />
             ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
                     <MousePointer2 className="h-12 w-12 mb-2 opacity-20" />

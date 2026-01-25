@@ -22,6 +22,8 @@ interface BomTabProps {
   initialBom: BOMItem[];
 }
 
+import { RawMaterialSelector } from './raw-material-selector';
+
 export function BomTab({ styleId, initialBom }: BomTabProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<BOMItem[]>(initialBom);
@@ -39,9 +41,14 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
             currency: 'ETB'
         };
 
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
         const res = await fetch('/api/designer/bom', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(newItem)
         });
 
@@ -57,13 +64,15 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
       // Optimistic update
       setItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
 
-      // Debounce or immediate? For consistency, let's fire and forget (with error handling)
-      // Real-world: Should specific debounce, but direct fetch is fine for low frequency edits.
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
       try {
-          // fetch is async, we don't await to block UI, but we catch errors
           fetch(`/api/designer/bom/${id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify(updates)
           });
       } catch (error) {
@@ -74,9 +83,14 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
 
   const deleteItem = async (id: string) => {
       setLoadingId(id);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
       try {
           const res = await fetch(`/api/designer/bom/${id}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
           });
           if (!res.ok) throw new Error('Failed delete');
           setItems(prev => prev.filter(item => item.id !== id));
@@ -101,12 +115,12 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
           <TableHeader className="bg-slate-50">
             <TableRow>
               <TableHead className="w-[120px]">Type</TableHead>
-              <TableHead>Item Name</TableHead>
-              <TableHead className="w-[100px]">Supplier</TableHead>
+              <TableHead>Item Name (Registry Search)</TableHead>
+              <TableHead className="w-[120px]">Supplier</TableHead>
               <TableHead className="w-[100px] text-right">Consumption</TableHead>
               <TableHead className="w-[80px]">Unit</TableHead>
               <TableHead className="w-[100px] text-right">Cost</TableHead>
-              <TableHead className="w-[150px]">Comments</TableHead>
+              <TableHead>Comments</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -119,10 +133,10 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
                 </TableRow>
             ) : (
                 items.map((item) => (
-                    <TableRow key={item.id}>
+                    <TableRow key={item.id} className="hover:bg-slate-50/50">
                         <TableCell>
                             <Select 
-                                value={item.type} 
+                                value={item.type || 'Fabric'} 
                                 onValueChange={(val: any) => updateItem(item.id, { type: val })}
                             >
                                 <SelectTrigger className="h-8 border-transparent hover:border-slate-200 focus:border-slate-300">
@@ -138,11 +152,17 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
                             </Select>
                         </TableCell>
                         <TableCell>
-                            <Input 
-                                value={item.itemName || ''} 
-                                onChange={(e) => updateItem(item.id, { itemName: e.target.value })}
-                                className="h-8 border-transparent hover:border-slate-200 focus:border-slate-300"
-                                placeholder="Item name"
+                            <RawMaterialSelector 
+                                value={item.itemName}
+                                onSelect={(material) => {
+                                    updateItem(item.id, {
+                                        itemName: material.name,
+                                        unit: material.unitOfMeasure,
+                                        cost: material.costPerUnit,
+                                        supplier: material.supplier || ''
+                                    });
+                                }}
+                                placeholder="Search inventory..."
                             />
                         </TableCell>
                         <TableCell>

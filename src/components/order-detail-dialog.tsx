@@ -126,6 +126,7 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
                 <Badge variant={
                   order.status === 'Pending' ? 'default' :
                   order.status === 'Awaiting Payment' ? 'secondary' :
+                  order.status === 'Payment Slip Attached' ? 'outline' :
                   order.status === 'Paid' ? 'outline' :
                   order.status === 'Dispatched' ? 'outline' :
                   order.status === 'Delivered' ? 'secondary' : 'destructive'
@@ -175,21 +176,42 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
               <div>
                 <h4 className="font-medium">Payment Slip</h4>
                 <div className="mt-2 border rounded-lg overflow-hidden max-w-xs">
-                  <Image 
-                    src={order.paymentSlipUrl || '/placeholder-payment.png'} 
-                    alt="Payment slip" 
-                    width={300} 
-                    height={200} 
-                    className="w-full h-auto object-contain"
-                    onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        if (target.src !== `${window.location.origin}/placeholder-payment.png`) {
-                            target.src = '/placeholder-payment.png';
-                        }
-                    }}
-                    unoptimized={true}
-                    priority={false} // Set to false for non-critical images
-                  />
+                  {order.paymentSlipUrl.toLowerCase().endsWith('.pdf') ? (
+                    <div className="flex flex-col items-center justify-center p-6 bg-muted/30">
+                      <FileText className="h-16 w-16 text-primary mb-2" />
+                      <p className="text-xs font-medium text-center mb-4">PDF Payment Slip</p>
+                      <Button 
+                        asChild 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full"
+                      >
+                        <a 
+                          href={order.paymentSlipUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                        >
+                          View PDF
+                        </a>
+                      </Button>
+                    </div>
+                  ) : (
+                    <Image 
+                      src={order.paymentSlipUrl || '/placeholder-payment.png'} 
+                      alt="Payment slip" 
+                      width={300} 
+                      height={200} 
+                      className="w-full h-auto object-contain"
+                      onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (target.src !== `${window.location.origin}/placeholder-payment.png`) {
+                              target.src = '/placeholder-payment.png';
+                          }
+                      }}
+                      unoptimized={true}
+                      priority={false} // Set to false for non-critical images
+                    />
+                  )}
                 </div>
               </div>
             </div>

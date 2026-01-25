@@ -38,33 +38,50 @@ interface SimplifiedOrderDialogProps {
 }
 
 export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onOrderPlaced }: SimplifiedOrderDialogProps) {
-  const [quantity, setQuantity] = useState(6);
+  const [quantity, setQuantity] = useState(12);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewDistribution, setPreviewDistribution] = useState<Map<string, number>>(new Map());
   const { addSimplifiedOrder } = useOrder();
   const { toast } = useToast();
 
+  React.useEffect(() => {
+    if (quantity > 0) {
+      // Calculate distribution for preview
+      // Note: We use the passed product variants directly. 
+      // If we need fresher stock data, we might need to fetch here, but for preview prompt data is okay.
+      // However, handlePlaceOrder fetches fresh data.
+      
+      const dist = distributeOrderQuantity(
+        product.variants as any[], // Casting as any to avoid strict type mismatch if needed, or fixing import
+        quantity,
+        'proportional'
+      );
+      setPreviewDistribution(dist);
+    }
+  }, [quantity, product.variants]);
+
   const handleIncrement = () => {
-    setQuantity(prev => prev + 6);
+    setQuantity(prev => prev + 12);
   };
 
   const handleDecrement = () => {
-    setQuantity(prev => Math.max(6, prev - 6));
+    setQuantity(prev => Math.max(12, prev - 12));
   };
 
   const handleQuantityChange = (value: string) => {
     const numValue = parseInt(value);
     if (!isNaN(numValue) && numValue >= 0) {
-      // Round to nearest multiple of 6
-      const rounded = Math.round(numValue / 6) * 6;
-      setQuantity(rounded || 6);
+      // Round to nearest multiple of 12
+      const rounded = Math.round(numValue / 12) * 12;
+      setQuantity(rounded || 12);
     }
   };
 
   const handlePlaceOrder = async () => {
-    if (quantity <= 0 || quantity % 6 !== 0) {
+    if (quantity <= 0 || quantity % 12 !== 0) {
       toast({
         title: "Invalid Quantity",
-        description: "Please enter a valid quantity (multiples of 6).",
+        description: "Please enter a valid quantity (multiples of 12).",
         variant: "destructive",
       });
       return;
@@ -72,7 +89,7 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onO
 
     setIsLoading(true);
     try {
-      // Get the full product details including all variants
+      // Get the full product details including all variants (fresh stock)
       const response = await fetch(`/api/products/${product.id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch product details');
@@ -80,7 +97,6 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onO
       
       const fullProduct = await response.json();
       
-      // Use proportional distribution as default since we removed the AI distribution mode
       const distributionMode = 'proportional';
 
       // Distribute the quantity across variants using AI
@@ -117,12 +133,12 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onO
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Place Simplified Order</DialogTitle>
           <DialogDescription>
-            Order {product.name} in bulk quantities (multiples of 6).
-            The system will automatically distribute variants using AI.
+            Order {product.name} in bulk quantities (multiples of 12).
+            The system distributes variants based on available factory stock.
           </DialogDescription>
         </DialogHeader>
         
@@ -137,15 +153,15 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onO
                 variant="outline" 
                 size="icon" 
                 onClick={handleDecrement}
-                disabled={quantity <= 6}
+                disabled={quantity <= 12}
               >
                 <span className="text-lg">-</span>
               </Button>
               <Input
                 id="quantity"
                 type="number"
-                min="6"
-                step="6"
+                min="12"
+                step="12"
                 value={quantity}
                 onChange={(e) => handleQuantityChange(e.target.value)}
                 className="text-center"
@@ -179,21 +195,52 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onO
           </div>
           
           <div className="rounded-lg border p-4">
-            <h4 className="font-medium mb-2">AI Distribution</h4>
-            <p className="text-sm text-muted-foreground">
-              The system will automatically distribute your order across available variants 
-              based on proportional distribution.
+            <h4 className="font-medium mb-2">Automated Distribution Preview</h4>
+            <p className="text-xs text-muted-foreground mb-3">
+              This is how your order of {quantity} items will be distributed based on current stock availability.
             </p>
+            
+            <div className="max-h-40 overflow-y-auto border rounded-md">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted sticky top-0">
+                    <tr>
+                      <th className="p-2 text-left">Color</th>
+                      <th className="p-2 text-left">Size</th>
+                      <th className="p-2 text-right">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from(previewDistribution.entries()).map(([variantId, qty]) => {
+                      const variant = product.variants.find(v => v.id === variantId);
+                      if (!variant || qty === 0) return null;
+                      return (
+                        <tr key={variantId} className="border-t">
+                          <td className="p-2">{variant.color}</td>
+                          <td className="p-2">{variant.size}</td>
+                          <td className="p-2 text-right font-medium">{qty}</td>
+                        </tr>
+                      );
+                    })}
+                    {previewDistribution.size === 0 && (
+                        <tr>
+                            <td colSpan={3} className="p-4 text-center text-muted-foreground">
+                                No stock available to distribute.
+                            </td>
+                        </tr>
+                    )}
+                  </tbody>
+                </table>
+            </div>
           </div>
         </div>
         
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Cancel Order
           </Button>
           <Button 
             onClick={handlePlaceOrder} 
-            disabled={isLoading || quantity <= 0 || quantity % 6 !== 0}
+            disabled={isLoading || quantity <= 0 || quantity % 12 !== 0}
           >
             {isLoading ? (
               <>
@@ -201,7 +248,7 @@ export function SimplifiedOrderDialog({ open, onOpenChange, product, shopId, onO
                 Placing Order...
               </>
             ) : (
-              "Place Order"
+              "Confirm & Place Order"
             )}
           </Button>
         </DialogFooter>

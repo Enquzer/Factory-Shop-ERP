@@ -1,0 +1,123 @@
+﻿=== FULL TELEGRAM NOTIFICATION TEST ===
+
+profilePictureUrl column already exists or was added successfully
+resetRequestPending column already exists or was added successfully
+tempPasswordDisplay column already exists or was added successfully
+imageUrl column already exists or was added successfully
+description column already exists or was added successfully
+updated_at column already exists or was added successfully
+readyToDeliver column already exists or was added successfully
+contactPhone column already exists or was added successfully
+tradeLicenseNumber column already exists or was added successfully
+tinNumber column already exists or was added successfully
+show_variant_details column already exists or was added successfully
+max_visible_variants column already exists or was added successfully
+updated_at column already exists or was added successfully
+telegram_channel_id column already exists or was added successfully
+imageUrl column already exists or was added successfully
+imageUrl column already exists or was added successfully
+paymentSlipUrl column already exists or was added successfully
+dispatchInfo column already exists or was added successfully
+deliveryDate column already exists or was added successfully
+isClosed column already exists or was added successfully
+feedback column already exists or was added successfully
+requestedDeliveryDate column already exists or was added successfully
+expectedReceiptDate column already exists or was added successfully
+actualDispatchDate column already exists or was added successfully
+confirmationDate column already exists or was added successfully
+updated_at column already exists or was added successfully in orders table
+orderPlacementDate column already exists or was added successfully
+plannedDeliveryDate column already exists or was added successfully
+sizeSetSampleApproved column already exists or was added successfully
+productionStartDate column already exists or was added successfully
+productionFinishedDate column already exists or was added successfully
+isTotalUpdate column already exists or was added successfully
+processStage column already exists or was added successfully
+componentName column already exists or was added successfully
+cuttingCompletionDate column already exists or was added successfully
+productionCompletionDate column already exists or was added successfully
+packingCompletionDate column already exists or was added successfully
+deliveryCompletionDate column already exists or was added successfully
+componentCount column already exists or was added successfully
+Default factory user ensured in database
+Default store user ensured in database
+Default finance user ensured in database
+Default planning user ensured in database
+Default sample user ensured in database
+Default cutting user ensured in database
+Default sewing user ensured in database
+Default finishing user ensured in database
+Default packing user ensured in database
+Default quality user ensured in database
+Database initialized successfully
+Shop Details: {
+  "id": "SHP-1760360676725",
+  "name": "Mexico Shop",
+  "telegram_channel_id": "-1003867704448"
+}
+
+Most Recent Order: {
+  "id": "ORD-1769276807144",
+  "shopId": "SHP-1760360676725",
+  "status": "Pending"
+}
+
+--- Step 1: Generating PDF ---
+Starting PDF generation for Order: ORD-1769276807144, Stage: order_placed
+Of the table content, 26 units width could not fit page
+PDF generation successful: C:\Users\USER 1\Documents\my_Codes\Carement_Fashion\Carement_Central\Factory-Shop-ERP\public\telegram-pdfs\MexicoShop_Jan24_Order30.pdf
+PDF Path: {
+  pdfPath: 'C:\\Users\\USER 1\\Documents\\my_Codes\\Carement_Fashion\\Carement_Central\\Factory-Shop-ERP\\public\\telegram-pdfs\\MexicoShop_Jan24_Order30.pdf',
+  summary: { uniqueStyles: 1, totalQuantity: 11, totalValue: 7040 }
+}
+
+--- Step 2: Sending Telegram Notification ---
+
+--- Result ---
+Notification sent: false
+
+--- Step 3: Checking Notification Logs ---
+Recent Logs: [
+  {
+    "id": 4,
+    "orderId": "ORD-1769276807144",
+    "shopId": "SHP-1760360676725",
+    "channelId": "unknown",
+    "messageType": "order_placed",
+    "messageId": null,
+    "pdfUrl": null,
+    "imageUrl": null,
+    "status": "disabled",
+    "errorMessage": "TELEGRAM_ENABLED is not true",
+    "sentAt": null,
+    "created_at": "2026-01-24 17:53:16"
+  },
+  {
+    "id": 3,
+    "orderId": "ORD-1769276807144",
+    "shopId": "SHP-1760360676725",
+    "channelId": "-1003867704448",
+    "messageType": "order_placed",
+    "messageId": "27",
+    "pdfUrl": "C:\\Users\\USER 1\\Documents\\my_Codes\\Carement_Fashion\\Carement_Central\\Factory-Shop-ERP\\public\\telegram-pdfs\\order-ORD-1769276807144-order_placed.pdf",
+    "imageUrl": null,
+    "status": "sent",
+    "errorMessage": null,
+    "sentAt": "2026-01-24 17:46:51",
+    "created_at": "2026-01-24 17:46:51"
+  },
+  {
+    "id": 2,
+    "orderId": "ORD-1769276011261",
+    "shopId": "SHP-1760360676725",
+    "channelId": "unknown",
+    "messageType": "order_placed",
+    "messageId": null,
+    "pdfUrl": null,
+    "imageUrl": null,
+    "status": "disabled",
+    "errorMessage": "TELEGRAM_ENABLED is not true",
+    "sentAt": null,
+    "created_at": "2026-01-24 17:45:40"
+  }
+]

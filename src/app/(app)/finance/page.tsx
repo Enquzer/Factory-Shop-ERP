@@ -39,10 +39,10 @@ export default function FinanceManagementPage() {
       
       // Filter orders by status
       const awaitingPayment = allOrders.filter(order => 
-        order.status === 'Awaiting Payment'
+        order.status === 'Awaiting Payment' || order.status === 'Payment Slip Attached'
       );
       const paid = allOrders.filter(order => 
-        order.status === 'Paid' || order.status === 'Dispatched' || order.status === 'Delivered'
+        order.status === 'Paid' || order.status === 'Released' || order.status === 'Dispatched' || order.status === 'Delivered'
       );
       
       setAwaitingPaymentOrders(awaitingPayment);
@@ -61,8 +61,12 @@ export default function FinanceManagementPage() {
     date: new Date(order.date).toLocaleDateString(),
     amount: `ETB ${order.amount.toLocaleString()}`,
     status: (
-      <Badge className="bg-yellow-100 text-yellow-800">
-        Awaiting Payment
+      <Badge className={
+        order.status === 'Payment Slip Attached' 
+        ? "bg-blue-100 text-blue-800" 
+        : "bg-yellow-100 text-yellow-800"
+      }>
+        {order.status}
       </Badge>
     ),
     actions: (

@@ -83,11 +83,14 @@ export default function ShopOrderDetailsPage() {
         
         const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
+            headers: {
+                ...createAuthHeaders()
+            },
             body: formData,
         });
 
         if (!uploadResponse.ok) throw new Error('Failed to upload payment slip');
-        const { imageUrl } = await uploadResponse.json();
+        const { url } = await uploadResponse.json();
 
         // 2. Submit payment confirmation
         const response = await fetch(`/api/orders/${order.id}/payment`, {
@@ -96,7 +99,7 @@ export default function ShopOrderDetailsPage() {
                 'Content-Type': 'application/json',
                 ...createAuthHeaders()
             },
-            body: JSON.stringify({ paymentSlipUrl: imageUrl }),
+            body: JSON.stringify({ paymentSlipUrl: url }),
         });
 
         if (!response.ok) throw new Error('Failed to confirm payment');
@@ -117,6 +120,7 @@ export default function ShopOrderDetailsPage() {
   const statusColors: Record<string, string> = {
     'Pending': 'bg-gray-100 text-gray-800',
     'Awaiting Payment': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'Payment Slip Attached': 'bg-blue-100 text-blue-800 border-blue-200',
     'Paid': 'bg-green-100 text-green-800',
     'Released': 'bg-indigo-100 text-indigo-800 border-indigo-200',
     'Dispatched': 'bg-blue-100 text-blue-800',
@@ -237,11 +241,19 @@ export default function ShopOrderDetailsPage() {
                       className="hidden" 
                       ref={fileInputRef} 
                       onChange={handleFileChange}
-                      accept="image/*"
+                      accept="image/*,application/pdf"
                     />
                     {paymentSlipPreview ? (
-                      <div className="relative h-48 w-full">
-                        <Image src={paymentSlipPreview} alt="Preview" fill className="object-contain" />
+                      <div className="relative h-48 w-full flex items-center justify-center">
+                        {paymentSlipFile?.type === 'application/pdf' ? (
+                            <div className="flex flex-col items-center gap-2 p-4 bg-muted/50 rounded-lg">
+                                <FileText className="h-12 w-12 text-blue-500" />
+                                <p className="text-sm font-medium">{paymentSlipFile.name}</p>
+                                <p className="text-xs text-muted-foreground">PDF Document</p>
+                            </div>
+                        ) : (
+                            <Image src={paymentSlipPreview} alt="Preview" fill className="object-contain" />
+                        )}
                         <Button 
                           variant="destructive" 
                           size="icon" 
@@ -277,11 +289,18 @@ export default function ShopOrderDetailsPage() {
                     <CheckCircle className="h-5 w-5" />
                     Payment slip has been uploaded
                   </div>
-                  <div className="relative h-64 w-full border rounded overflow-hidden">
-                    <Image src={order.paymentSlipUrl} alt="Payment Slip" fill className="object-contain" />
+                  <div className="relative h-64 w-full border rounded overflow-hidden flex items-center justify-center bg-gray-50">
+                    {order.paymentSlipUrl.toLowerCase().endsWith('.pdf') ? (
+                        <div className="flex flex-col items-center gap-2">
+                            <FileText className="h-16 w-16 text-blue-500" />
+                            <p className="font-medium">PDF Payment Receipt</p>
+                        </div>
+                    ) : (
+                        <Image src={order.paymentSlipUrl} alt="Payment Slip" fill className="object-contain" />
+                    )}
                   </div>
                   <Button variant="outline" className="w-full" onClick={() => window.open(order.paymentSlipUrl, '_blank')}>
-                    View Full Image
+                    {order.paymentSlipUrl.toLowerCase().endsWith('.pdf') ? "View/Download PDF" : "View Full Image"}
                   </Button>
                 </div>
               ) : (

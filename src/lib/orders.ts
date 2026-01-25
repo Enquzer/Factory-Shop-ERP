@@ -16,7 +16,7 @@ export type OrderItem = {
   quantity: number;
 };
 
-export type OrderStatus = 'Pending' | 'Awaiting Payment' | 'Paid' | 'Released' | 'Dispatched' | 'Delivered' | 'Cancelled';
+export type OrderStatus = 'Pending' | 'Awaiting Payment' | 'Payment Slip Attached' | 'Paid' | 'Released' | 'Dispatched' | 'Delivered' | 'Cancelled';
 
 export type Order = {
     id: string;
@@ -233,21 +233,26 @@ class OrdersManager {
         try {
             const db = await getDb();
             
-            // Update product stock
-            for (const item of order.items) {
-                await updateVariantStock(item.variant.id, -item.quantity);
-            }
-
-            // Generate order ID
-            const orderId = `ORD-${Date.now()}`;
+            // Generate descriptive order ID
+            // Format: ShopName_MonthDate_OrderSeq#
+            const now = new Date();
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthDate = `${monthNames[now.getMonth()]}${now.getDate()}`;
+            const shopNameClean = order.shopName.replace(/[^a-zA-Z0-9]/g, '');
+            
+            // Get sequence number for this shop
+            const sequenceResult = await db.get('SELECT COUNT(*) as count FROM orders WHERE shopId = ?', [order.shopId]);
+            const nextSequence = (sequenceResult?.count || 0) + 1;
+            
+            const orderId = `${shopNameClean}_${monthDate}_Order${nextSequence}`;
             
             // Insert order into database
             const orderData = {
                 ...order,
                 id: orderId,
                 status: 'Pending' as OrderStatus,
-                date: new Date().toISOString().split('T')[0],
-                createdAt: new Date(),
+                date: now.toISOString().split('T')[0],
+                createdAt: now,
                 items: JSON.stringify(order.items)
             };
             

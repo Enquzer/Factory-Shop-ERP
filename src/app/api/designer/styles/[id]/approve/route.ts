@@ -31,13 +31,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // Products table: id, productCode, name, category, price, minimumStockLevel, imageUrl, description, readyToDeliver
     const productId = `PROD-${Date.now()}`;
     await db.run(`
-        INSERT INTO products (id, productCode, name, category, price, minimumStockLevel, imageUrl, description, readyToDeliver)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (id, productCode, name, category, mainCategory, subCategory, price, minimumStockLevel, imageUrl, description, readyToDeliver)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
         productId,
         style.number, // productCode = style number
         style.name,
         style.category || 'Uncategorized',
+        style.mainCategory || null,
+        style.subCategory || null,
         price || 0,
         minStock || 10,
         style.imageUrl,

@@ -51,14 +51,16 @@ const shopSchema = z.object({
     tinNumber: z.string().optional(),
     // New fields for variant visibility control
     showVariantDetails: z.boolean().default(true),
-    maxVisibleVariants: z.coerce.number().min(1).max(1000).default(1000)
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).default(1000),
+    // New field for Telegram integration
+    telegramChannelId: z.string().optional()
     // Removed aiDistributionMode field
 });
 
 type ShopFormValues = z.infer<typeof shopSchema>;
 
 
-export function RegisterShopDialog({ children, onShopRegistered, userRole }: { children: ReactNode, onShopRegistered: () => void, userRole?: 'factory' | 'shop' }) {
+export function RegisterShopDialog({ children, onShopRegistered, userRole }: { children: ReactNode, onShopRegistered: () => void, userRole?: string }) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -79,7 +81,8 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
         tinNumber: "",
         // New fields for variant visibility control
         showVariantDetails: true,
-        maxVisibleVariants: 1000
+        maxVisibleVariants: 1000,
+        telegramChannelId: ""
         // Removed aiDistributionMode from default values
     },
   });
@@ -103,7 +106,9 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
             status: "Pending" as const, // Always set status to Pending for new shops
             // New fields for variant visibility control with proper defaults
             showVariantDetails: data.showVariantDetails ?? true,
-            maxVisibleVariants: data.maxVisibleVariants ?? 1000
+            maxVisibleVariants: data.maxVisibleVariants ?? 1000,
+            // New field for Telegram integration
+            telegram_channel_id: data.telegramChannelId || null
             // Removed aiDistributionMode from shop data
         };
 
@@ -302,6 +307,20 @@ export function RegisterShopDialog({ children, onShopRegistered, userRole }: { c
                             <FormItem>
                             <FormLabel>TIN Number</FormLabel>
                             <FormControl><Input {...field} /></FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="telegramChannelId"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Telegram Channel ID</FormLabel>
+                            <FormControl><Input placeholder="-100..." {...field} /></FormControl>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Format: -100XXXXXXXXXX (e.g., -1001234567890)
+                            </p>
                             <FormMessage />
                             </FormItem>
                         )}

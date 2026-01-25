@@ -18,6 +18,8 @@ export type Shop = {
   // New fields for variant visibility control
   showVariantDetails: boolean;
   maxVisibleVariants: number;
+  // Telegram integration
+  telegram_channel_id?: string | null;
   // Timestamp fields
   createdAt?: Date | string;
   updatedAt?: Date | string;
@@ -38,7 +40,7 @@ export async function getShops(forceRefresh = false): Promise<Shop[]> {
   // If on client side, fetch from API
   if (typeof window !== 'undefined') {
     try {
-      const response = await fetch('/api/shops');
+      const response = await fetch('/api/shops?limit=0');
       if (!response.ok) return [];
       return await response.json();
     } catch (error) {

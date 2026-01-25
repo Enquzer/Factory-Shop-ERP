@@ -151,10 +151,10 @@ export function withAuth(handler: (request: NextRequest, user: AuthenticatedUser
 
 // Middleware function for API routes with role check
 export function withRoleAuth(
-  handler: (request: NextRequest, user: AuthenticatedUser) => Promise<Response>,
+  handler: (request: NextRequest, user: AuthenticatedUser, context?: any) => Promise<Response>,
   requiredRole: UserRole | UserRole[]
 ) {
-  return async (request: NextRequest) => {
+  return async (request: NextRequest, context: any) => {
     try {
       const user = await authenticateRequest(request);
       
@@ -176,7 +176,7 @@ export function withRoleAuth(
       console.log(`Role check passed for user ${user.username}`);
       
       // Execute the handler and ensure a response is returned
-      const result = await handler(request, user);
+      const result = await handler(request, user, context);
       return result;
     } catch (error) {
       console.error('Error in withRoleAuth middleware:', error);

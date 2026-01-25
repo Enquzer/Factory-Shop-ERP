@@ -31,7 +31,10 @@ import {
   Calendar,
   User,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  Search,
+  History,
+  Clock
 } from 'lucide-react';
 import { 
   getCuttingRecords, 
@@ -42,6 +45,7 @@ import {
   handoverToProduction,
   notifySewing,
   acceptCut,
+  requestQC,
   CuttingRecord,
   CuttingItem,
   ProductComponent
@@ -65,6 +69,9 @@ export default function CuttingPage() {
   const [qcRemarks, setQcRemarks] = useState('');
   const [productionReceiverName, setProductionReceiverName] = useState('');
   const [sewingResponsiblePerson, setSewingResponsiblePerson] = useState('');
+  const [recordsSearchTerm, setRecordsSearchTerm] = useState('');
+  const [selectedOrderIdForHistory, setSelectedOrderIdForHistory] = useState<string | null>(null);
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -78,12 +85,17 @@ export default function CuttingPage() {
         getMarketingOrders()
       ]);
       setRecords(cuttingData);
-      // Filter orders that are ready for cutting (planning approved, not yet cut)
-      setOrders(ordersData.filter(o => 
-        o.isPlanningApproved && 
-        o.status === 'Cutting' &&
-        (!o.cuttingStatus || o.cuttingStatus === 'not_started')
-      ));
+      // Filter orders that are ready for cutting (planning approved)
+      // Only show orders where total cut quantity is less than planned quantity
+      setOrders(ordersData.filter(o => {
+        const totalCut = cuttingData
+          .filter(r => r.orderId === o.id)
+          .reduce((sum, r) => sum + (r.items?.reduce((s, i) => s + i.cutQuantity, 0) || 0), 0);
+        
+        return o.isPlanningApproved && 
+               o.status === 'Cutting' && 
+               totalCut < o.quantity;
+      }));
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -115,15 +127,56 @@ export default function CuttingPage() {
   };
 
   const handleUpdateItem = async (itemId: number, updates: Partial<CuttingItem>) => {
+    // Optimistic Update for UI responsiveness
+    setRecords(prev => prev.map(record => {
+      if (!record.items) return record;
+      return {
+        ...record,
+        items: record.items.map(item => item.id === itemId ? { ...item, ...updates } : item)
+      };
+    }));
+
+    if (selectedRecord && selectedRecord.items) {
+      setSelectedRecord(prev => {
+        if (!prev || !prev.items) return prev;
+        return {
+          ...prev,
+          items: prev.items.map(item => item.id === itemId ? { ...item, ...updates } : item)
+        };
+      });
+    }
+
     try {
       await updateCuttingItem(itemId, updates);
-      // Removed noisy toast as per user request
-      fetchData();
+      // Sync in background without showing loading state
+      const cuttingData = await getCuttingRecords();
+      setRecords(cuttingData);
     } catch (error) {
       console.error('Error updating item:', error);
+      // Revert if error
+      fetchData();
       toast({
         title: "Error",
-        description: "Failed to update item",
+        description: "Failed to save update",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRequestQC = async (recordId: number) => {
+    try {
+      await requestQC(recordId);
+      toast({
+        title: "Success",
+        description: "QC inspection requested"
+      });
+      fetchData();
+      setIsDetailDialogOpen(false);
+    } catch (error) {
+      console.error('Error requesting QC:', error);
+      toast({
+        title: "Error",
+        description: "Failed to request QC",
         variant: "destructive"
       });
     }
@@ -131,10 +184,10 @@ export default function CuttingPage() {
 
   const handleCompleteCutting = async (recordId: number) => {
     try {
-      await completeCutting(recordId);
+      await completeCutting(recordId); // This now sets status to qc_pending
       toast({
         title: "Success",
-        description: "Cutting marked as completed"
+        description: "Cutting completed and QC requested"
       });
       fetchData();
       setIsDetailDialogOpen(false);
@@ -277,7 +330,8 @@ export default function CuttingPage() {
                 <TableRow>
                   <TableHead>Order No</TableHead>
                   <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Order Qty</TableHead>
+                  <TableHead className="text-right">Already Cut</TableHead>
                   <TableHead>Planning Date</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -304,6 +358,11 @@ export default function CuttingPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-semibold">{order.quantity}</TableCell>
+                    <TableCell className="text-right font-medium text-primary">
+                      {records
+                        .filter(r => r.orderId === order.id)
+                        .reduce((sum, r) => sum + (r.items?.reduce((s, i) => s + i.cutQuantity, 0) || 0), 0)}
+                    </TableCell>
                     <TableCell className="text-sm">
                       {order.sewingStartDate ? format(new Date(order.sewingStartDate), 'PP') : '--'}
                     </TableCell>
@@ -314,7 +373,7 @@ export default function CuttingPage() {
                         className="shadow-md"
                       >
                         <Scissors className="mr-2 h-4 w-4" />
-                        Start Cutting
+                        Start New Batch
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -332,6 +391,15 @@ export default function CuttingPage() {
             <Scissors className="mr-2 h-5 w-5 text-primary" />
             Cutting Records ({records.length})
           </CardTitle>
+          <div className="flex items-center gap-2">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search history..." 
+              className="w-64 h-8 text-xs"
+              value={recordsSearchTerm}
+              onChange={(e) => setRecordsSearchTerm(e.target.value)}
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -355,7 +423,13 @@ export default function CuttingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((record) => {
+                {records
+                  .filter(r => 
+                    r.orderNumber.toLowerCase().includes(recordsSearchTerm.toLowerCase()) ||
+                    r.productName.toLowerCase().includes(recordsSearchTerm.toLowerCase()) ||
+                    r.productCode.toLowerCase().includes(recordsSearchTerm.toLowerCase())
+                  )
+                  .map((record) => {
                   const progress = getTotalCutPercentage(record);
                   return (
                     <TableRow key={record.id} className="hover:bg-primary/5 transition-colors">
@@ -438,16 +512,30 @@ export default function CuttingPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedRecord(record);
-                            setIsDetailDialogOpen(true);
-                          }}
-                        >
-                          View Details
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedRecord(record);
+                              setIsDetailDialogOpen(true);
+                            }}
+                          >
+                            Details
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="bg-primary/5 hover:bg-primary/10 border-primary/20"
+                            onClick={() => {
+                              setSelectedOrderIdForHistory(record.orderId);
+                              setIsHistoryDialogOpen(true);
+                            }}
+                          >
+                            <History className="h-4 w-4 mr-1" />
+                            History
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -543,10 +631,23 @@ export default function CuttingPage() {
                             type="number"
                             className="w-20 h-8 text-right"
                             value={item.cutQuantity}
-                            max={item.quantity}
-                            onChange={(e) => handleUpdateItem(item.id, { 
-                              cutQuantity: Math.min(parseInt(e.target.value) || 0, item.quantity) 
-                            })}
+                            onChange={(e) => {
+                                let val = Math.max(0, parseInt(e.target.value) || 0);
+                                if (val > item.quantity) {
+                                  val = item.quantity;
+                                  toast({
+                                    title: "Validation Limit",
+                                    description: "Cut quantity cannot exceed total order quantity",
+                                    variant: "destructive"
+                                  });
+                                }
+                                const passed = Math.min(item.qcPassedQuantity, val);
+                                handleUpdateItem(item.id, { 
+                                  cutQuantity: val,
+                                  qcPassedQuantity: passed,
+                                  qcRejectedQuantity: val - passed
+                                });
+                            }}
                             disabled={selectedRecord.status === 'handed_over'}
                           />
                         </TableCell>
@@ -555,10 +656,21 @@ export default function CuttingPage() {
                             type="number"
                             className="w-20 h-8 text-right"
                             value={item.qcPassedQuantity}
-                            max={item.cutQuantity}
-                            onChange={(e) => handleUpdateItem(item.id, { 
-                              qcPassedQuantity: Math.min(parseInt(e.target.value) || 0, item.cutQuantity) 
-                            })}
+                            onChange={(e) => {
+                                let passed = Math.max(0, parseInt(e.target.value) || 0);
+                                if (passed > item.cutQuantity) {
+                                  passed = item.cutQuantity;
+                                  toast({
+                                    title: "Validation Limit",
+                                    description: "QC passed cannot exceed cut quantity",
+                                    variant: "destructive"
+                                  });
+                                }
+                                handleUpdateItem(item.id, { 
+                                  qcPassedQuantity: passed,
+                                  qcRejectedQuantity: item.cutQuantity - passed
+                                });
+                            }}
                             disabled={selectedRecord.status === 'handed_over'}
                           />
                         </TableCell>
@@ -567,9 +679,21 @@ export default function CuttingPage() {
                             type="number"
                             className="w-20 h-8 text-right"
                             value={item.qcRejectedQuantity}
-                            onChange={(e) => handleUpdateItem(item.id, { 
-                              qcRejectedQuantity: parseInt(e.target.value) || 0 
-                            })}
+                            onChange={(e) => {
+                                let rejected = Math.max(0, parseInt(e.target.value) || 0);
+                                if (rejected > item.cutQuantity) {
+                                  rejected = item.cutQuantity;
+                                  toast({
+                                    title: "Validation Limit",
+                                    description: "QC rejected cannot exceed cut quantity",
+                                    variant: "destructive"
+                                  });
+                                }
+                                handleUpdateItem(item.id, { 
+                                  qcRejectedQuantity: rejected,
+                                  qcPassedQuantity: item.cutQuantity - rejected
+                                });
+                            }}
                             disabled={selectedRecord.status === 'handed_over'}
                           />
                         </TableCell>
@@ -732,19 +856,19 @@ export default function CuttingPage() {
                     className="shadow-md"
                   >
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Mark as Completed
+                    Complete & Request QC
                   </Button>
                 )}
-                {selectedRecord && selectedRecord.status === 'completed' && canQC && !selectedRecord.qcCheckDate && (
+                {selectedRecord && selectedRecord.status === 'qc_pending' && canQC && (
                   <Button 
                     onClick={() => {
                       setIsDetailDialogOpen(false);
                       setIsQCDialogOpen(true);
                     }}
-                    className="shadow-md"
+                    className="shadow-md bg-yellow-600 hover:bg-yellow-700"
                   >
                     <AlertCircle className="mr-2 h-4 w-4" />
-                    QC Check
+                    Perform QC Check
                   </Button>
                 )}
                 {selectedRecord && selectedRecord.qcPassed && !selectedRecord.handedOverToProduction && canStartCutting && (
@@ -898,8 +1022,8 @@ export default function CuttingPage() {
               <p className="font-medium">Order Information:</p>
               {selectedRecord && (
                 <div className="text-sm space-y-1">
-                  <p>Order Number: <span className="font-medium">{selectedRecord.orderNumber}</span></p>
-                  <p>Product: <span className="font-medium">{selectedRecord.productName}</span></p>
+                  <p>Order Number: <span className="font-medium">{selectedRecord?.orderNumber}</span></p>
+                  <p>Product: <span className="font-medium">{selectedRecord?.productName}</span></p>
                 </div>
               )}
             </div>
@@ -922,6 +1046,137 @@ export default function CuttingPage() {
             <Button onClick={handleAcceptCut} className="bg-purple-600 hover:bg-purple-700">
               Accept Panels
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Order History Dialog */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              Cutting History - {records.find(r => r.orderId === selectedOrderIdForHistory)?.orderNumber}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedOrderIdForHistory && (
+            <div className="flex-1 overflow-y-auto space-y-6 py-4">
+              {/* Summary Card */}
+              <Card className="bg-primary/5 border-primary/10">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase">Overall Cutting Progress</h3>
+                      <div className="text-2xl font-bold">
+                        {records
+                          .filter(r => r.orderId === selectedOrderIdForHistory)
+                          .reduce((sum, r) => sum + (r.items?.reduce((s, i) => s + i.cutQuantity, 0) || 0), 0)}
+                        {' / '}
+                        {records.find(r => r.orderId === selectedOrderIdForHistory)?.totalQuantity || 0}
+                        {' Units'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium">{records.filter(r => r.orderId === selectedOrderIdForHistory).length} Batches</div>
+                      <Badge variant="outline" className="mt-1">
+                        {records.find(r => r.orderId === selectedOrderIdForHistory)?.orderStatus}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-3 overflow-hidden border">
+                    <div 
+                      className="h-full bg-primary transition-all duration-500"
+                      style={{ 
+                        width: `${Math.min(100, (records
+                          .filter(r => r.orderId === selectedOrderIdForHistory)
+                          .reduce((sum, r) => sum + (r.items?.reduce((s, i) => s + i.cutQuantity, 0) || 0), 0) / 
+                          (records.find(r => r.orderId === selectedOrderIdForHistory)?.totalQuantity || 1)) * 100)}%` 
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Batches Timeline */}
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-primary" />
+                  Timeline of Cutting Batches
+                </h3>
+                <div className="space-y-4 border-l-2 border-muted ml-3 pl-6">
+                  {records
+                    .filter(r => r.orderId === selectedOrderIdForHistory)
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                    .map((batch, index) => (
+                      <div key={batch.id} className="relative">
+                        {/* Dot */}
+                        <div className="absolute -left-[31px] top-1.5 w-4 h-4 rounded-full bg-primary border-4 border-background" />
+                        
+                        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+                          <CardContent className="p-4">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Batch Started: {format(new Date(batch.created_at), 'PPP')}</div>
+                                <div className="font-bold text-lg">Batch #{batch.id}</div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                {getStatusBadge(batch.status)}
+                                <div className="text-xs font-medium">
+                                  {batch.items?.reduce((sum, i) => sum + i.cutQuantity, 0)} Units Cut
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm bg-muted/30 p-3 rounded-md mb-3">
+                              <div>
+                                <div className="text-muted-foreground text-[10px] uppercase font-bold">Cutting By</div>
+                                <div className="font-medium">{batch.cuttingBy || '--'}</div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground text-[10px] uppercase font-bold">QC Status</div>
+                                <div className={`font-medium ${batch.qcPassed ? 'text-green-600' : batch.qcCheckDate ? 'text-red-600' : ''}`}>
+                                  {batch.qcPassed ? 'Passed' : batch.qcCheckDate ? 'Failed' : 'Pending'}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground text-[10px] uppercase font-bold">Handover</div>
+                                <div className="font-medium">{batch.handedOverToProduction ? 'Yes' : 'No'}</div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground text-[10px] uppercase font-bold">Sewing Acc.</div>
+                                <div className="font-medium text-purple-600">{batch.sewingAccepted ? 'Yes' : 'Pending'}</div>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <div className="text-xs text-muted-foreground">
+                                {batch.items && batch.items.length > 0 && (
+                                  <span>Breakdown: {Array.from(new Set(batch.items.map(i => i.size))).join(', ')}</span>
+                                )}
+                              </div>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                                onClick={() => {
+                                  setSelectedRecord(batch);
+                                  setIsDetailDialogOpen(true);
+                                }}
+                              >
+                                View Batch Details
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="border-t pt-4">
+            <Button onClick={() => setIsHistoryDialogOpen(false)}>Close History</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

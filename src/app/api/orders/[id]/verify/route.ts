@@ -4,12 +4,9 @@ import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
 
 // PUT /api/orders/[id]/verify - Verify an order by store user
-export const PUT = withRoleAuth(async (request: NextRequest, user: any) => {
+export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params }: { params: { id: string } }) => {
   try {
-    // Extract order ID from URL
-    const url = new URL(request.url);
-    const pathParts = url.pathname.split('/');
-    const orderId = pathParts[pathParts.indexOf('orders') + 1];
+    const orderId = params.id;
 
     if (!orderId) {
       return new Response(

@@ -9,7 +9,7 @@
 
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import { getProducts } from '@/lib/products';
 import { getShops } from '@/lib/shops';
 import { getOrders } from '@/lib/orders';

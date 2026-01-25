@@ -15,6 +15,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const shopId = searchParams.get('id');
+    const username = searchParams.get('username');
 
     // If shopId is provided, return that specific shop
     if (shopId) {
@@ -41,12 +42,53 @@ export async function GET(request: Request) {
         // New fields for variant visibility control
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
+        telegram_channel_id: shop.telegram_channel_id,
         createdAt: shop.createdAt,
         updatedAt: shop.updatedAt
       };
 
       const response = NextResponse.json(cleanShop);
 
+      // Add cache control headers to prevent caching
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+
+      return response;
+    }
+
+    // If username is provided, return that specific shop
+    if (username) {
+      const shop = await getShopByUsername(username);
+
+      if (!shop) {
+        return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+      }
+
+      // Return the shop data including new fields for variant visibility control
+      const cleanShop = {
+        id: shop.id,
+        username: shop.username,
+        name: shop.name,
+        contactPerson: shop.contactPerson,
+        contactPhone: shop.contactPhone,
+        city: shop.city,
+        exactLocation: shop.exactLocation,
+        tradeLicenseNumber: shop.tradeLicenseNumber,
+        tinNumber: shop.tinNumber,
+        discount: shop.discount,
+        status: shop.status,
+        monthlySalesTarget: shop.monthlySalesTarget,
+        // New fields for variant visibility control
+        showVariantDetails: shop.showVariantDetails,
+        maxVisibleVariants: shop.maxVisibleVariants,
+        telegram_channel_id: shop.telegram_channel_id,
+        createdAt: shop.createdAt,
+        updatedAt: shop.updatedAt
+      };
+
+      const response = NextResponse.json(cleanShop);
+        
       // Add cache control headers to prevent caching
       response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       response.headers.set('Pragma', 'no-cache');
@@ -78,6 +120,7 @@ export async function GET(request: Request) {
         // New fields for variant visibility control
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
+        telegram_channel_id: shop.telegram_channel_id,
         createdAt: shop.createdAt,
         updatedAt: shop.updatedAt
       }));
@@ -111,6 +154,7 @@ export async function GET(request: Request) {
       // New fields for variant visibility control
       showVariantDetails: shop.showVariantDetails,
       maxVisibleVariants: shop.maxVisibleVariants,
+      telegram_channel_id: shop.telegram_channel_id,
       createdAt: shop.createdAt,
       updatedAt: shop.updatedAt
     }));
@@ -213,37 +257,53 @@ export async function POST(request: NextRequest) {
       monthlySalesTarget: shopDataWithoutPassword.monthlySalesTarget || 0,
       // New fields for variant visibility control with proper defaults
       showVariantDetails: shopDataWithoutPassword.showVariantDetails !== undefined ? shopDataWithoutPassword.showVariantDetails : true,
-      maxVisibleVariants: shopDataWithoutPassword.maxVisibleVariants || 1000
+      maxVisibleVariants: shopDataWithoutPassword.maxVisibleVariants || 1000,
+      // Telegram integration
+      telegram_channel_id: shopDataWithoutPassword.telegram_channel_id || null
     };
 
-    console.log('Creating shop with data:', shopData);
-    const newShop = await createShop(shopData);
-    console.log('Created shop:', newShop);
+    try {
+      console.log('Creating shop with data:', shopData);
+      const newShop = await createShop(shopData);
+      console.log('Created shop:', newShop);
 
-    // Log audit entry (without user info since there's no authentication)
-    console.log(`Created shop "${newShop.name}" with username "${newShop.username}"`);
+      // Log audit entry (without user info since there's no authentication)
+      console.log(`Created shop "${newShop.name}" with username "${newShop.username}"`);
 
-    // Return the created shop (excluding sensitive information)
-    const cleanShop = {
-      id: newShop.id,
-      username: newShop.username,
-      name: newShop.name,
-      contactPerson: newShop.contactPerson,
-      contactPhone: newShop.contactPhone,
-      city: newShop.city,
-      exactLocation: newShop.exactLocation,
-      tradeLicenseNumber: newShop.tradeLicenseNumber,
-      tinNumber: newShop.tinNumber,
-      discount: newShop.discount,
-      status: newShop.status,
-      monthlySalesTarget: newShop.monthlySalesTarget,
-      // New fields for variant visibility control
-      showVariantDetails: newShop.showVariantDetails,
-      maxVisibleVariants: newShop.maxVisibleVariants
-    };
+      // Return the created shop (excluding sensitive information)
+      const cleanShop = {
+        id: newShop.id,
+        username: newShop.username,
+        name: newShop.name,
+        contactPerson: newShop.contactPerson,
+        contactPhone: newShop.contactPhone,
+        city: newShop.city,
+        exactLocation: newShop.exactLocation,
+        tradeLicenseNumber: newShop.tradeLicenseNumber,
+        tinNumber: newShop.tinNumber,
+        discount: newShop.discount,
+        status: newShop.status,
+        monthlySalesTarget: newShop.monthlySalesTarget,
+        // New fields for variant visibility control
+        showVariantDetails: newShop.showVariantDetails,
+        maxVisibleVariants: newShop.maxVisibleVariants,
+        telegram_channel_id: newShop.telegram_channel_id
+      };
 
-    console.log('Returning clean shop data:', cleanShop);
-    return NextResponse.json(cleanShop, { status: 201 });
+      console.log('Returning clean shop data:', cleanShop);
+      return NextResponse.json(cleanShop, { status: 201 });
+    } catch (createShopError) {
+      console.error('Error creating shop record, rolling back user creation:', createShopError);
+      // Attempt to clean up the user we just created to avoid orphans
+      try {
+        const { deleteUserByUsername } = await import('@/lib/auth-sqlite');
+        await deleteUserByUsername(sanitizedData.username);
+        console.log(`Rolled back user creation for ${sanitizedData.username}`);
+      } catch (rollbackError) {
+        console.error('Failed to rollback user creation:', rollbackError);
+      }
+      throw createShopError; // Re-throw to be handled by the outer catch
+    }
   } catch (error: any) {
     console.error('=== SHOP REGISTRATION ERROR ===');
     console.error('Error details:', error);

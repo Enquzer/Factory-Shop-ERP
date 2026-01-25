@@ -141,10 +141,10 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id"> & { id?: string }
 
-function toast({ ...props }: Toast) {
-  const id = genId()
+function toast({ id: providedId, ...props }: Toast) {
+  const id = providedId || genId()
   const duration = props.duration !== undefined ? props.duration : TOAST_REMOVE_DELAY
 
   const update = (props: ToasterToast) =>

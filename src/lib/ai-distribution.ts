@@ -51,8 +51,8 @@ function distributeProportionally(
 ): Map<string, number> {
   const distribution = new Map<string, number>();
   
-  // Calculate total available stock
-  const totalStock = variants.reduce((sum, variant) => sum + variant.stock, 0);
+  // Calculate total available stock (treat negative stock as 0)
+  const totalStock = variants.reduce((sum, variant) => sum + Math.max(0, variant.stock), 0);
   
   // If no stock available, distribute 0 to all variants
   if (totalStock === 0) {
@@ -65,7 +65,8 @@ function distributeProportionally(
   
   // First pass: distribute based on ratio
   variants.forEach(variant => {
-    const ratio = variant.stock / totalStock;
+    const safeStock = Math.max(0, variant.stock);
+    const ratio = safeStock / totalStock;
     const allocated = Math.floor(orderQty * ratio);
     distribution.set(variant.id, allocated);
     allocatedTotal += allocated;
@@ -76,7 +77,8 @@ function distributeProportionally(
   if (remainder > 0) {
     // Calculate fractional parts for each variant
     const fractionalParts = variants.map(variant => {
-      const ratio = variant.stock / totalStock;
+      const safeStock = Math.max(0, variant.stock);
+      const ratio = safeStock / totalStock;
       const allocated = orderQty * ratio;
       return {
         variantId: variant.id,
@@ -135,7 +137,7 @@ export function validateDistribution(
 ): boolean {
   for (const [variantId, allocatedQty] of distribution) {
     const variant = variants.find(v => v.id === variantId);
-    if (!variant || allocatedQty > variant.stock) {
+    if (!variant || allocatedQty > Math.max(0, variant.stock)) {
       return false;
     }
   }

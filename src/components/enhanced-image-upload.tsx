@@ -33,11 +33,15 @@ export function EnhancedImageUpload({
   React.useEffect(() => {
     return () => {
       if (preview && preview.startsWith('blob:')) {
-        try {
-          URL.revokeObjectURL(preview);
-        } catch (error) {
-          console.warn('Failed to revoke blob URL:', error);
-        }
+        // Use a small timeout to allow any pending browser operations to complete
+        const urlToRevoke = preview;
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(urlToRevoke);
+          } catch (error) {
+            // Error might happen if already revoked or environment is gone
+          }
+        }, 1000);
       }
     };
   }, [preview]);
@@ -167,8 +171,10 @@ export function EnhancedImageUpload({
                 src={preview} 
                 alt="Preview" 
                 fill 
-                sizes="(max-width: 768px) 100vw, 50vw"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 400px"
                 style={{ objectFit: "contain" }} 
+                loading="lazy"
+                priority={false}
               />
             </div>
             <Button

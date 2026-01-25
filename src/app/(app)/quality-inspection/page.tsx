@@ -11,6 +11,8 @@ import {
   saveQualityInspection 
 } from '@/lib/marketing-orders';
 import { Button } from '@/components/ui/button';
+import { getCuttingRecords, CuttingRecord, qcCheckCutting } from '@/lib/cutting';
+import { Scissors } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -74,6 +76,11 @@ export default function QualityInspectionDashboardPage() {
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [factoryProfile, setFactoryProfile] = useState<any>(null);
+  const [cuttingRecords, setCuttingRecords] = useState<CuttingRecord[]>([]);
+  const [selectedCuttingRecord, setSelectedCuttingRecord] = useState<CuttingRecord | null>(null);
+  const [isCuttingQCDialogOpen, setIsCuttingQCDialogOpen] = useState(false);
+  const [cuttingQcPassed, setCuttingQcPassed] = useState(true);
+  const [cuttingQcRemarks, setCuttingQcRemarks] = useState('');
 
   // New Inspection Form State
   const [formData, setFormData] = useState<Partial<QualityInspection>>({
@@ -99,11 +106,15 @@ export default function QualityInspectionDashboardPage() {
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const fetchedOrders = await getMarketingOrders();
+      const [fetchedOrders, cuttingData] = await Promise.all([
+        getMarketingOrders(),
+        getCuttingRecords()
+      ]);
       // Show orders currently in production or finishing
       const activeProductionStatuses = ['Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection'];
       const filtered = fetchedOrders.filter(o => activeProductionStatuses.includes(o.status) && !o.isCompleted);
       setOrders(filtered);
+      setCuttingRecords(cuttingData);
     } catch (error) {
       console.error("Error fetching orders:", error);
       toast({ title: "Error", description: "Failed to load orders.", variant: "destructive" });
@@ -260,6 +271,29 @@ export default function QualityInspectionDashboardPage() {
     }
   };
 
+  const handleCuttingQCCheck = async () => {
+    if (!selectedCuttingRecord) return;
+    try {
+      await qcCheckCutting(selectedCuttingRecord.id, cuttingQcPassed, cuttingQcRemarks);
+      toast({
+        title: "Success",
+        description: `Cutting QC check ${cuttingQcPassed ? 'passed' : 'failed'}`
+      });
+      setIsCuttingQCDialogOpen(false);
+      setCuttingQcRemarks('');
+      fetchOrders();
+    } catch (error) {
+      console.error('Error QC checking cutting:', error);
+      toast({
+        title: "Error",
+        description: "Failed to perform QC check",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const pendingCuttingQC = cuttingRecords.filter(r => r.status === 'qc_pending');
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -333,13 +367,66 @@ export default function QualityInspectionDashboardPage() {
         <Card className="border-none shadow-md bg-white border-l-4 border-l-red-500">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-muted-foreground uppercase">Rejected/Rework</p>
-              <X className="h-4 w-4 text-red-500" />
+              <p className="text-xs font-bold text-muted-foreground uppercase">Cutting QC Pending</p>
+              <AlertCircle className="h-4 w-4 text-red-500" />
             </div>
-            <div className="text-2xl font-bold mt-1">--</div>
+            <div className="text-2xl font-bold mt-1">{pendingCuttingQC.length}</div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Cutting QC Section */}
+      {pendingCuttingQC.length > 0 && (
+        <Card className="border-none shadow-xl bg-amber-50/30 overflow-hidden mb-8 border border-amber-200">
+          <CardHeader className="bg-amber-100/50 border-b">
+            <CardTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5 text-amber-600" />
+              Cutting Batch QC Requests
+            </CardTitle>
+            <CardDescription>Cutting batches waiting for initial piece inspection.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Quantity</TableHead>
+                  <TableHead>Completed Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingCuttingQC.map((record) => (
+                  <TableRow key={record.id} className="hover:bg-amber-100/20">
+                    <TableCell className="font-bold">{record.orderNumber}</TableCell>
+                    <TableCell>{record.productName}</TableCell>
+                    <TableCell>
+                       {record.items?.reduce((sum, item) => sum + item.cutQuantity, 0)} Units
+                    </TableCell>
+                    <TableCell>
+                      {record.cuttingCompletedDate ? format(new Date(record.cuttingCompletedDate), 'PP') : '--'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="sm" 
+                        variant="default"
+                        className="bg-amber-600 hover:bg-amber-700"
+                        onClick={() => {
+                          setSelectedCuttingRecord(record);
+                          setIsCuttingQCDialogOpen(true);
+                        }}
+                      >
+                        Perform QC
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Orders Table */}
       <Card className="border-none shadow-xl bg-white overflow-hidden mb-8">
@@ -795,6 +882,68 @@ export default function QualityInspectionDashboardPage() {
           </div>
           <DialogFooter>
              <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Cutting QC Dialog */}
+      <Dialog open={isCuttingQCDialogOpen} onOpenChange={setIsCuttingQCDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5 text-amber-600" />
+              Cutting Batch QC Check
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-muted/30 rounded-lg">
+              <div className="text-sm font-medium">Batch Details:</div>
+              <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                <div>Order: <span className="font-bold">{selectedCuttingRecord?.orderNumber}</span></div>
+                <div>Product: <span className="font-bold">{selectedCuttingRecord?.productName}</span></div>
+                <div>Batch ID: <span className="font-bold">{selectedCuttingRecord?.id}</span></div>
+                <div>Status: <span className="font-bold text-amber-600 font-mono text-xs italic">{selectedCuttingRecord?.status}</span></div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <Button
+                variant={cuttingQcPassed ? 'default' : 'outline'}
+                className={cn("flex-1", cuttingQcPassed && "bg-emerald-600 hover:bg-emerald-700")}
+                onClick={() => setCuttingQcPassed(true)}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Pass Batch
+              </Button>
+              <Button
+                variant={!cuttingQcPassed ? 'destructive' : 'outline'}
+                className="flex-1"
+                onClick={() => setCuttingQcPassed(false)}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Fail Batch
+              </Button>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">QC Remarks</label>
+              <Textarea
+                placeholder="Enter QC remarks for this cutting batch..."
+                value={cuttingQcRemarks}
+                onChange={(e) => setCuttingQcRemarks(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCuttingQCDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCuttingQCCheck}
+              className={cuttingQcPassed ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+            >
+              Submit Check
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

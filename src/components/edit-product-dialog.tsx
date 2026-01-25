@@ -38,6 +38,7 @@ import { Product, ProductVariant, AgePricing, updateProduct, updateVariantStock,
 import { createStockEvent } from "@/lib/stock-events";
 import { updateShopInventoryOnReplenishment } from "@/lib/products-sqlite";
 import { EnhancedImageUpload } from "@/components/enhanced-image-upload";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 const variantSchema = z.object({
   id: z.string(),
@@ -69,7 +70,7 @@ const productSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productSchema>;
 
-const categories = ["Men", "Women", "Kids", "Unisex"];
+const categories = ["Men", "Women", "Kids", "Unisex", "Pijama"];
 
 const VariantImagePreview = ({ control, index }: { control: any, index: number }) => {
     const image = useWatch({
@@ -89,11 +90,14 @@ const VariantImagePreview = ({ control, index }: { control: any, index: number }
         const url = URL.createObjectURL(image);
         setPreview(url);
         return () => {
-          try {
-            URL.revokeObjectURL(url);
-          } catch (error) {
-            console.warn('Failed to revoke blob URL:', error);
-          }
+          // Use a small timeout to allow any pending browser operations to complete
+          setTimeout(() => {
+            try {
+               URL.revokeObjectURL(url);
+            } catch (error) {
+               // Ignore
+            }
+          }, 1000);
         };
       } else if (typeof image === 'string') {
         setPreview(image);
@@ -113,8 +117,10 @@ const VariantImagePreview = ({ control, index }: { control: any, index: number }
           src={preview} 
           alt={`Variant ${index + 1} preview`} 
           fill 
-          sizes="(max-width: 768px) 50vw, 25vw"
+          sizes="(max-width: 768px) 100px, 150px"
           style={{objectFit: "cover"}} 
+          loading="lazy"
+          priority={false}
         />
       </div>
     );
@@ -129,7 +135,12 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
   useEffect(() => {
     return () => {
       if (mainImagePreview && mainImagePreview.startsWith('blob:')) {
-        URL.revokeObjectURL(mainImagePreview);
+        const urlToRevoke = mainImagePreview;
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(urlToRevoke);
+          } catch (e) {}
+        }, 1000);
       }
     };
   }, [mainImagePreview]);
@@ -222,6 +233,9 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
         
         const uploadResponse = await fetch('/api/upload', {
           method: 'POST',
+          headers: {
+            ...createAuthHeaders()
+          },
           body: formData,
         });
         
@@ -254,6 +268,9 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
           
           const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
+            headers: {
+              ...createAuthHeaders()
+            },
             body: formData,
           });
           

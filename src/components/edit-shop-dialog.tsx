@@ -49,13 +49,15 @@ const editShopSchema = z.object({
     status: z.enum(['Active', 'Inactive', 'Pending']).optional(),
     // New fields for variant visibility control
     showVariantDetails: z.boolean().optional(),
-    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional().nullable()
+    maxVisibleVariants: z.coerce.number().min(1).max(1000).optional().nullable(),
+    // New field for Telegram integration
+    telegramChannelId: z.string().optional().nullable()
     // Removed aiDistributionMode field
 });
 
 type EditShopFormValues = z.infer<typeof editShopSchema>;
 
-export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRole }: { shop: Shop; open: boolean; onOpenChange: (open: boolean) => void; onShopUpdated: () => void; userRole?: 'factory' | 'shop' }) {
+export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRole }: { shop: Shop; open: boolean; onOpenChange: (open: boolean) => void; onShopUpdated: () => void; userRole?: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const hasInitialized = useRef(false);
@@ -75,7 +77,8 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
       tinNumber: null,
       status: "Pending",
       showVariantDetails: true,
-      maxVisibleVariants: 1000
+      maxVisibleVariants: 1000,
+      telegramChannelId: ""
       // Removed aiDistributionMode from default values
     },
   });
@@ -101,7 +104,9 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
           status: shop.status ?? "Pending",
           // New fields for variant visibility control
           showVariantDetails: shop.showVariantDetails ?? true,
-          maxVisibleVariants: shop.maxVisibleVariants ?? 1000
+          maxVisibleVariants: shop.maxVisibleVariants ?? 1000,
+          // New field for Telegram integration (use the source property name from DB)
+          telegramChannelId: (shop as any).telegram_channel_id || ""
           // Removed aiDistributionMode from form reset
         });
       }
@@ -127,7 +132,9 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
             monthlySalesTarget: data.monthlySalesTarget, // No longer need to convert to null since it's required
             tradeLicenseNumber: data.tradeLicenseNumber !== undefined && data.tradeLicenseNumber !== null && data.tradeLicenseNumber !== "" ? data.tradeLicenseNumber : null,
             tinNumber: data.tinNumber !== undefined && data.tinNumber !== null && data.tinNumber !== "" ? data.tinNumber : null,
-            maxVisibleVariants: data.maxVisibleVariants !== undefined && data.maxVisibleVariants !== null ? data.maxVisibleVariants : null
+            maxVisibleVariants: data.maxVisibleVariants !== undefined && data.maxVisibleVariants !== null ? data.maxVisibleVariants : null,
+            // New field for Telegram integration
+            telegram_channel_id: data.telegramChannelId !== undefined && data.telegramChannelId !== null && data.telegramChannelId !== "" ? data.telegramChannelId : null
             // Removed aiDistributionMode from update data
         };
         
@@ -354,6 +361,29 @@ export function EditShopDialog({ shop, open, onOpenChange, onShopUpdated, userRo
                                     ref={field.ref}
                                 />
                             </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="telegramChannelId"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Telegram Channel ID</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    value={field.value ?? ""}
+                                    placeholder="-100..."
+                                    onChange={(e) => field.onChange(e.target.value === "" ? null : e.target.value)}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                    ref={field.ref}
+                                />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Format: -100XXXXXXXXXX (e.g., -1001234567890)
+                            </p>
                             <FormMessage />
                             </FormItem>
                         )}

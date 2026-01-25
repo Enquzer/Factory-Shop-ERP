@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette } from 'lucide-react';
+import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -19,7 +19,10 @@ const factoryLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/orders-analytics', label: 'Orders Analytics', icon: BarChart3 },
   { href: '/products', label: 'Products', icon: Package },
+  { href: '/products/categories', label: 'Category Management', icon: Tag },
   { href: '/inventory', label: 'Inventory', icon: ClipboardList },
+  { href: '/raw-materials', label: 'Raw Materials', icon: Layers },
+  { href: '/store/issue', label: 'Material Issuance', icon: ShoppingCart },
   { href: '/shops', label: 'Shops', icon: Building2 },
   { href: '/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
@@ -29,6 +32,7 @@ const factoryLinks = [
   { href: '/sample-management', label: 'Sample Management', icon: FlaskConical },
   { href: '/holiday-discounts', label: 'Holiday Discounts', icon: Tag },
   { href: '/reports', label: 'Reports', icon: FileText },
+  { href: '/settings/telegram', label: 'Telegram Channels', icon: Bell },
   { href: '/users', label: 'User Management', icon: User }, // Using User icon instead of Users
   { href: '/store', label: 'Store Management', icon: Package },
   { href: '/finance', label: 'Finance Management', icon: FileText },
@@ -37,8 +41,12 @@ const factoryLinks = [
 ];
 
 const storeLinks = [
-  { href: '/store', label: 'Store Management', icon: Package },
-  { href: '/orders', label: 'All Orders', icon: ShoppingCart },
+  { href: '/store/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/store/receive', label: 'Receive Goods', icon: ClipboardCheck },
+  { href: '/raw-materials', label: 'Raw Materials', icon: Layers },
+  { href: '/store/issue', label: 'Material Issuance', icon: ShoppingCart },
+  { href: '/store/inventory', label: 'Store Inventory', icon: Package },
+  { href: '/store/orders', label: 'Shop Orders', icon: ShoppingCart },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
@@ -92,9 +100,15 @@ export function Nav() {
     case 'packing':
     case 'quality_inspection':
       // Different navigation for different production roles
-      if (user.role === 'cutting' || user.role === 'quality_inspection') {
+      if (user.role === 'cutting') {
         currentLinks = [
-          ...(user.role === 'cutting' ? [{ href: '/cutting', label: 'Cutting Department', icon: Scissors }] : []),
+          { href: '/cutting', label: 'Cutting Department', icon: Scissors },
+          { href: '/production-dashboard', label: 'Production Dashboard', icon: LayoutDashboard },
+          { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
+          { href: '/profile', label: 'Profile', icon: User },
+        ];
+      } else if (user.role === 'quality_inspection') {
+        currentLinks = [
           { href: '/quality-inspection', label: 'QC Dashboard', icon: LayoutDashboard },
           { href: '/quality-inspection?stage=Sample', label: 'Sample QC', icon: FlaskConical },
           { href: '/quality-inspection?stage=Sewing', label: 'Sewing QC', icon: Scissors },

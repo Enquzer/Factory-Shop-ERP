@@ -2,14 +2,13 @@ import { NextRequest } from 'next/server';
 import { withAuth, withRoleAuth } from '@/lib/auth-middleware';
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
+import { sendShopOrderNotification } from '@/lib/telegram-shop-notifications';
+import { generateOrderTelegramPDF } from '@/lib/shop-order-telegram-pdf';
 
 // PUT /api/orders/[id]/payment-verify - Verify payment for an order by finance user
-export const PUT = withRoleAuth(async (request: NextRequest, user: any) => {
+export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params }: { params: { id: string } }) => {
   try {
-    // Extract order ID from URL
-    const url = new URL(request.url);
-    const pathParts = url.pathname.split('/');
-    const orderId = pathParts[pathParts.indexOf('orders') + 1];
+    const orderId = params.id;
 
     if (!orderId) {
       return new Response(
@@ -44,9 +43,17 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any) => {
     }
 
     // Verify that the status transition is valid
-    if (order.status !== 'Awaiting Payment' && order.status !== 'Pending') {
+    if (order.status !== 'Awaiting Payment' && order.status !== 'Pending' && order.status !== 'Payment Slip Attached') {
       return new Response(
         JSON.stringify({ error: `Order cannot be verified for payment at '${order.status}' stage` }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // CHECK: Payment slip must be attached
+    if (!order.paymentSlipUrl) {
+      return new Response(
+        JSON.stringify({ error: 'Cannot verify payment: No payment slip has been attached to this order.' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -74,6 +81,24 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any) => {
       description: `Your order #${orderId} payment has been verified by finance and is now ready for dispatch.`,
       href: `/shop/orders/${orderId}`
     });
+
+    // NEW: Telegram Notification for Shop Channel
+    try {
+      // Generate Updated PDF with Payment Info (Verified status)
+      const { pdfPath, summary } = await generateOrderTelegramPDF(orderId, 'payment_verified');
+      
+      await sendShopOrderNotification(
+        orderId as string,
+        order.shopId,
+        'payment_verified',
+        {
+          pdfPath,
+          caption: `📊 *Order Summary:*\n• Total Unique Styles: ${summary.uniqueStyles}\n• Total Quantity: ${summary.totalQuantity} pieces\n• Total Value: ${summary.totalValue.toLocaleString()} Birr\n\n✅ Verified by: Finance\nStatus: Ready for Dispatch`
+        }
+      );
+    } catch (telegramError) {
+      console.error('Failed to send Shop Telegram notification for payment verification:', telegramError);
+    }
 
     // Return success response
     return new Response(

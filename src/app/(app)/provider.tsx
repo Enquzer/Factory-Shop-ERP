@@ -70,7 +70,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                     router.push('/dashboard');
                 } else if (user.role === 'store' && !isStoreRoute) {
                     setRedirecting(true);
-                    router.push('/store'); // Redirect to store dashboard
+                    router.push('/store/dashboard'); // Redirect to store dashboard
                 } else if (user.role === 'finance' && !isFinanceRoute) {
                     setRedirecting(true);
                     router.push('/finance/reports');

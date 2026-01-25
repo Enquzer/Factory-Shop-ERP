@@ -39,6 +39,8 @@ export type CuttingRecord = {
   cuttingDelayDays: number;
   sewingStartDelayDays: number;
   planningNotified: number;
+  totalQuantity?: number;
+  orderStatus?: string;
 };
 
 export type CuttingItem = {
@@ -171,6 +173,10 @@ export async function updateCuttingItemFromDB(itemId: number, updates: Partial<C
   const fields: string[] = [];
   const values: any[] = [];
 
+  if (updates.quantity !== undefined) {
+    fields.push('quantity = ?');
+    values.push(updates.quantity);
+  }
   if (updates.cutQuantity !== undefined) {
     fields.push('cutQuantity = ?');
     values.push(updates.cutQuantity);
@@ -211,25 +217,46 @@ export async function completeCuttingFromDB(recordId: number, username: string):
   
   await db.run(`
     UPDATE cutting_records 
-    SET status = 'completed',
+    SET status = 'qc_pending',
         cuttingCompletedDate = datetime('now'),
         updated_at = datetime('now')
     WHERE id = ?
   `, recordId);
 
-  // Get orderId
-  const record = await db.get('SELECT orderId FROM cutting_records WHERE id = ?', recordId);
+  // Get order ID and details
+  const record = await db.get(
+    'SELECT orderId, orderNumber, productName FROM cutting_records WHERE id = ?', 
+    recordId
+  );
   
   if (record) {
+    // Update marketing order status
     await db.run(`
       UPDATE marketing_orders 
-      SET cuttingStatus = 'completed',
+      SET cuttingStatus = 'qc_pending',
           cuttingCompletedDate = datetime('now')
       WHERE id = ?
     `, record.orderId);
+
+    // Create notification for quality department
+    await db.run(`
+      INSERT INTO notifications (id, userType, title, description, href, isRead, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `, [
+      `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      'quality_inspection',
+      'Cutting QC Request',
+      `Cutting for order ${record.orderNumber} (${record.productName}) is completed and needs QC inspection.`,
+      `/cutting`,
+      0
+    ]);
   }
 
   return true;
+}
+
+export async function requestQCFromDB(recordId: number, username: string): Promise<boolean> {
+  return completeCuttingFromDB(recordId, username);
 }
 
 export async function qcCheckCuttingFromDB(recordId: number, passed: boolean, remarks: string, username: string): Promise<boolean> {
@@ -563,6 +590,17 @@ export async function handoverToProduction(recordId: number, productionReceivedB
 export async function notifySewing(recordId: number): Promise<boolean> {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`/api/cutting/${recordId}/notify-sewing`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  return response.ok;
+}
+
+export async function requestQC(recordId: number): Promise<boolean> {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`/api/cutting/${recordId}/request-qc`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`

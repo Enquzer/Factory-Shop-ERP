@@ -209,6 +209,126 @@ export async function generateTechPackPDF(style: Style) {
       }
   }
 
+  // -- Page 4: Finishing Specifications --
+  const finishingSpecs = style.specifications?.filter(s => s.category === 'Finishing');
+  if (finishingSpecs && finishingSpecs.length > 0) {
+      doc.addPage();
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Finishing Specifications (Print/Wash/Embroidery)", 14, 40);
+      
+      let currentY = 50;
+      for (const spec of finishingSpecs) {
+          if (currentY > 250) {
+              doc.addPage();
+              currentY = 40;
+          }
+
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text(spec.type.toUpperCase(), 14, currentY);
+          currentY += 6;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          if (spec.description) {
+              doc.text(`Placement: ${spec.description}`, 14, currentY);
+              currentY += 5;
+          }
+
+          if (spec.comments) {
+              const splitComments = doc.splitTextToSize(`Instructions: ${spec.comments}`, 100);
+              doc.text(splitComments, 14, currentY);
+              currentY += (splitComments.length * 5);
+          }
+
+          if (spec.imageUrl) {
+              try {
+                  const props = doc.getImageProperties(spec.imageUrl);
+                  const ratio = props.height / props.width;
+                  const w = 70;
+                  const h = w * ratio;
+                  
+                  if (currentY + h > 280) {
+                      doc.addPage();
+                      currentY = 40;
+                  }
+                  
+                  doc.addImage(spec.imageUrl, 'JPEG', 120, currentY - 10, w, h);
+                  currentY = Math.max(currentY, (currentY - 10) + h) + 10;
+              } catch(e) {
+                  currentY += 10;
+              }
+          } else {
+              currentY += 10;
+          }
+
+          doc.setDrawColor(226, 232, 240);
+          doc.line(14, currentY - 5, 196, currentY - 5);
+          currentY += 5;
+      }
+  }
+
+  // -- Page 5: Labels & Tags --
+  const labelSpecs = style.specifications?.filter(s => s.category === 'Labels');
+  if (labelSpecs && labelSpecs.length > 0) {
+      doc.addPage();
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Labels & Tags Specifications", 14, 40);
+      
+      let currentY = 50;
+      for (const spec of labelSpecs) {
+          if (currentY > 250) {
+              doc.addPage();
+              currentY = 40;
+          }
+
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text(spec.type, 14, currentY);
+          currentY += 6;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          if (spec.description) {
+              doc.text(`Detail: ${spec.description}`, 14, currentY);
+              currentY += 5;
+          }
+
+          if (spec.comments) {
+              const splitComments = doc.splitTextToSize(`Comments: ${spec.comments}`, 180);
+              doc.text(splitComments, 14, currentY);
+              currentY += (splitComments.length * 5);
+          }
+
+          if (spec.imageUrl) {
+              try {
+                  const props = doc.getImageProperties(spec.imageUrl);
+                  const ratio = props.height / props.width;
+                  const w = 50;
+                  const h = w * ratio;
+                  
+                  if (currentY + h > 280) {
+                      doc.addPage();
+                      currentY = 40;
+                  }
+                  
+                  doc.addImage(spec.imageUrl, 'JPEG', 14, currentY, w, h);
+                  currentY += h + 10;
+              } catch(e) {
+                  currentY += 10;
+              }
+          } else {
+              currentY += 10;
+          }
+
+          doc.setDrawColor(226, 232, 240);
+          doc.line(14, currentY - 5, 196, currentY - 5);
+          currentY += 5;
+      }
+  }
+
   // Finalize Header on all pages
   await addHeader(doc, style.name);
 

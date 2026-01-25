@@ -64,7 +64,7 @@ export default function FinanceOrdersPage() {
 
   // Separate orders by payment status
   const awaitingPaymentOrders = orders.filter(order => 
-    order.status === 'Awaiting Payment' || order.status === 'Pending'
+    order.status === 'Awaiting Payment' || order.status === 'Pending' || order.status === 'Payment Slip Attached'
   );
   
   const paidOrders = orders.filter(order => 
@@ -81,11 +81,12 @@ export default function FinanceOrdersPage() {
       <Badge 
         variant={
           order.status === 'Paid' ? 'default' :
-          order.status === 'Awaiting Payment' || order.status === 'Pending' ? 'destructive' :
+          order.status === 'Awaiting Payment' || order.status === 'Pending' || order.status === 'Payment Slip Attached' ? 'destructive' :
           order.status === 'Dispatched' ? 'secondary' : 'outline'
         }
         className={
           order.status === 'Paid' ? 'bg-green-100 text-green-800' :
+          order.status === 'Payment Slip Attached' ? 'bg-blue-100 text-blue-800' :
           order.status === 'Awaiting Payment' || order.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
           order.status === 'Dispatched' ? 'bg-blue-100 text-blue-800' :
           'bg-gray-100 text-gray-800'
@@ -104,7 +105,7 @@ export default function FinanceOrdersPage() {
           <Eye className="h-4 w-4 mr-2" />
           View Details
         </Button>
-        {(order.status === 'Awaiting Payment' || order.status === 'Pending') && (
+        {(order.status === 'Awaiting Payment' || order.status === 'Pending' || order.status === 'Payment Slip Attached') && (
           <Button 
             size="sm"
             onClick={() => router.push(`/finance/orders/${order.id}`)}
@@ -226,6 +227,7 @@ export default function FinanceOrdersPage() {
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Awaiting Payment">Awaiting Payment</SelectItem>
+                  <SelectItem value="Payment Slip Attached">Payment Slip Attached</SelectItem>
                   <SelectItem value="Paid">Paid</SelectItem>
                   <SelectItem value="Dispatched">Dispatched</SelectItem>
                   <SelectItem value="Delivered">Delivered</SelectItem>

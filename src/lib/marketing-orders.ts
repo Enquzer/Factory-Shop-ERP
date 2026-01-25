@@ -9,6 +9,7 @@ export type MarketingOrderStatus =
   'Finishing' |
   'Quality Inspection' |
   'Packing' | 
+  'Store' |
   'Delivery' | 
   'Completed' |
   'Cancelled';
@@ -21,6 +22,23 @@ export type MarketingOrderItem = {
   quantity: number;
 };
 
+export type MarketingOrderComponent = {
+  id?: number;
+  orderId: string;
+  componentName: string;
+  smv: number;
+  manpower: number;
+  sewingOutputPerDay: number;
+  operationDays: number;
+  efficiency: number;
+  sewingStartDate?: string;
+  sewingFinishDate?: string;
+  cuttingStartDate?: string;
+  cuttingFinishDate?: string;
+  packingStartDate?: string;
+  packingFinishDate?: string;
+};
+
 export type DailyProductionStatus = {
   id?: number;
   orderId: string;
@@ -31,6 +49,7 @@ export type DailyProductionStatus = {
   status: string;
   isTotalUpdate?: boolean;
   processStage?: string; // Add processStage field
+  componentName?: string; // Add componentName field
 };
 
 export type MarketingOrder = {
@@ -38,6 +57,8 @@ export type MarketingOrder = {
   orderNumber: string;
   productName: string;
   productCode: string;
+  mainCategory?: string;
+  subCategory?: string;
   description?: string;
   quantity: number;
   status: MarketingOrderStatus;
@@ -75,6 +96,7 @@ export type MarketingOrder = {
   // Gatekeeper and Sequencing
   isPlanningApproved?: boolean;
   priority?: number;
+  qualityInspectionStage?: string;
   
   // Attachments
   ppmMeetingAttached?: string;
@@ -100,6 +122,8 @@ export type MarketingOrder = {
   packingStartDate?: string;
   packingFinishDate?: string;
   isNewProduct?: boolean;
+  components?: MarketingOrderComponent[];
+  styleComponents?: string; // JSON string from styles table
 };
 
 export type OperationBulletinItem = {
@@ -108,6 +132,7 @@ export type OperationBulletinItem = {
   productCode?: string;
   sequence: number;
   operationName: string;
+  componentName?: string;
   machineType: string;
   smv: number;
   manpower: number;
@@ -251,6 +276,28 @@ export async function updateMarketingOrder(id: string, order: Partial<MarketingO
   }
 }
 
+// Client-side function to update a marketing order component (planning)
+export async function updateMarketingOrderComponent(orderId: string, componentId: number, data: Partial<MarketingOrderComponent>): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/marketing-orders/${orderId}/components/${componentId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(data),
+    });
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Error updating order component:', error);
+    return false;
+  }
+}
+
 /**
  * Client-side function to handover order to next department
  */
@@ -264,6 +311,7 @@ export async function handoverOrder(orderId: string, currentStatus: MarketingOrd
     'Finishing',
     'Quality Inspection',
     'Packing', 
+    'Store',
     'Delivery',
     'Completed'
   ];
@@ -342,8 +390,10 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
   try {
     const db = await getDb();
     const orders = await db.all(`
-      SELECT * FROM marketing_orders
-      ORDER BY createdAt DESC
+      SELECT mo.*, s.components as styleComponents 
+      FROM marketing_orders mo
+      LEFT JOIN styles s ON mo.productCode = s.number
+      ORDER BY mo.createdAt DESC
     `);
     
     // Get items for each order
@@ -366,6 +416,7 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           sewingStatus: order.sewingStatus,
           finishingStatus: order.finishingStatus,
           qualityInspectionStatus: order.qualityInspectionStatus,
+          qualityInspectionStage: order.qualityInspectionStage,
           packingStatus: order.packingStatus,
           deliveryStatus: order.deliveryStatus,
           assignedTo: order.assignedTo,
@@ -405,13 +456,15 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           packingFinishDate: order.packingFinishDate,
           isNewProduct: order.isNewProduct === 1,
           isPlanningApproved: order.isPlanningApproved === 1,
+          styleComponents: order.styleComponents,
           items: items.map((item: any) => ({
             id: item.id,
             orderId: item.orderId,
             size: item.size,
             color: item.color,
             quantity: item.quantity
-          }))
+          })),
+          components: await db.all(`SELECT * FROM marketing_order_components WHERE orderId = ?`, order.id)
         };
       })
     );
@@ -454,6 +507,7 @@ export async function getMarketingOrderByIdFromDB(id: string): Promise<Marketing
       sewingStatus: order.sewingStatus,
       finishingStatus: order.finishingStatus,
       qualityInspectionStatus: order.qualityInspectionStatus,
+      qualityInspectionStage: order.qualityInspectionStage,
       packingStatus: order.packingStatus,
       deliveryStatus: order.deliveryStatus,
       assignedTo: order.assignedTo,
@@ -611,6 +665,100 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
       `, item.orderId, item.size, item.color, item.quantity);
     }
     
+    // --- Multi-Component Workflow ---
+    // Fetch style components based on productCode (Style Number)
+    try {
+        const style = await db.get(`SELECT components FROM styles WHERE number = ?`, order.productCode);
+        if (style && style.components) {
+            const components = JSON.parse(style.components); // [{name: 'Jacket', ratio: 1}]
+            
+            // Standard generic operations to initialize tracking
+            const standardOps = [
+                { name: 'Cutting', sequence: 10 },
+                { name: 'Sewing', sequence: 20 },
+                { name: 'Finishing', sequence: 30 },
+                { name: 'Packing', sequence: 40 }
+            ];
+            
+            for (const comp of components) {
+                // Initialize component planning record
+                await db.run(`
+                    INSERT INTO marketing_order_components (orderId, componentName)
+                    VALUES (?, ?)
+                `, orderId, comp.name);
+
+                // Generate OB for each component
+                for (const op of standardOps) {
+                    await db.run(`
+                        INSERT INTO operation_bulletins (
+                            orderId, productCode, sequence, operationName, componentName, machineType, smv, manpower
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    `, 
+                    orderId, 
+                    order.productCode, 
+                    op.sequence, 
+                    op.name, 
+                    comp.name, 
+                    'Standard', // Default machine
+                    0, // Default SMV
+                    0 // Default Manpower
+                    );
+                }
+            }
+        } else {
+             // Fallback for Single Component / Legacy: Generate OB without component name
+             const standardOps = [
+                { name: 'Cutting', sequence: 10 },
+                { name: 'Sewing', sequence: 20 },
+                { name: 'Finishing', sequence: 30 },
+                { name: 'Packing', sequence: 40 }
+            ];
+            
+             for (const op of standardOps) {
+                await db.run(`
+                    INSERT INTO operation_bulletins (
+                        orderId, productCode, sequence, operationName, componentName, machineType, smv, manpower
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `, 
+                orderId, 
+                order.productCode, 
+                op.sequence, 
+                op.name, 
+                'Main', // Default component name
+                'Standard',
+                0,
+                0
+                );
+            }
+        }
+    } catch (e) {
+        console.error("Error generating component OBs:", e);
+    }
+
+    // --- Fallback for PiecesPerSet > 1 (e.g. Suits/PJ) ---
+    if (order.piecesPerSet && order.piecesPerSet > 1) {
+        try {
+            const existingComponents = await db.all(`SELECT id FROM marketing_order_components WHERE orderId = ?`, orderId);
+            if (existingComponents.length === 0) {
+                const names = order.piecesPerSet === 2 ? ['Top', 'Bottom'] : Array.from({length: order.piecesPerSet}, (_, i) => `Part ${i+1}`);
+                for (const name of names) {
+                    await db.run(`INSERT INTO marketing_order_components (orderId, componentName) VALUES (?, ?)`, orderId, name);
+                    
+                    // Also generate standard OB for these fallbacks
+                    const standardOps = [{ name: 'Cutting', seq: 10 }, { name: 'Sewing', seq: 20 }, { name: 'Finishing', seq: 30 }, { name: 'Packing', seq: 40 }];
+                    for (const op of standardOps) {
+                        await db.run(`
+                            INSERT INTO operation_bulletins (orderId, productCode, sequence, operationName, componentName, machineType, smv, manpower)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        `, orderId, order.productCode, op.seq, op.name, name, 'Standard', 0, 0);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error initializing fallback components:", err);
+        }
+    }
+
     // Return the created order with items
     return {
       ...order,
@@ -621,7 +769,7 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
       orderPlacementDate,
       items: itemsWithOrderId.map((item, index) => ({
         ...item,
-        id: index + 1 // Temporary ID, would be replaced with real ID from DB in a real implementation
+        id: index + 1
       }))
     };
   } catch (error) {
@@ -678,6 +826,10 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
     if (order.qualityInspectionStatus !== undefined) {
       fields.push('qualityInspectionStatus = ?');
       values.push(order.qualityInspectionStatus);
+    }
+    if (order.qualityInspectionStage !== undefined) {
+      fields.push('qualityInspectionStage = ?');
+      values.push(order.qualityInspectionStage);
     }
     if (order.packingStatus !== undefined) {
       fields.push('packingStatus = ?');
@@ -849,6 +1001,52 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
       await db.run(query, ...values);
     }
     
+    // Trigger Material Requisition if status advanced to Planning
+    if (order.status === 'Planning') {
+      try {
+        // Fetch full order details to get productCode and quantity if not in update (though quantity might be updated)
+        // We use the ID to get the fresh state
+        const fullOrder = await db.get('SELECT * FROM marketing_orders WHERE id = ?', id);
+        
+        if (fullOrder && fullOrder.productCode) {
+           // Dynamic import to avoid circular dependency issues if any
+           // eslint-disable-next-line @typescript-eslint/no-var-requires
+           const { getProductByProductCode } = require('./products-sqlite');
+           // eslint-disable-next-line @typescript-eslint/no-var-requires
+           const { generateMaterialRequisitionsForOrder } = require('./bom');
+           
+           const product = await getProductByProductCode(fullOrder.productCode);
+           if (product) {
+               console.log(`Generating requisitions for order ${id}, product ${product.id}`);
+               await generateMaterialRequisitionsForOrder(id, fullOrder.quantity, product.id);
+           } else {
+               console.warn(`Product not found for code ${fullOrder.productCode} when generating requisitions`);
+           }
+        }
+      } catch (e) {
+          console.error("Failed to generate requisitions:", e);
+      }
+    }
+
+    // Update items if provided (breakdown update)
+    if (order.items && order.items.length > 0) {
+      // 1. Delete old items
+      await db.run('DELETE FROM marketing_order_items WHERE orderId = ?', id);
+      
+      // 2. Insert new items
+      let totalQty = 0;
+      for (const item of order.items) {
+        await db.run(`
+          INSERT INTO marketing_order_items (orderId, size, color, quantity)
+          VALUES (?, ?, ?, ?)
+        `, id, item.size, item.color, item.quantity);
+        totalQty += item.quantity;
+      }
+      
+      // 3. Update the total quantity in the main order table if we've updated breakdown
+      await db.run('UPDATE marketing_orders SET quantity = ? WHERE id = ?', totalQty, id);
+    }
+    
     return true;
   } catch (error) {
     console.error('Error updating marketing order:', error);
@@ -923,7 +1121,9 @@ export async function getDailyProductionStatus(orderId: string): Promise<DailyPr
       color: status.color,
       quantity: status.quantity,
       status: status.status,
-      isTotalUpdate: status.isTotalUpdate ? status.isTotalUpdate === 1 : false
+      isTotalUpdate: status.isTotalUpdate ? status.isTotalUpdate === 1 : false,
+      processStage: status.processStage,
+      componentName: status.componentName
     }));
   } catch (error) {
     console.error('Error fetching daily production status:', error);
@@ -939,40 +1139,40 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
     // Check if status entry already exists for this order/date/size/color combination
     let existingStatus;
     if (status.isTotalUpdate) {
-      // For total updates, check by order and date only
+      // For total updates, check by order, date, stage and component
       existingStatus = await db.get(`
         SELECT id FROM daily_production_status 
-        WHERE orderId = ? AND date = ? AND isTotalUpdate = 1
-      `, status.orderId, status.date);
+        WHERE orderId = ? AND date = ? AND processStage = ? AND isTotalUpdate = 1 AND (componentName = ? OR componentName IS NULL)
+      `, status.orderId, status.date, status.processStage, status.componentName || null);
     } else {
-      // For size/color specific updates, check by order/date/size/color
+      // For size/color specific updates, check by order/date/stage/size/color and component
       existingStatus = await db.get(`
         SELECT id FROM daily_production_status 
-        WHERE orderId = ? AND date = ? AND size = ? AND color = ?
-      `, status.orderId, status.date, status.size, status.color);
+        WHERE orderId = ? AND date = ? AND processStage = ? AND size = ? AND color = ? AND (componentName = ? OR componentName IS NULL)
+      `, status.orderId, status.date, status.processStage, status.size, status.color, status.componentName || null);
     }
     
     if (existingStatus) {
       // Update existing entry
       await db.run(`
         UPDATE daily_production_status 
-        SET quantity = ?, status = ?, isTotalUpdate = ?, processStage = ?
+        SET quantity = ?, status = ?, isTotalUpdate = ?, processStage = ?, componentName = ?
         WHERE id = ?
-      `, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null, existingStatus.id);
+      `, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null, status.componentName || null, existingStatus.id);
     } else {
       // Insert new entry
       if (status.isTotalUpdate) {
         // For total updates, insert with empty size and color
         await db.run(`
-          INSERT INTO daily_production_status (orderId, date, size, color, quantity, status, isTotalUpdate, processStage)
-          VALUES (?, ?, '', '', ?, ?, ?, ?)
-        `, status.orderId, status.date, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null);
+          INSERT INTO daily_production_status (orderId, date, size, color, quantity, status, isTotalUpdate, processStage, componentName)
+          VALUES (?, ?, '', '', ?, ?, ?, ?, ?)
+        `, status.orderId, status.date, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null, status.componentName || null);
       } else {
         // For size/color specific updates, insert with provided values
         await db.run(`
-          INSERT INTO daily_production_status (orderId, date, size, color, quantity, status, isTotalUpdate, processStage)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, status.orderId, status.date, status.size, status.color, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null);
+          INSERT INTO daily_production_status (orderId, date, size, color, quantity, status, isTotalUpdate, processStage, componentName)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, status.orderId, status.date, status.size, status.color, status.quantity, status.status, status.isTotalUpdate ? 1 : 0, status.processStage || null, status.componentName || null);
       }
     }
     
@@ -1027,6 +1227,7 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
           'Finishing',
           'Quality Inspection',
           'Packing', 
+          'Store',
           'Delivery',
           'Completed'
         ];
@@ -1052,7 +1253,10 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
     
     return true;
   } catch (error) {
-    console.error('Error updating daily production status:', error);
+    console.error('Error in updateDailyProductionStatus:', error);
+    if (error instanceof Error) {
+        console.error('Stack trace:', error.stack);
+    }
     return false;
   }
 }
@@ -1105,13 +1309,14 @@ export async function saveOperationBulletinInDB(items: OperationBulletinItem[], 
     // Insert new items
     for (const item of items) {
       await db.run(`
-        INSERT INTO operation_bulletins (orderId, productCode, sequence, operationName, machineType, smv, manpower)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO operation_bulletins (orderId, productCode, sequence, operationName, componentName, machineType, smv, manpower)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, 
         orderId || null, 
         productCode || null, 
         item.sequence || 0, 
         item.operationName || '', 
+        item.componentName || null,
         item.machineType || '', 
         isNaN(item.smv) ? 0 : (item.smv || 0), 
         isNaN(item.manpower) ? 0 : (item.manpower || 0)
@@ -1254,10 +1459,10 @@ export async function saveQualityInspectionInDB(inspection: Omit<QualityInspecti
       inspection.inspectorId || null
     );
 
-    // Update the main order's quality status and report link with the latest inspection
+    // Update the main order's quality status, stage and report link with the latest inspection
     await db.run(`
-      UPDATE marketing_orders SET qualityInspectionStatus = ?, qualityInspectionReportUrl = ? WHERE id = ?
-    `, inspection.status, inspection.reportUrl || null, inspection.orderId);
+      UPDATE marketing_orders SET qualityInspectionStatus = ?, qualityInspectionStage = ?, qualityInspectionReportUrl = ? WHERE id = ?
+    `, inspection.status, inspection.stage, inspection.reportUrl || null, inspection.orderId);
 
     return true;
   } catch (error) {
@@ -1279,5 +1484,60 @@ export async function getQualityInspectionsFromDB(orderId: string): Promise<Qual
   } catch (error) {
     console.error('Error fetching quality inspections from DB:', error);
     return [];
+  }
+}
+
+/**
+ * Server-side function to update a marketing order component in DB
+ */
+export async function updateMarketingOrderComponentInDB(componentId: number, data: Partial<MarketingOrderComponent>): Promise<boolean> {
+  try {
+    const db = await getDb();
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (data.smv !== undefined) { fields.push('smv = ?'); values.push(data.smv); }
+    if (data.manpower !== undefined) { fields.push('manpower = ?'); values.push(data.manpower); }
+    if (data.efficiency !== undefined) { fields.push('efficiency = ?'); values.push(data.efficiency); }
+    if (data.sewingOutputPerDay !== undefined) { fields.push('sewingOutputPerDay = ?'); values.push(data.sewingOutputPerDay); }
+    if (data.operationDays !== undefined) { fields.push('operationDays = ?'); values.push(data.operationDays); }
+    if (data.sewingStartDate !== undefined) { fields.push('sewingStartDate = ?'); values.push(data.sewingStartDate); }
+    if (data.sewingFinishDate !== undefined) { fields.push('sewingFinishDate = ?'); values.push(data.sewingFinishDate); }
+    if (data.cuttingStartDate !== undefined) { fields.push('cuttingStartDate = ?'); values.push(data.cuttingStartDate); }
+    if (data.cuttingFinishDate !== undefined) { fields.push('cuttingFinishDate = ?'); values.push(data.cuttingFinishDate); }
+    if (data.packingStartDate !== undefined) { fields.push('packingStartDate = ?'); values.push(data.packingStartDate); }
+    if (data.packingFinishDate !== undefined) { fields.push('packingFinishDate = ?'); values.push(data.packingFinishDate); }
+
+    if (fields.length === 0) return false;
+
+    values.push(componentId);
+    await db.run(`UPDATE marketing_order_components SET ${fields.join(', ')} WHERE id = ?`, values);
+    return true;
+  } catch (error) {
+    console.error('Error updating marketing order component in DB:', error);
+    return false;
+  }
+}
+/**
+ * Client-side function to initialize components for an order
+ */
+export async function initializeOrderComponents(orderId: string, names: string[]): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('authToken');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/marketing-orders/${orderId}/initialize-components`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ names }),
+    });
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Error initializing order components:', error);
+    return false;
   }
 }
