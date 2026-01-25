@@ -60,9 +60,11 @@ export async function PUT(
     `, id);
 
     if (order) {
-      // If order is closed and was previously not delivered, update inventory
-      // Also update inventory if the order status is changing to Delivered
-      if (isClosed && currentOrder.status !== 'Delivered') {
+      // 2. Handle Handover to Shop (Inventory Update)
+      // IMPORTANT: If the order was already 'Dispatched', inventory has already been 
+      // subtracted from factory and added to shop in the dispatch API.
+      // We only update inventory here if the order is being closed directly from a non-dispatched state.
+      if (isClosed && currentOrder.status !== 'Delivered' && currentOrder.status !== 'Dispatched') {
         try {
           // Begin transaction for inventory updates
           await db.run('BEGIN TRANSACTION');

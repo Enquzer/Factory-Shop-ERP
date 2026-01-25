@@ -246,7 +246,7 @@ export default function QualityInspectionDashboardPage() {
           
           if (uploadRes.ok) {
             const uploadData = await uploadRes.json();
-            finalReportUrl = uploadData.imageUrl;
+            finalReportUrl = uploadData.url;
           }
         }
       } catch (pdfErr) {

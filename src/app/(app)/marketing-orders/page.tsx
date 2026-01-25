@@ -633,6 +633,7 @@ export default function MarketingOrdersPage() {
                         <TableHead>Product</TableHead>
                         <TableHead>Quantity</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>QC Report</TableHead>
                         <TableHead>Created Date</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
@@ -670,9 +671,24 @@ export default function MarketingOrdersPage() {
                                 <div className={`h-2 w-2 rounded-full ${
                                   order.isCompleted ? 'bg-green-500' : 
                                   order.status.toString() === 'Cancelled' ? 'bg-red-500' : 'bg-blue-500'
-                                }`}></div>
+                                }}`}></div>
                                 <span>{order.status}</span>
                               </div>
+                            </TableCell>
+                            <TableCell>
+                              {order.qualityInspectionReportUrl ? (
+                                <a 
+                                  href={order.qualityInspectionReportUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 text-xs text-blue-600 font-bold hover:underline"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                  View QC PDF
+                                </a>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic text-[10px]">No Report</span>
+                              )}
                             </TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                             <TableCell>

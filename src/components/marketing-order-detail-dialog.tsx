@@ -320,6 +320,20 @@ export function MarketingOrderDetailDialog({
                         {order.status}
                       </Badge>
                     </div>
+                    {order.qualityInspectionReportUrl && (
+                      <div className="flex justify-between items-center py-1 mt-1 bg-emerald-50 px-2 rounded-md border border-emerald-100">
+                        <span className="text-xs font-bold text-emerald-800">Quality Report:</span>
+                        <a 
+                          href={order.qualityInspectionReportUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-600 font-black hover:underline"
+                        >
+                          <FileText className="h-3 w-3" />
+                          VIEW PDF
+                        </a>
+                      </div>
+                    )}
                     <Separator className="my-2" />
                     <div className="grid grid-cols-1 gap-2 text-xs">
                        <div className="flex justify-between">
