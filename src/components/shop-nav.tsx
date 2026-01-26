@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Package, ShoppingCart, User, LineChart, Archive, Bell } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, User, LineChart, Archive, Bell, CreditCard, BarChart3, Tag } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -23,6 +23,12 @@ const links = [
   { href: '/shop/inventory', label: 'Inventory', icon: Archive },
   { href: '/shop/analytics', label: 'Analytics', icon: LineChart },
   { href: '/shop/profile', label: 'My Profile', icon: User },
+];
+
+const posLinks = [
+  { href: '/shop/pos', label: 'POS Terminal', icon: CreditCard },
+  { href: '/shop/pos/dashboard', label: 'POS Dashboard', icon: BarChart3 },
+  { href: '/shop/pos/products', label: 'POS Products', icon: Tag },
 ];
 
 export function ShopNav() {
@@ -101,6 +107,28 @@ export function ShopNav() {
                   {unreadCount}
                 </Badge>
               )}
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+      
+      {/* POS Section */}
+      <SidebarMenuItem className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        Point of Sale
+      </SidebarMenuItem>
+      {posLinks.map((link) => (
+        <SidebarMenuItem key={link.href}>
+          <SidebarMenuButton
+            asChild
+            isActive={pathname.startsWith(link.href)}
+            tooltip={link.label}
+            className="justify-start"
+          >
+            <Link href={link.href}>
+              <link.icon className="h-4 w-4" />
+              <span>
+                {link.label}
+              </span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

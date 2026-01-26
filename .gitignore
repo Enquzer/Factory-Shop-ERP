@@ -41,6 +41,6 @@ next-env.d.ts
 .genkit-cache/
 
 # database
-/db/
-/public/uploads/
-*.db
+# /db/
+# /public/uploads/
+# *.db

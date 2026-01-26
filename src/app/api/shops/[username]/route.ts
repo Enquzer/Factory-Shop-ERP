@@ -13,7 +13,11 @@ export async function GET(
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
     
-    const shop = await getShopByUsername(username);
+    const { getDb } = await import('@/lib/db');
+    const db = await getDb();
+    
+    // Use COLLATE NOCASE for case-insensitive lookup in SQLite
+    const shop = await db.get(`SELECT * FROM shops WHERE username = ? COLLATE NOCASE`, username);
     
     if (!shop) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
@@ -30,12 +34,12 @@ export async function GET(
       discount: shop.discount,
       status: shop.status,
       monthlySalesTarget: shop.monthlySalesTarget,
-      showVariantDetails: shop.showVariantDetails
+      showVariantDetails: shop.show_variant_details === 1
     };
     
     const response = NextResponse.json(cleanShop);
     
-    // Add cache control headers to prevent caching
+    // Add cache control headers
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');

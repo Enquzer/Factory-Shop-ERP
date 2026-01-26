@@ -52,6 +52,13 @@ export default function MarketingOrdersPage() {
   const { user } = useAuth();
   
   const canEdit = user?.role === 'factory' || user?.role === 'marketing';
+  
+  const isSuperAdmin = (currentUser: any) => {
+    // Check if the user is a super admin for order deletion purposes
+    // Factory users are considered super admins for order deletion
+    return currentUser?.username === 'admin' || 
+           currentUser?.username === 'factory';
+  };
 
 
 
@@ -271,6 +278,164 @@ export default function MarketingOrdersPage() {
     }
   };
 
+  const handleExportAllOrdersToPdf = async () => {
+    try {
+      // Create a PDF with all the orders data in a table format
+      const jsPDF = (await import('jspdf')).jsPDF;
+      await import('jspdf-autotable'); // Ensure autotable plugin is imported
+      
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pageWidth = (doc as any).internal.pageSize.getWidth();
+      
+      // Add header with company logo and title
+      doc.setFillColor(45, 55, 72); // Dark blue background
+      doc.rect(0, 0, pageWidth, 25, 'F');
+      
+      // Company name
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.setFont('helvetica');
+      doc.text('Carement Fashion', 14, 15);
+      
+      // Report title
+      doc.setFontSize(14);
+      doc.text('Marketing Orders Report', pageWidth / 2, 15, { align: 'center' });
+      
+      // Generated date
+      doc.setFontSize(10);
+      doc.setFont('helvetica');
+      doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - 14, 15, { align: 'right' });
+      
+      // Reset text color
+      doc.setTextColor(0, 0, 0);
+      
+      // Add subtitle
+      doc.setFontSize(12);
+      doc.setFont('helvetica');
+      doc.text('Order Summary', 14, 35);
+      
+      // Define table columns
+      const columns = [
+        { header: 'Order #', dataKey: 'orderNumber' },
+        { header: 'Product', dataKey: 'productName' },
+        { header: 'Code', dataKey: 'productCode' },
+        { header: 'Qty', dataKey: 'quantity' },
+        { header: 'Produced', dataKey: 'produced' },
+        { header: 'Remaining', dataKey: 'remaining' },
+        { header: 'Status', dataKey: 'status' },
+        { header: 'Team', dataKey: 'assignedTeam' },
+        { header: 'Created By', dataKey: 'createdBy' },
+        { header: 'Date', dataKey: 'date' },
+      ];
+      
+      // Process the orders data
+      const processedOrders = orders.map(order => {
+        const produced = producedQuantities[order.id] || 0;
+        const remaining = order.quantity - produced;
+        
+        // Determine assigned team based on status
+        let assignedTeam = 'N/A';
+        switch(order.status) {
+          case 'Placed Order': assignedTeam = 'Sales/Entry'; break;
+          case 'Planning': assignedTeam = 'Planning Team'; break;
+          case 'Sample Making': assignedTeam = 'Sample Room'; break;
+          case 'Cutting': assignedTeam = 'Cutting Section'; break;
+          case 'Sewing': assignedTeam = 'Sewing Floor'; break;
+          case 'Finishing': assignedTeam = 'Finishing Section'; break;
+          case 'Quality Inspection': assignedTeam = 'QC Team'; break;
+          case 'Packing': assignedTeam = 'Packing Section'; break;
+          case 'Delivery': assignedTeam = 'Logistics'; break;
+          case 'Completed': assignedTeam = 'Finished'; break;
+          default: assignedTeam = order.status;
+        }
+        
+        return {
+          orderNumber: order.orderNumber,
+          productName: order.productName,
+          productCode: order.productCode,
+          quantity: order.quantity,
+          produced: produced,
+          remaining: remaining,
+          status: order.isCompleted ? 'Completed' : order.status,
+          assignedTeam: assignedTeam,
+          createdBy: order.createdBy,
+          date: new Date(order.createdAt).toLocaleDateString(),
+        };
+      });
+      
+      // Add table to PDF
+      (doc as any).autoTable({
+        head: [columns.map(col => col.header)],
+        body: processedOrders.map(order => 
+          columns.map(col => order[col.dataKey as keyof typeof order])
+        ),
+        startY: 45,
+        theme: 'grid',
+        styles: {
+          fontSize: 9,
+          cellPadding: 4,
+        },
+        headStyles: {
+          fillColor: [45, 55, 72],
+          textColor: [255, 255, 255],
+          fontSize: 10,
+
+        },
+        bodyStyles: {
+          textColor: [40, 40, 40],
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250],
+        },
+        margin: { top: 45, left: 10, right: 10 },
+        pageBreak: 'auto',
+        columnStyles: {
+          0: { cellWidth: 35 }, // Order #
+          1: { cellWidth: 40 }, // Product
+          2: { cellWidth: 25 }, // Code
+          3: { cellWidth: 18 }, // Qty
+          4: { cellWidth: 20 }, // Produced
+          5: { cellWidth: 20 }, // Remaining
+          6: { cellWidth: 25 }, // Status
+          7: { cellWidth: 30 }, // Team
+          8: { cellWidth: 25 }, // Created By
+          9: { cellWidth: 25 }, // Date
+        },
+      });
+      
+      // Add summary statistics
+      const finalY = (doc as any).lastAutoTable.finalY || 45;
+      doc.setFontSize(12);
+      doc.setFont('helvetica');
+      doc.text('Report Summary', 14, finalY + 15);
+      
+      doc.setFont('helvetica');
+      doc.setFontSize(10);
+      doc.text(`Total Orders: ${orders.length}`, 14, finalY + 22);
+      doc.text(`Total Quantity: ${orders.reduce((sum, order) => sum + order.quantity, 0)}`, 14, finalY + 28);
+      
+      // Save the PDF
+      doc.save('marketing_orders_report.pdf');
+      
+      toast({
+        title: "Success",
+        description: "Marketing orders report exported successfully.",
+      });
+    } catch (error) {
+      console.error("Error exporting marketing orders report:", error);
+      toast({
+        title: "Error",
+        description: "Failed to export marketing orders report. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Function to get process status display text
   const getProcessStatusText = (processStage: string, orderId: string) => {
     const statuses = processStatuses[orderId] || [];
@@ -345,9 +510,15 @@ export default function MarketingOrdersPage() {
         
         <TabsContent value="orders">
           <Card>
-            <CardHeader>
-              <CardTitle>Marketing Orders</CardTitle>
-              <CardDescription>Manage your marketing orders.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Marketing Orders</CardTitle>
+                <CardDescription>Manage your marketing orders.</CardDescription>
+              </div>
+              <Button onClick={handleExportAllOrdersToPdf} variant="outline">
+                <FileText className="h-4 w-4 mr-2" />
+                Export All to PDF
+              </Button>
             </CardHeader>
             <CardContent>
               {orders.length > 0 ? (
@@ -427,31 +598,37 @@ export default function MarketingOrdersPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                              <div className={`text-[10px] ${getProcessStatusColor('Planning', order.id)}`}>
-                                {getProcessStatusText('Planning', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Sample Making', order.id)}`}>
-                                {getProcessStatusText('Sample Making', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Cutting', order.id)}`}>
-                                {getProcessStatusText('Cutting', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Sewing', order.id)}`}>
-                                {getProcessStatusText('Sewing', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Finishing', order.id)}`}>
-                                {getProcessStatusText('Finishing', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Quality Inspection', order.id)}`}>
-                                {getProcessStatusText('Quality Inspection', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Packing', order.id)}`}>
-                                {getProcessStatusText('Packing', order.id)}
-                              </div>
-                              <div className={`text-[10px] ${getProcessStatusColor('Delivery', order.id)}`}>
-                                {getProcessStatusText('Delivery', order.id)}
-                              </div>
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {['Planning', 'Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection', 'Packing', 'Delivery'].map((stage) => {
+                                const statuses = processStatuses[order.id] || [];
+                                const process = statuses.find((p: any) => p.processStage === stage);
+                                
+                                let statusIcon = '⏳'; // Default pending icon
+                                let statusColor = 'text-gray-500';
+                                let statusTitle = `${stage}: Pending`;
+                                
+                                if (process) {
+                                  if (process.status === 'Completed') {
+                                    statusIcon = '✅';
+                                    statusColor = 'text-green-600';
+                                    statusTitle = `${stage}: Completed`;
+                                  } else if (process.status === 'Partial') {
+                                    statusIcon = '🔄';
+                                    statusColor = 'text-yellow-600';
+                                    statusTitle = `${stage}: Partial (${process.percentage || 0}%)`;
+                                  }
+                                }
+                                
+                                return (
+                                  <span 
+                                    key={stage} 
+                                    title={statusTitle}
+                                    className={`${statusColor} text-xs flex items-center gap-1 border rounded px-1.5 py-0.5`}>
+                                    <span>{statusIcon}</span>
+                                    <span className="hidden sm:inline">{stage.split(' ').map(word => word[0]).join('')}</span>
+                                  </span>
+                                );
+                              })}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -523,13 +700,18 @@ export default function MarketingOrdersPage() {
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
+                                  {(user?.role === 'factory') && (
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => openDeleteDialog(order.id)}
+                                    disabled={!isSuperAdmin(user) && order.status !== 'Placed Order'}
+                                    title={!isSuperAdmin(user) && order.status !== 'Placed Order' ? "Only orders in Placed Order status can be deleted by non-super admins" : "Delete Order"}
+                                    className={(!isSuperAdmin(user) && order.status !== 'Placed Order') ? "opacity-50 cursor-not-allowed" : "text-red-500 hover:text-red-700 hover:bg-red-50"}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
+                                  )}
                                   <Button
                                     onClick={() => markAsCompleted(order.id)}
                                     disabled={order.status !== ('Delivery' as MarketingOrderStatus) || remaining > 0 || order.status === ('Placed Order' as MarketingOrderStatus)}

@@ -137,19 +137,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create marketing order', details: error.message }, { status: 500 });
   }
 }
-
-// DELETE /api/marketing-orders/:id - Delete a marketing order
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  try {
-    const success = await deleteMarketingOrderFromDB(params.id);
-    
-    if (success) {
-      return NextResponse.json({ message: 'Marketing order deleted successfully' });
-    } else {
-      return NextResponse.json({ error: 'Failed to delete marketing order' }, { status: 500 });
-    }
-  } catch (error) {
-    console.error('Error deleting marketing order:', error);
-    return NextResponse.json({ error: 'Failed to delete marketing order' }, { status: 500 });
-  }
-}

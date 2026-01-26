@@ -1,6 +1,7 @@
 
 import { getDb, resetDbCache } from './db';
 import { RawMaterial } from './raw-materials';
+import { getMarketingOrderByIdFromDB } from './marketing-orders';
 
 export type ProductBOMItem = {
   id: number;
@@ -81,26 +82,52 @@ export async function generateMaterialRequisitionsForOrder(orderId: string, orde
     const db = await getDb();
     const bomItems = await getProductBOM(productId);
     
-    // Check if order already has requisitions to avoid duplicates?
+    // Check if order already has requisitions to avoid duplicates? (Skip check for re-generation)
+    /*
     const existing = await db.get('SELECT 1 FROM material_requisitions WHERE orderId = ?', [orderId]);
     if (existing) {
         console.log('Requisitions already exist for order:', orderId);
         return; 
     }
+    */
 
     if (bomItems.length === 0) {
         console.log('No BOM items found for product:', productId);
         return;
     }
 
-    for (const item of bomItems) {
-      const totalReq = item.quantityPerUnit * orderQuantity * (1 + (item.wastagePercentage / 100));
-      const reqId = `REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`; // unique ID
-      
-      await db.run(`
-        INSERT INTO material_requisitions (id, orderId, materialId, quantityRequested, status)
-        VALUES (?, ?, ?, ?, 'Pending')
-      `, [reqId, orderId, item.materialId, totalReq]); // Ensure precision handling if needed?
+    // Get the marketing order to access size/color breakdown
+    const order = await getMarketingOrderByIdFromDB(orderId);
+    
+    if (order && order.items && order.items.length > 0) {
+      // Use size/color breakdown to calculate requisitions
+      for (const item of bomItems) {
+        let totalReq = 0;
+        
+        // Calculate total requirement based on each size/color combination
+        for (const orderItem of order.items) {
+          const itemRequirement = item.quantityPerUnit * orderItem.quantity * (1 + (item.wastagePercentage / 100));
+          totalReq += itemRequirement;
+        }
+        
+        const reqId = `REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`; // unique ID
+        
+        await db.run(`
+          INSERT INTO material_requisitions (id, orderId, materialId, quantityRequested, status)
+          VALUES (?, ?, ?, ?, 'Pending')
+        `, [reqId, orderId, item.materialId, totalReq]);
+      }
+    } else {
+      // Fallback to total quantity if no size/color breakdown exists
+      for (const item of bomItems) {
+        const totalReq = item.quantityPerUnit * orderQuantity * (1 + (item.wastagePercentage / 100));
+        const reqId = `REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`; // unique ID
+        
+        await db.run(`
+          INSERT INTO material_requisitions (id, orderId, materialId, quantityRequested, status)
+          VALUES (?, ?, ?, ?, 'Pending')
+        `, [reqId, orderId, item.materialId, totalReq]);
+      }
     }
     
     resetDbCache();

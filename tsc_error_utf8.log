@@ -1,0 +1,17 @@
+﻿.next/types/app/api/products/[code]/stock-distribution/route.ts(59,7): error TS2344: Type '{ __tag__: "GET"; __return_type__: Promise<(request: NextRequest) => Promise<Response>>; }' does not satisfy the constraint '{ __tag__: "GET"; __return_type__: void | Response | Promise<void | Response>; }'.
+  Types of property '__return_type__' are incompatible.
+    Type 'Promise<(request: NextRequest) => Promise<Response>>' is not assignable to type 'void | Response | Promise<void | Response>'.
+      Type 'Promise<(request: NextRequest) => Promise<Response>>' is not assignable to type 'Promise<void | Response>'.
+        Type '(request: NextRequest) => Promise<Response>' is not assignable to type 'void | Response'.
+.next/types/app/api/products/view/route.ts(59,7): error TS2344: Type '{ __tag__: "GET"; __return_type__: Promise<(request: NextRequest) => Promise<Response>>; }' does not satisfy the constraint '{ __tag__: "GET"; __return_type__: void | Response | Promise<void | Response>; }'.
+  Types of property '__return_type__' are incompatible.
+    Type 'Promise<(request: NextRequest) => Promise<Response>>' is not assignable to type 'void | Response | Promise<void | Response>'.
+      Type 'Promise<(request: NextRequest) => Promise<Response>>' is not assignable to type 'Promise<void | Response>'.
+        Type '(request: NextRequest) => Promise<Response>' is not assignable to type 'void | Response'.
+src/ai/dev.ts(14,3): error TS2353: Object literal may only specify known properties, and 'logLevel' does not exist in type 'GenkitOptions'.
+src/app/(app)/shops/_components/shops-client.tsx(295,77): error TS2322: Type '"factory" | "shop" | "store" | "finance" | "planning" | "sample_maker" | "cutting" | "sewing" | "finishing" | "packing" | "quality_inspection" | "marketing" | "designer" | undefined' is not assignable to type '"factory" | "shop" | undefined'.
+  Type '"store"' is not assignable to type '"factory" | "shop" | undefined'.
+src/app/(app)/shops/_components/shops-client.tsx(524,25): error TS2322: Type '"factory" | "shop" | "store" | "finance" | "planning" | "sample_maker" | "cutting" | "sewing" | "finishing" | "packing" | "quality_inspection" | "marketing" | "designer" | undefined' is not assignable to type '"factory" | "shop" | undefined'.
+  Type '"store"' is not assignable to type '"factory" | "shop" | undefined'.
+src/app/shop/(app)/orders/page.tsx(277,11): error TS2741: Property 'Released' is missing in type '{ Pending: "default"; 'Awaiting Payment': "secondary"; Paid: "outline"; Dispatched: "outline"; Delivered: "secondary"; Cancelled: "destructive"; }' but required in type 'Record<OrderStatus, "default" | "destructive" | "outline" | "secondary">'.
+src/components/ui/carousel.tsx(6,8): error TS2307: Cannot find module 'embla-carousel-react' or its corresponding type declarations.

@@ -233,7 +233,7 @@ export default function StoreOrderDetailsPage() {
                                             </div>
                                         </td>
                                         <td className="p-4 text-muted-foreground">
-                                            {item.variant.color} / {item.variant.size}
+                                            {item.variant?.color || 'N/A'} / {item.variant?.size || 'N/A'}
                                         </td>
                                         <td className="p-4 text-center font-bold">
                                             {item.quantity}

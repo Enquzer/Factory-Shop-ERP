@@ -155,18 +155,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       if (orderData.status) {
         const order = await db.get('SELECT orderNumber, productName, productCode, quantity FROM marketing_orders WHERE id = ?', params.id);
         
-        // Trigger Requisitions if moving to Planning
-        if (orderData.status === 'Planning' && order) {
-          try {
-            const product = await db.get('SELECT id FROM products WHERE productCode = ?', order.productCode);
-            if (product) {
-              const { generateMaterialRequisitionsForOrder } = await import('@/lib/bom');
-              await generateMaterialRequisitionsForOrder(params.id, order.quantity, product.id);
-            }
-          } catch (e) {
-            console.error('Failed to auto-generate requisitions:', e);
-          }
-        }
+        // Removed: Requisitions move to 'Release to Production' or manual planning trigger.
 
         const statusConfigs: Record<string, { team: string, href: string }> = {
           'Planning': { team: 'planning', href: '/production-dashboard' },
@@ -233,13 +222,29 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const user = await authenticateRequest(request);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
+    // Check roles
     if (user.role !== 'factory' && user.role !== 'marketing') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Only factory or marketing can delete orders' }, { status: 403 });
+    }
+
+    // Check status - only "Placed Order" can be deleted by non-super admins to avoid breaking production chains
+    const order = await getMarketingOrderByIdFromDB(params.id);
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+    
+    // Check if user is a super admin for order deletion purposes
+    // Factory users are considered super admins for order deletion
+    const isSuperAdmin = user.username === 'admin' || user.username === 'factory';
+    
+    if (!isSuperAdmin && order.status !== 'Placed Order') {
+      return NextResponse.json({ error: 'Forbidden: Only orders in "Placed Order" status can be deleted by non-super admins' }, { status: 403 });
     }
     
     const success = await deleteMarketingOrderFromDB(params.id);
     return success ? NextResponse.json({ message: 'Deleted' }) : NextResponse.json({ error: 'Failed' }, { status: 500 });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+    console.error('Error deleting order:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

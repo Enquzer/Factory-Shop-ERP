@@ -85,20 +85,44 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
       `, [order.shopId, variantId]);
       
       if (shopItem) {
-        // Update existing shop inventory
+        // Get the actual product code from the database to ensure it's set correctly
+        const product = await db.get(`
+          SELECT p.productCode 
+          FROM product_variants pv 
+          JOIN products p ON pv.productId = p.id 
+          WHERE pv.id = ?
+        `, [variantId]);
+
+        const currentProductCode = product?.productCode || item.productCode || 'N/A';
+
+        // Update existing shop inventory and ensure productCode is set
         await db.run(`
           UPDATE shop_inventory 
-          SET stock = stock + ? 
+          SET stock = stock + ?,
+              productCode = ?
           WHERE id = ?
-        `, [quantity, shopItem.id]);
+        `, [quantity, currentProductCode, shopItem.id]);
       } else {
-        // Insert new shop inventory record
+        // Get the actual product code from the database
+        const product = await db.get(`
+          SELECT p.productCode 
+          FROM product_variants pv 
+          JOIN products p ON pv.productId = p.id 
+          WHERE pv.id = ?
+        `, [variantId]);
+        
+        if (!product) {
+          throw new Error(`Product not found for variant ${variantId}`);
+        }
+        
+        // Insert new shop inventory record with actual product code
         await db.run(`
-          INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-          VALUES (?, ?, ?, ?, ?, ?, ?, MAX(0, ?), ?)
+          INSERT INTO shop_inventory (shopId, productId, productCode, productVariantId, name, price, color, size, stock, imageUrl)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, MAX(0, ?), ?)
         `, [
           order.shopId,
           item.productId,
+          product.productCode,
           variantId,
           item.name,
           Math.max(0, Number(item.price || 0)),
@@ -156,7 +180,13 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
       'order_dispatched',
       {
         pdfPath,
-        caption: `📊 *Order Summary:*\n• Total Unique Styles: ${summary.uniqueStyles}\n• Total Quantity: ${summary.totalQuantity} pieces\n• Total Value: ${summary.totalValue.toLocaleString()} Birr\n\n🚚 Dispatched by: Store\nStatus: In transit to your shop`
+        caption: `📊 *Order Summary:*
+• Total Unique Styles: ${summary.uniqueStyles}
+• Total Quantity: ${summary.totalQuantity} pieces
+• Total Value: ${summary.totalValue.toLocaleString()} Birr
+
+🚚 Dispatched by: Store
+Status: In transit to your shop`
       }
     );
     console.log('Shop Telegram notification sent for dispatch:', orderId);

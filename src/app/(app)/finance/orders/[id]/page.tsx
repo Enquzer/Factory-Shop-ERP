@@ -118,9 +118,9 @@ export default function OrderDetailsPage() {
                 {order.items.map((item, index) => (
                   <div key={index} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
                     <div className="relative h-20 w-20 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden border">
-                      {item.imageUrl || item.variant.imageUrl ? (
+                      {item.imageUrl || item.variant?.imageUrl ? (
                          <Image 
-                           src={item.imageUrl || item.variant.imageUrl || ''} 
+                           src={item.imageUrl || item.variant?.imageUrl || ''} 
                            alt={item.name}
                            fill
                            className="object-cover"
@@ -134,7 +134,7 @@ export default function OrderDetailsPage() {
                     <div className="flex-1">
                       <h4 className="font-medium">{item.name}</h4>
                       <p className="text-sm text-muted-foreground">
-                        Color: {item.variant.color}, Size: {item.variant.size}
+                        Color: {item.variant?.color || "N/A"}, Size: {item.variant?.size || "N/A"}
                       </p>
                       <div className="flex justify-between items-center mt-2">
                         <p className="text-sm">

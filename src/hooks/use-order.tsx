@@ -287,15 +287,6 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           quantity 
       }];
     });
-  
-    if (factoryStock >= quantity) {
-      toast({
-        id: "order-update-success",
-        title: "Order Updated",
-        description: `${product.name} added to your order.`,
-        duration: 1500,
-      });
-    }
   };
 
   const removeItem = (variantId: string) => {
@@ -585,13 +576,6 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         }
         
         return newItems;
-      });
-      
-      toast({
-        id: "order-update-success",
-        title: "Order Updated",
-        description: `Added ${totalQuantity} units of ${product.name} to your order.`,
-        duration: 1500,
       });
     } catch (error) {
       console.error("Error adding simplified order:", error);

@@ -135,7 +135,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
         setSimplifiedQuantity(prev => Math.max(12, prev - 12));
     };
 
-    const isSimplifiedMode = user?.role === 'shop' && shopSettings && !shopSettings.showVariantDetails;
+    const isSimplifiedMode = user?.role === 'shop' && shopSettings !== null && !shopSettings.showVariantDetails;
     
     // Marketing order state
     const [isMarketingOrderDialogOpen, setIsMarketingOrderDialogOpen] = useState(false);
@@ -359,8 +359,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
 
         if (itemsAdded > 0) {
             toast({
-                title: "Products Added",
-                description: `${itemsAdded} item(s) have been added to your order.`,
+                title: "Added to Cart",
+                description: `${itemsAdded} item(s) added successfully.`,
+                duration: 2000,
             });
             setQuantities({});
             onOpenChange(false);
@@ -934,9 +935,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                           Place Marketing Order ({totalSelected})
                       </Button>
                   ) : (
-                      <Button onClick={() => handleAddAllToOrder()} disabled={totalSelected === 0 || (isSimplifiedMode && totalSelected % 12 !== 0)} className="w-full sm:w-auto">
+                      <Button onClick={() => handleAddAllToOrder()} disabled={totalSelected === 0 || (!!isSimplifiedMode && totalSelected % 12 !== 0)} className="w-full sm:w-auto">
                           <ShoppingCart className="mr-2 h-4 w-4" />
-                          {isSimplifiedMode ? "Confirm & Place Order" : `Add ({totalSelected}) to Order`}
+                          {isSimplifiedMode ? "Confirm & Place Order" : `Add ${totalSelected} to Cart`}
                       </Button>
                   )}
               </div>

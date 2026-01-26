@@ -94,7 +94,7 @@ export function PlaceOrderDialog({
     // Create a product object that matches the expected structure
     const product = {
       id: item.productId,
-      productCode: `PROD-${item.productId}`,
+      productCode: item.productCode || item.productId, // Use actual productCode if available
       name: item.name,
       category: "General",
       price: item.price,

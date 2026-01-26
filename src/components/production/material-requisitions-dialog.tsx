@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Layers, CheckCircle, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Layers, CheckCircle, Clock, RefreshCw } from "lucide-react";
 
 interface Requisition {
   id: string;
@@ -61,14 +62,55 @@ export function MaterialRequisitionsDialog({ orderId, orderNumber, isOpen, onOpe
     }
   };
 
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch(`/api/requisitions/generate`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({ orderId })
+      });
+      
+      if (res.ok) {
+        fetchRequisitions();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to generate requisitions');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Material Requisitions - {orderNumber}</DialogTitle>
-          <DialogDescription>
-            View the status of raw materials requested from the store for this production order.
-          </DialogDescription>
+          <div className="flex justify-between items-center pr-8">
+            <div>
+              <DialogTitle>Material Requisitions - {orderNumber}</DialogTitle>
+              <DialogDescription>
+                View and manage raw materials requested from the store.
+              </DialogDescription>
+            </div>
+            <Button 
+                onClick={handleGenerate} 
+                disabled={isGenerating || loading}
+                size="sm"
+                variant="outline"
+                className="hover:bg-primary/5 border-primary/20 text-primary"
+            >
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-3 w-3 mr-2" />}
+                {requisitions.length > 0 ? 'Update from BOM' : 'Generate from BOM'}
+            </Button>
+          </div>
         </DialogHeader>
 
         {loading ? (

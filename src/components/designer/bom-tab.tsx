@@ -156,6 +156,7 @@ export function BomTab({ styleId, initialBom }: BomTabProps) {
                                 value={item.itemName}
                                 onSelect={(material) => {
                                     updateItem(item.id, {
+                                        materialId: material.id,
                                         itemName: material.name,
                                         unit: material.unitOfMeasure,
                                         cost: material.costPerUnit,

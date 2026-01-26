@@ -332,6 +332,7 @@ export const initializeDatabase = async (database: any) => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         shopId TEXT NOT NULL,
         productId TEXT NOT NULL,
+        productCode TEXT NOT NULL,
         productVariantId TEXT NOT NULL,
         name TEXT NOT NULL,
         price REAL NOT NULL,
@@ -354,6 +355,41 @@ export const initializeDatabase = async (database: any) => {
     } catch (error) {
       // Column might already exist, which is fine
       console.log('imageUrl column already exists or was added successfully');
+    }
+
+    // Add productCode column to existing shop_inventory table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE shop_inventory ADD COLUMN productCode TEXT
+      `);
+    } catch (error) {
+      // Column might already exist, which is fine
+      console.log('productCode column already exists or was added successfully');
+    }
+
+    // Backfill or fix productCode and name for all shop_inventory items from the factory products table
+    try {
+      await database.exec(`
+        UPDATE shop_inventory 
+        SET 
+          productCode = (
+            SELECT p.productCode 
+            FROM products p 
+            WHERE p.id = shop_inventory.productId
+          ),
+          name = (
+            SELECT p.name 
+            FROM products p 
+            WHERE p.id = shop_inventory.productId
+          )
+        WHERE EXISTS (
+          SELECT 1 FROM products p 
+          WHERE p.id = shop_inventory.productId
+        )
+      `);
+      console.log('Synchronized productCode and name for all shop_inventory items');
+    } catch (error) {
+      console.error('Error synchronizing shop_inventory data:', error);
     }
 
     // Add imageUrl column to existing marketing_orders table if it doesn't exist
@@ -947,6 +983,7 @@ export const initializeDatabase = async (database: any) => {
       CREATE TABLE IF NOT EXISTS style_bom (
         id TEXT PRIMARY KEY,
         styleId TEXT NOT NULL,
+        materialId TEXT, -- Reference to raw_materials registry
         type TEXT NOT NULL,
         itemName TEXT NOT NULL,
         itemCode TEXT,
@@ -957,9 +994,15 @@ export const initializeDatabase = async (database: any) => {
         currency TEXT DEFAULT 'ETB',
         comments TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (styleId) REFERENCES styles (id) ON DELETE CASCADE
+        FOREIGN KEY (styleId) REFERENCES styles (id) ON DELETE CASCADE,
+        FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE SET NULL
       )
     `);
+
+    // Add materialId column to style_bom if it doesn't exist
+    try {
+      await database.exec(`ALTER TABLE style_bom ADD COLUMN materialId TEXT`);
+    } catch (e) {}
 
     // Create style measurements table
     await database.exec(`
@@ -1363,6 +1406,8 @@ export const initializeDatabase = async (database: any) => {
         status TEXT DEFAULT 'Pending',
         requestedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
         issuedDate DATETIME,
+        type TEXT,
+        color TEXT,
         FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE,
         FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE CASCADE
       )
@@ -1538,6 +1583,26 @@ export const initializeDatabase = async (database: any) => {
       `, [cat.name, cat.code]);
     }
 
+    // Create order BOM table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS order_bom (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        materialId TEXT,
+        materialName TEXT NOT NULL,
+        quantityPerUnit REAL NOT NULL,
+        wastagePercentage REAL DEFAULT 0,
+        unitOfMeasure TEXT,
+        type TEXT NOT NULL,
+        supplier TEXT,
+        cost REAL DEFAULT 0,
+        color TEXT,
+        calculatedTotal REAL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (orderId) REFERENCES marketing_orders (id) ON DELETE CASCADE
+      )
+    `);
+
     // Create telegram_groups table
     await database.exec(`
       CREATE TABLE IF NOT EXISTS telegram_groups (
@@ -1545,6 +1610,54 @@ export const initializeDatabase = async (database: any) => {
         title TEXT,
         type TEXT,
         added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create POS Sales table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS pos_sales (
+        id TEXT PRIMARY KEY,
+        shopId TEXT NOT NULL,
+        transactionId TEXT NOT NULL,
+        customerName TEXT,
+        items TEXT NOT NULL, -- JSON array of items
+        totalAmount REAL NOT NULL,
+        discountAmount REAL DEFAULT 0,
+        taxAmount REAL DEFAULT 0,
+        finalAmount REAL NOT NULL,
+        paymentMethod TEXT NOT NULL, -- cash, card, mobile
+        isSameCustomer INTEGER DEFAULT 0, -- 1 if same customer as previous
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (shopId) REFERENCES shops (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create POS Visitors table
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS pos_visitors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shopId TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (shopId) REFERENCES shops (id) ON DELETE CASCADE,
+        UNIQUE(shopId, date)
+      )
+    `);
+
+    // Create POS Products table (shop-specific products for POS)
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS pos_products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shopId TEXT NOT NULL,
+        productCode TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        imageUrl TEXT,
+        isActive INTEGER DEFAULT 1,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (shopId) REFERENCES shops (id) ON DELETE CASCADE,
+        UNIQUE(shopId, productCode)
       )
     `);
 

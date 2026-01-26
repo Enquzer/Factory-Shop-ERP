@@ -47,8 +47,8 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
         order.shopName.toLowerCase().includes(term) ||
         order.items.some(item => 
           item.name.toLowerCase().includes(term) ||
-          item.variant.color.toLowerCase().includes(term) ||
-          item.variant.size.toLowerCase().includes(term)
+          (item.variant?.color || "").toLowerCase().includes(term) ||
+          (item.variant?.size || "").toLowerCase().includes(term)
         )
       );
     }
@@ -677,7 +677,7 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
                       <div className="flex-1">
                         <div className="font-medium">{item.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {item.variant.color}, {item.variant.size} × {item.quantity}
+                          {item.variant?.color || "N/A"}, {item.variant?.size || "N/A"} × {item.quantity}
                         </div>
                       </div>
                     </div>
@@ -819,7 +819,7 @@ export function OrdersClientPage({ initialOrders }: { initialOrders: Order[] }) 
                               </div>
                             </td>
                             <td className="py-2 px-4">
-                              <div>{item.variant.color}, {item.variant.size}</div>
+                              <div>{item.variant?.color || "N/A"}, {item.variant?.size || "N/A"}</div>
                             </td>
                             <td className="py-2 px-4 text-right">{item.quantity}</td>
                             <td className="py-2 px-4 text-right">ETB {item.price.toLocaleString()}</td>

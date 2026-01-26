@@ -33,6 +33,7 @@ import { DateRange } from "react-day-picker";
 // Define a type for aggregated inventory items
 type AggregatedInventoryItem = {
   productId: string;
+  productCode?: string; // Optional since older records might not have it
   name: string;
   price: number;
   totalStock: number;
@@ -123,7 +124,7 @@ export function InventoryClientPage({ inventory, onInventoryUpdate }: { inventor
             const product = {
                 id: item.productId,
                 name: item.name,
-                productCode: item.productId || `PROD-${item.productId}`,
+                productCode: item.productCode || item.productId, // Use actual productCode if available
                 category: "General",
                 price: item.price,
                 description: "Product description not available",
@@ -143,7 +144,7 @@ export function InventoryClientPage({ inventory, onInventoryUpdate }: { inventor
             const product = {
                 id: item.productId,
                 name: item.name,
-                productCode: item.productId || `PROD-${item.productId}`,
+                productCode: item.productCode || item.productId, // Use actual productCode if available
                 category: "General",
                 price: item.price,
                 description: "Product description not available",
@@ -452,8 +453,8 @@ export function InventoryClientPage({ inventory, onInventoryUpdate }: { inventor
                                                         </div>
                                                     )}
                                                     <span>{item.name}</span>
-                                                    {('productId' in item) && (
-                                                        <span className="text-xs text-muted-foreground">({item.productId})</span>
+                                                    {('productCode' in item) && item.productCode && (
+                                                        <span className="text-xs text-muted-foreground">({item.productCode})</span>
                                                     )}
                                                 </div>
                                             </TableCell>

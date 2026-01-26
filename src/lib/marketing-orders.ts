@@ -735,7 +735,7 @@ export async function createMarketingOrderInDB(order: Omit<MarketingOrder, 'id' 
         console.error("Error generating component OBs:", e);
     }
 
-    // --- Fallback for PiecesPerSet > 1 (e.g. Suits/PJ) ---
+// --- Fallback for PiecesPerSet > 1 (e.g. Suits/PJ) ---
     if (order.piecesPerSet && order.piecesPerSet > 1) {
         try {
             const existingComponents = await db.all(`SELECT id FROM marketing_order_components WHERE orderId = ?`, orderId);
@@ -1001,32 +1001,7 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
       await db.run(query, ...values);
     }
     
-    // Trigger Material Requisition if status advanced to Planning
-    if (order.status === 'Planning') {
-      try {
-        // Fetch full order details to get productCode and quantity if not in update (though quantity might be updated)
-        // We use the ID to get the fresh state
-        const fullOrder = await db.get('SELECT * FROM marketing_orders WHERE id = ?', id);
-        
-        if (fullOrder && fullOrder.productCode) {
-           // Dynamic import to avoid circular dependency issues if any
-           // eslint-disable-next-line @typescript-eslint/no-var-requires
-           const { getProductByProductCode } = require('./products-sqlite');
-           // eslint-disable-next-line @typescript-eslint/no-var-requires
-           const { generateMaterialRequisitionsForOrder } = require('./bom');
-           
-           const product = await getProductByProductCode(fullOrder.productCode);
-           if (product) {
-               console.log(`Generating requisitions for order ${id}, product ${product.id}`);
-               await generateMaterialRequisitionsForOrder(id, fullOrder.quantity, product.id);
-           } else {
-               console.warn(`Product not found for code ${fullOrder.productCode} when generating requisitions`);
-           }
-        }
-      } catch (e) {
-          console.error("Failed to generate requisitions:", e);
-      }
-    }
+    // Removed auto-trigger from status change. Planning team will trigger this via "Release to Production".
 
     // Update items if provided (breakdown update)
     if (order.items && order.items.length > 0) {

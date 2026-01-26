@@ -510,6 +510,8 @@ export function addFooter(doc: jsPDF, finalY: number) {
 
 export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
   try {
+    console.log('Starting PDF generation for order:', order.orderNumber);
+    
     // Create a new PDF document
     const doc = new jsPDF({
       orientation: 'portrait',
@@ -517,15 +519,27 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
       format: 'a4'
     });
 
+    console.log('PDF document created, adding header...');
+    
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Production Order');
+    try {
+      await addHeaderAndLogo(doc, 'Production Order');
+      console.log('Header and logo added successfully');
+    } catch (headerError) {
+      console.warn('Error adding header/logo, continuing without it:', headerError);
+      // Continue without header if it fails
+      doc.setFontSize(18);
+      doc.text('Production Order', 105, 20, { align: 'center' });
+    }
     
     // Add product image if available
     if (order.imageUrl) {
       try {
+        console.log('Loading product image from:', order.imageUrl);
         // Try to load the actual product image
         const imageBase64 = await imageToBase64(order.imageUrl);
         doc.addImage(imageBase64, 'PNG', 150, 55, 40, 40);
+        console.log('Product image added successfully');
       } catch (error) {
         console.warn('Could not load product image, using placeholder:', error);
         // Fallback to placeholder if image can't be loaded
@@ -539,6 +553,8 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
         doc.setFontSize(12);
       }
     }
+    
+    console.log('Adding order information...');
     
     // Add order information
     const startY = order.imageUrl ? 100 : 60;
@@ -592,6 +608,8 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
     doc.setFontSize(14);
     doc.text('Size and Color Breakdown', 105, currentY + 15, { align: 'center' });
     
+    console.log('Adding items table with', order.items.length, 'items');
+    
     // Add table with size/color breakdown
     (doc as any).autoTable({
       startY: currentY + 20,
@@ -609,19 +627,30 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
       }
     });
     
+    console.log('Table added successfully');
+    
     // Add footer
     const finalY = (doc as any).lastAutoTable.finalY || currentY + 30;
     addFooter(doc, finalY);
     
+    console.log('Generating PDF blob...');
+    
     // Generate PDF as blob
     const pdfBlob = doc.output('blob');
     
+    console.log('PDF blob generated, size:', pdfBlob.size, 'bytes');
+    
     // In a real implementation, you would upload this to a server or save it
     // For now, we'll create a data URL
-    return URL.createObjectURL(pdfBlob);
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    
+    console.log('Blob URL created:', blobUrl);
+    
+    return blobUrl;
   } catch (error) {
     console.error('Error generating PDF:', error);
-    throw new Error('Failed to generate PDF');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    throw new Error(`Failed to generate PDF: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -1265,6 +1294,8 @@ export function downloadPDF(pdfUrl: string, filename: string) {
 // Function to generate a summary report PDF
 export async function generateSummaryReport(orders: MarketingOrder[]): Promise<string> {
   try {
+    console.log('Starting summary report generation for', orders.length, 'orders');
+    
     // Create a new PDF document
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -1272,8 +1303,18 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
       format: 'a4'
     });
 
+    console.log('PDF document created, adding header...');
+    
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Production Summary Report');
+    try {
+      await addHeaderAndLogo(doc, 'Production Summary Report');
+      console.log('Header and logo added successfully');
+    } catch (headerError) {
+      console.warn('Error adding header/logo, continuing without it:', headerError);
+      // Continue without header if it fails
+      doc.setFontSize(18);
+      doc.text('Production Summary Report', 148, 20, { align: 'center' });
+    }
     
     // Add report date
     doc.setFontSize(12);
@@ -1286,6 +1327,8 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     const totalOrders = orders.length;
     const completedOrders = orders.filter(o => o.isCompleted).length;
     const inProgressOrders = orders.filter(o => !o.isCompleted).length;
+    
+    console.log('Summary stats:', { totalOrders, completedOrders, inProgressOrders });
     
     doc.setFontSize(14);
     doc.text(decodeHTMLEntities('Summary Statistics'), 20, 70);
@@ -1318,6 +1361,8 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     doc.setFontSize(14);
     doc.text(decodeHTMLEntities('Order Details'), 20, statusY + 15);
     
+    console.log('Preparing table data...');
+    
     // Prepare table data
     const tableData = orders.map(order => [
       decodeHTMLEntities(order.orderNumber),
@@ -1328,6 +1373,8 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
       order.orderPlacementDate ? new Date(order.orderPlacementDate).toLocaleDateString() : '',
       order.plannedDeliveryDate ? new Date(order.plannedDeliveryDate).toLocaleDateString() : ''
     ]);
+    
+    console.log('Adding table with', tableData.length, 'rows');
     
     // Add table with order details
     (doc as any).autoTable({
@@ -1346,18 +1393,29 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
       }
     });
     
+    console.log('Table added successfully');
+    
     // Add footer
     const finalY = (doc as any).lastAutoTable.finalY || statusY + 30;
     addFooter(doc, finalY);
     
+    console.log('Generating PDF blob...');
+    
     // Generate PDF as blob
     const pdfBlob = doc.output('blob');
     
+    console.log('PDF blob generated, size:', pdfBlob.size, 'bytes');
+    
     // Create a data URL
-    return URL.createObjectURL(pdfBlob);
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    
+    console.log('Blob URL created:', blobUrl);
+    
+    return blobUrl;
   } catch (error) {
     console.error('Error generating summary report:', error);
-    throw new Error('Failed to generate summary report');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    throw new Error(`Failed to generate summary report: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

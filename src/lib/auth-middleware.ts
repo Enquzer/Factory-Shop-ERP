@@ -94,8 +94,45 @@ export async function authenticateRequest(request: NextRequest): Promise<Authent
     console.log('User found:', { id: user.id, username: user.username, role: user.role });
     
     // Return authenticated user with role checking method
-    // Normalize role for legacy names (e.g., "Factory Admin")
-    const normalizedRole = (user.role && typeof user.role === 'string' && user.role.toLowerCase().includes('factory')) ? 'factory' as UserRole : user.role as UserRole;
+    // Normalize role for legacy names (e.g., "Factory Admin", "Planning Manager", etc.)
+    let normalizedRole: UserRole = user.role as UserRole;
+    
+    if (user.role && typeof user.role === 'string') {
+      const roleStr = user.role.toLowerCase();
+      
+      // Check for various role patterns
+      if (roleStr.includes('factory')) {
+        normalizedRole = 'factory';
+      } else if (roleStr.includes('planning')) {
+        normalizedRole = 'planning';
+      } else if (roleStr.includes('marketing')) {
+        normalizedRole = 'marketing';
+      } else if (roleStr.includes('shop')) {
+        normalizedRole = 'shop';
+      } else if (roleStr.includes('store')) {
+        normalizedRole = 'store';
+      } else if (roleStr.includes('finance')) {
+        normalizedRole = 'finance';
+      } else if (roleStr.includes('sample')) {
+        normalizedRole = 'sample_maker';
+      } else if (roleStr.includes('cutting')) {
+        normalizedRole = 'cutting';
+      } else if (roleStr.includes('sewing')) {
+        normalizedRole = 'sewing';
+      } else if (roleStr.includes('finishing')) {
+        normalizedRole = 'finishing';
+      } else if (roleStr.includes('packing')) {
+        normalizedRole = 'packing';
+      } else if (roleStr.includes('quality')) {
+        normalizedRole = 'quality_inspection';
+      } else if (roleStr.includes('designer')) {
+        normalizedRole = 'designer';
+      } else {
+        // If no pattern matches, convert to lowercase and use as is
+        normalizedRole = roleStr as UserRole;
+      }
+    }
+    
     console.log(`Normalized role: ${normalizedRole}`);
       return {
         ...user,

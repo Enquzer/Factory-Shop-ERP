@@ -5,6 +5,7 @@ export type ShopInventoryItem = {
   id: number;
   shopId: string;
   productId: string;
+  productCode: string;
   productVariantId: string;
   name: string;
   price: number;
@@ -35,11 +36,12 @@ export async function addItemsToShopInventory(shopId: string, items: Omit<ShopIn
     
     for (const item of items) {
       await db.run(`
-        INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-        VALUES (?, ?, ?, ?, ?, ?, ?, MAX(0, ?), ?)
+        INSERT INTO shop_inventory (shopId, productId, productCode, productVariantId, name, price, color, size, stock, imageUrl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, MAX(0, ?), ?)
       `,
         shopId,
         item.productId,
+        item.productCode,
         item.productVariantId,
         item.name,
         item.price,

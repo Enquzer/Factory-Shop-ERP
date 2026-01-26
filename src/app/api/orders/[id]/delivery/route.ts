@@ -112,32 +112,50 @@ export async function PUT(
           
           // Transform OrderItem to ShopInventoryItem and add/update shop inventory
           for (const item of orderItems) {
+            const variantId = item.variant.id;
+            
+            // Get the actual product code from the database to ensure accuracy
+            const product = await db.get(`
+              SELECT p.productCode 
+              FROM product_variants pv 
+              JOIN products p ON pv.productId = p.id 
+              WHERE pv.id = ?
+            `, [variantId]);
+            
+            if (!product) {
+              console.warn(`Product not found for variant ${variantId}, using item name as fallback for product code`);
+            }
+            
+            const currentProductCode = product?.productCode || item.productCode || 'N/A';
+
             // Check if item already exists in shop inventory
             const existingItem = await db.get(`
               SELECT id FROM shop_inventory 
               WHERE shopId = ? AND productVariantId = ?
-            `, order.shopId, item.variant.id);
+            `, order.shopId, variantId);
             
             if (existingItem) {
-              // If item exists, update its stock
+              // If item exists, update its stock and ensure productCode is set
               const result = await db.run(`
                 UPDATE shop_inventory 
-                SET stock = stock + ? 
+                SET stock = stock + ?,
+                    productCode = ?
                 WHERE shopId = ? AND productVariantId = ?
-              `, item.quantity, order.shopId, item.variant.id);
+              `, item.quantity, currentProductCode, order.shopId, variantId);
               
               if ((result.changes || 0) === 0) {
-                throw new Error(`Failed to update shop inventory for variant ${item.variant.id}`);
+                throw new Error(`Failed to update shop inventory for variant ${variantId}`);
               }
             } else {
               // If item doesn't exist, add it to inventory
               await db.run(`
-                INSERT INTO shop_inventory (shopId, productId, productVariantId, name, price, color, size, stock, imageUrl)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO shop_inventory (shopId, productId, productCode, productVariantId, name, price, color, size, stock, imageUrl)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `,
                 order.shopId,
                 item.productId,
-                item.variant.id,
+                currentProductCode,
+                variantId,
                 item.name,
                 item.price,
                 item.variant.color,

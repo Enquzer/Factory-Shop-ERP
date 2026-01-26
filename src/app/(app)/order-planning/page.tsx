@@ -20,6 +20,16 @@ import {
   DialogTitle, 
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -57,10 +67,12 @@ import {
 import { format, addDays } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { generateProductionPlanningPDF, generateOrderPDF, downloadPDF } from '@/lib/pdf-generator';
+import { generateBOMPDF, downloadBOMPDF } from '@/lib/bom-pdf-generator';
 import html2canvas from 'html2canvas';
 
 import { cn } from "@/lib/utils";
 import { MaterialRequisitionsDialog } from '@/components/production/material-requisitions-dialog';
+import { BOMModificationDialog } from '@/components/production/bom-modification-dialog';
 import { MarketingOrderComponent, updateMarketingOrderComponent, initializeOrderComponents } from '@/lib/marketing-orders';
 
 interface PlanningRow extends MarketingOrder {
@@ -89,11 +101,20 @@ export default function OrderPlanningPage() {
   const [isReqDialogOpen, setIsReqDialogOpen] = useState(false);
   const [reqOrderId, setReqOrderId] = useState<string | null>(null);
   const [reqOrderNum, setReqOrderNum] = useState<string>('');
+  
+  // BOM Modification Dialog State
+  const [isBomDialogOpen, setIsBomDialogOpen] = useState(false);
+  const [bomOrderDetails, setBomOrderDetails] = useState<any>(null);
+  const [bomItems, setBomItems] = useState<any[]>([]);
 
   // Interaction State for Gantt
   const [interactingOrder, setInteractingOrder] = useState<string | null>(null);
   const [interactionType, setInteractionType] = useState<'move' | 'resize' | null>(null);
   const [startX, setStartX] = useState(0);
+
+  // Delete State
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrders();
@@ -291,22 +312,6 @@ export default function OrderPlanningPage() {
     }
   };
 
-  const handleDeleteOrder = async (orderId: string) => {
-      if (confirm('Are you sure you want to delete this order?')) {
-          try {
-              const success = await deleteMarketingOrder(orderId);
-              if (success) {
-                  toast({ title: 'Success', description: 'Order deleted successfully' });
-                  fetchOrders();
-              } else {
-                  toast({ title: 'Error', description: 'Failed to delete order', variant: 'destructive' });
-              }
-          } catch (error) {
-              console.error('Error deleting order:', error);
-          }
-      }
-  };
-
   const handleExportOrderPDF = async (order: MarketingOrder) => {
       try {
           const pdfUrl = await generateOrderPDF(order);
@@ -360,6 +365,25 @@ export default function OrderPlanningPage() {
     } catch (error: any) {
       console.error('Release failed:', error);
       toast({ title: "Release Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    try {
+      const success = await deleteMarketingOrder(orderToDelete);
+      if (success) {
+        setOrders(prev => prev.filter(o => o.id !== orderToDelete));
+        toast({ title: "Success", description: "Order deleted successfully." });
+      } else {
+        toast({ title: "Error", description: "Failed to delete order. It may have progressed past 'Placed Order' status.", variant: "destructive" });
+      }
+    } catch (error: any) {
+      console.error('Delete failed:', error);
+      toast({ title: "Error", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setOrderToDelete(null);
     }
   };
 
@@ -847,6 +871,81 @@ export default function OrderPlanningPage() {
                                 <Layers className="mr-2 h-4 w-4" />
                                 Material Requisitions
                               </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    const orderResponse = await fetch(`/api/marketing-orders/${order.id}`, {
+                                      headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                                      }
+                                    });
+                                    
+                                    if (!orderResponse.ok) {
+                                      throw new Error('Failed to fetch order details');
+                                    }
+                                    
+                                    const orderDetails = await orderResponse.json();
+                                    
+                                    const response = await fetch(`/api/requisitions?orderId=${order.id}`, {
+                                      headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                                      }
+                                    });
+                                    
+                                    if (!response.ok) {
+                                      throw new Error('Failed to fetch BOM items');
+                                    }
+                                    
+                                    const bomData = await response.json();
+                                    
+                                    // Convert requisitions to BOM items format
+                                    const convertedBomItems = bomData.map((item: any) => ({
+                                      id: item.id,
+                                      materialName: item.materialName,
+                                      materialId: item.materialId,
+                                      quantityPerUnit: item.quantityPerUnit || 0,
+                                      wastagePercentage: item.wastagePercentage || 5,
+                                      unitOfMeasure: item.unitOfMeasure,
+                                      type: item.type || 'Fabric',
+                                      supplier: item.supplier,
+                                      cost: item.cost || 0,
+                                      // Calculate the required fields for PDF generation
+                                      requestedQty: item.requestedQty || orderDetails.quantity || 1,
+                                      calculatedTotal: item.calculatedTotal || 
+                                        ((item.quantityPerUnit || 0) * (item.requestedQty || orderDetails.quantity || 1)) * (1 + ((item.wastagePercentage || 5) / 100)),
+                                      calculatedCost: item.calculatedCost || 
+                                        (((item.quantityPerUnit || 0) * (item.requestedQty || orderDetails.quantity || 1)) * (1 + ((item.wastagePercentage || 5) / 100))) * (item.cost || 0)
+                                    }));
+                                    
+                                    setBomOrderDetails(orderDetails);
+                                    setBomItems(convertedBomItems);
+                                    setIsBomDialogOpen(true);
+                                  } catch (error: any) {
+                                    console.error('Error fetching BOM details:', error);
+                                    toast({ 
+                                      title: "Error", 
+                                      description: error.message || "Failed to load BOM details.",
+                                      variant: "destructive" 
+                                    });
+                                  }
+                                }}
+                              >
+                                <Layers className="mr-2 h-4 w-4" />
+                                Modify & View BOM
+                              </DropdownMenuItem>
+                              {(user?.role === 'factory' || user?.role === 'marketing') && order.status === 'Placed Order' && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setOrderToDelete(order.id);
+                                    setIsDeleteDialogOpen(true);
+                                  }}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete Order
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleExportOrderPDF(order)}
@@ -864,13 +963,6 @@ export default function OrderPlanningPage() {
                                   Initialize Components
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteOrder(order.id)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete Order
-                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -1117,6 +1209,73 @@ export default function OrderPlanningPage() {
         isOpen={isReqDialogOpen}
         onOpenChange={setIsReqDialogOpen}
       />
+
+      <BOMModificationDialog
+        isOpen={isBomDialogOpen}
+        onOpenChange={setIsBomDialogOpen}
+        orderDetails={bomOrderDetails || { id: '', orderNumber: '', productName: '', productCode: '', quantity: 0, items: [] }}
+        initialBomItems={bomItems}
+        onSave={(modifiedBomItems) => {
+          // Handle saving modified BOM items
+          console.log('Saving modified BOM items:', modifiedBomItems);
+          toast({
+            title: "Success",
+            description: "BOM items updated successfully!"
+          });
+          setIsBomDialogOpen(false);
+        }}
+        onGeneratePDF={async (processedBomItems) => {
+          try {
+            // Prepare order details in the correct format
+            const orderDetails = {
+              id: bomOrderDetails?.id || '',
+              orderNumber: bomOrderDetails?.orderNumber || '',
+              productName: bomOrderDetails?.productName || '',
+              productCode: bomOrderDetails?.productCode || '',
+              quantity: bomOrderDetails?.quantity || 0,
+              items: bomOrderDetails?.items || [],
+              imageUrl: bomOrderDetails?.imageUrl
+            };
+            
+            // Generate the PDF using the external function with the processed BOM items
+            const pdfUrl = await generateBOMPDF(orderDetails, processedBomItems);
+            
+            // Download the PDF
+            downloadBOMPDF(pdfUrl, `BOM_Report_${orderDetails.orderNumber || 'order'}.pdf`);
+            
+            toast({
+              title: "Success",
+              description: "BOM PDF generated and downloaded successfully!"
+            });
+            
+            setIsBomDialogOpen(false);
+          } catch (error) {
+            console.error('Error generating PDF:', error);
+            toast({
+              title: "Error",
+              description: "Failed to generate PDF.",
+              variant: "destructive"
+            });
+          }
+        }}
+      />
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the marketing order and its items. This action cannot be undone and is only allowed for orders that have not yet entered production.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setOrderToDelete(null); }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteOrder} className="bg-red-600 hover:bg-red-700 text-white">
+              Delete Order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

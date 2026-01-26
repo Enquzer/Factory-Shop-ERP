@@ -35,6 +35,7 @@ export type Style = {
 export type BOMItem = {
   id: string;
   styleId: string;
+  materialId?: string; // Link to raw material registry
   type: 'Fabric' | 'Trim' | 'Finishing' | 'Packaging' | 'Other';
   itemName: string;
   itemCode?: string;
@@ -234,11 +235,12 @@ export async function addBOMItem(item: Omit<BOMItem, 'id'>): Promise<BOMItem> {
   const db = await getDb();
   const id = `BOM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   await db.run(`
-    INSERT INTO style_bom (id, styleId, type, itemName, itemCode, supplier, consumption, unit, cost, currency, comments)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO style_bom (id, styleId, materialId, type, itemName, itemCode, supplier, consumption, unit, cost, currency, comments)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     id, 
     item.styleId, 
+    item.materialId || null,
     item.type, 
     item.itemName, 
     item.itemCode || null, 
@@ -258,6 +260,7 @@ export async function updateBOMItem(id: string, item: Partial<BOMItem>): Promise
   const fields: string[] = [];
   const values: any[] = [];
   
+  if (item.materialId !== undefined) { fields.push('materialId = ?'); values.push(item.materialId); }
   if (item.type !== undefined) { fields.push('type = ?'); values.push(item.type); }
   if (item.itemName !== undefined) { fields.push('itemName = ?'); values.push(item.itemName); }
   if (item.itemCode !== undefined) { fields.push('itemCode = ?'); values.push(item.itemCode); }

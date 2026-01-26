@@ -33,6 +33,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update order' }, { status: 500 });
     }
 
+    // --- NEW: Generate Material Requisitions based on BOM ---
+    try {
+        const { generateMaterialRequisitionsForOrder } = await import('@/lib/bom');
+        const { getDb } = await import('@/lib/db');
+        const db = await getDb();
+        
+        // Find the product ID associated with this productCode
+        const product = await db.get('SELECT id FROM products WHERE productCode = ?', [order.productCode]);
+        
+        if (product) {
+            await generateMaterialRequisitionsForOrder(order.id, order.quantity, product.id);
+            console.log(`Generated requisitions for order ${order.orderNumber}`);
+        } else {
+            console.warn(`Could not find product for code ${order.productCode} to generate BOM requisitions`);
+        }
+    } catch (bomError) {
+        console.error('Error generating BOM requisitions:', bomError);
+        // We don't fail the whole release if BOM generation fails, but we log it
+    }
+
     // Check if new product to mention sample info
     const sampleInfo = order.isNewProduct ? " This is a NEW PRODUCT - Please check sample approvals." : "";
 

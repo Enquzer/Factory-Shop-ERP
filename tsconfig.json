@@ -19,7 +19,12 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
+      "@/contexts/*": ["./src/contexts/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/lib/*": ["./src/lib/*"],
       "@/*": ["./src/*"]
     }
   },

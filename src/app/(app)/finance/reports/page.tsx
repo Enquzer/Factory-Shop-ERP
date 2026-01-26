@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format, subDays, parseISO } from "date-fns";
+import { format, subDays, parseISO, addDays } from "date-fns";
 import { LoadingBar } from "@/components/loading-bar";
 import { getOrders } from "@/lib/orders";
 import { Order } from "@/lib/orders";
@@ -84,15 +84,17 @@ export default function FinanceReportsPage() {
 
   // Calculate report data
   const calculateReportData = () => {
-    const paidOrders = filteredOrders.filter(order => order.status === 'Paid');
-    const pendingOrders = filteredOrders.filter(order => 
-      order.status === 'Awaiting Payment' || order.status === 'Pending'
-    );
+    // Define status categories
+    const REVENUE_STATUSES = ['Paid', 'Released', 'Dispatched', 'Delivered'];
+    const PENDING_STATUSES = ['Pending', 'Awaiting Payment', 'Payment Slip Attached'];
+
+    const paidOrders = filteredOrders.filter(order => REVENUE_STATUSES.includes(order.status));
+    const pendingOrders = filteredOrders.filter(order => PENDING_STATUSES.includes(order.status));
 
     // Revenue by status
     const revenueByStatus = [
       {
-        name: 'Paid',
+        name: 'Confirmed Revenue',
         value: paidOrders.reduce((sum, order) => sum + order.amount, 0),
         count: paidOrders.length
       },
@@ -103,23 +105,32 @@ export default function FinanceReportsPage() {
       }
     ];
 
-    // Revenue trend by date
+    // Revenue trend by date (fill gaps for last 30 days or chosen range)
     const revenueByDate: Record<string, { date: string; revenue: number; orders: number }> = {};
     
+    // Determine the timeline start
+    const daysToTrack = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : 30;
+    const startDate = subDays(new Date(), daysToTrack - 1);
+    
+    // Initialize the timeline with zero values
+    for (let i = 0; i < daysToTrack; i++) {
+      const date = addDays(startDate, i);
+      const dateKey = format(date, 'yyyy-MM-dd');
+      revenueByDate[dateKey] = { date: dateKey, revenue: 0, orders: 0 };
+    }
+    
     filteredOrders.forEach(order => {
-      if (order.status === 'Paid') {
+      if (REVENUE_STATUSES.includes(order.status)) {
         const dateKey = format(parseISO(order.date), 'yyyy-MM-dd');
-        if (!revenueByDate[dateKey]) {
-          revenueByDate[dateKey] = { date: dateKey, revenue: 0, orders: 0 };
+        if (revenueByDate[dateKey]) {
+          revenueByDate[dateKey].revenue += order.amount;
+          revenueByDate[dateKey].orders += 1;
         }
-        revenueByDate[dateKey].revenue += order.amount;
-        revenueByDate[dateKey].orders += 1;
       }
     });
 
     const revenueTrend = Object.values(revenueByDate)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-30); // Last 30 days
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // Top shops by revenue
     const shopRevenue: Record<string, { name: string; revenue: number; orders: number }> = {};
@@ -351,7 +362,7 @@ export default function FinanceReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Top Performing Shops</CardTitle>
-            <CardDescription>Shops with highest revenue (paid orders only)</CardDescription>
+            <CardDescription>Shops with highest revenue (confirmed orders only)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -386,7 +397,7 @@ export default function FinanceReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Revenue Trend</CardTitle>
-          <CardDescription>Daily revenue from paid orders</CardDescription>
+          <CardDescription>Daily revenue from confirmed orders</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>

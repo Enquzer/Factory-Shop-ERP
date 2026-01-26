@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { DistributionPlannerDialog } from "./marketing-orders/distribution-planner-dialog";
 import { PlusCircle, Trash2, Upload, Image as ImageIcon, Search, Check, ChevronsUpDown, Calculator } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuth } from "@/contexts/auth-context";
 
 interface CreateMarketingOrderDialogProps {
   open: boolean;
@@ -34,6 +35,7 @@ export function CreateMarketingOrderDialog({
   availableUsers = []
 }: CreateMarketingOrderDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   
@@ -310,7 +312,7 @@ export function CreateMarketingOrderDialog({
         quantity,
         status: "Placed Order",
         isCompleted: false,
-        createdBy: "Marketing Team",
+        createdBy: user?.username || "Marketing Team",
         orderPlacementDate,
         plannedDeliveryDate: plannedDeliveryDate || undefined,
         assignedTo: assignedTo || undefined,
