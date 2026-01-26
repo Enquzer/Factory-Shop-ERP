@@ -165,8 +165,10 @@ export default function POSPage() {
       const res = await fetch(`/api/shop-inventory?shopId=${shopId}`);
       if (res.ok) {
         const data = await res.json();
+        const rawItems = Array.isArray(data) ? data : (data.inventory || []);
+        
         // Transform shop inventory data to POSProduct format
-        const posProducts = data.map((item: any) => ({
+        const posProducts = rawItems.map((item: any) => ({
           id: item.id,
           shopId: item.shopId,
           productId: item.productId,
@@ -179,9 +181,12 @@ export default function POSPage() {
           stock: item.stock,
           imageUrl: item.imageUrl
         }));
+        
         setProducts(posProducts);
+        // Important: Reset selected product if it's no longer in the list
         setSelectedProduct(null);
-        setSearchQuery('');
+      } else {
+        console.error('API Error fetching products:', res.statusText);
       }
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -203,31 +208,50 @@ export default function POSPage() {
 
   // Create a memoized list of filtered unique products for the catalog search
   const filteredProducts = useMemo(() => {
-    // 1. Group variants into unique products (prioritize variants with stock)
-    const unique = products.reduce((acc: POSProduct[], current) => {
-      const existing = acc.find(p => p.productId === current.productId);
-      if (!existing) {
-        acc.push(current);
-      } else if (current.stock > 0 && (existing.stock === 0)) {
-        const index = acc.indexOf(existing);
-        acc[index] = current;
-      }
-      return acc;
-    }, []).filter((p: POSProduct) => products.some((v: POSProduct) => v.productId === p.productId && v.stock > 0));
+    if (!products || products.length === 0) return [];
 
-    // 2. Apply search filter
+    // 1. Group variants into unique products (prioritize variants with stock)
+    const productGroups = new Map<string, POSProduct>();
+    
+    products.forEach(item => {
+      // Use productId as primary key, fallback to name for grouping
+      const id = item.productId || item.name || String(item.id);
+      const existing = productGroups.get(id);
+      
+      if (!existing) {
+        productGroups.set(id, item);
+      } else if (item.stock > 0 && (existing.stock <= 0)) {
+        productGroups.set(id, item);
+      }
+    });
+
+    let unique = Array.from(productGroups.values());
+
+    // 2. Filter to only show products that have at least one variant with stock
+    const availableUnique = unique.filter(p => {
+       const groupId = p.productId || p.name;
+       return products.some(v => (v.productId === groupId || v.name === groupId) && v.stock > 0);
+    });
+
+    // 3. Robust Fallback: If grouping failed to yield results but we HAVE products,
+    // just use the filtered raw list (limited to a representative set)
+    const listToFilter = availableUnique.length > 0 ? availableUnique : products.filter(p => p.stock > 0).slice(0, 50);
+
+    // 4. Apply search filter
     if (searchQuery.trim() === '') {
-      return unique;
+      return listToFilter;
     } else {
       const query = searchQuery.toLowerCase();
-      return unique.filter((product: POSProduct) => 
-        product.name.toLowerCase().includes(query) ||
-        product.productCode.toLowerCase().includes(query) ||
-        // Also check if any of its variants match color/size
-        products.some((v: POSProduct) => v.productId === product.productId && (
-          v.color.toLowerCase().includes(query) || 
-          v.size.toLowerCase().includes(query)
-        ))
+      return listToFilter.filter((product: POSProduct) => 
+        (product.name || '').toLowerCase().includes(query) ||
+        (product.productCode || '').toLowerCase().includes(query) ||
+        // Check if any variant color/size matches the query
+        products.some((v: POSProduct) => 
+          v.productId === product.productId && (
+            (v.color || '').toLowerCase().includes(query) || 
+            (v.size || '').toLowerCase().includes(query)
+          )
+        )
       );
     }
   }, [products, searchQuery]);
@@ -443,6 +467,9 @@ export default function POSPage() {
         setCart([]);
         setCustomerName('');
         setIsSameCustomer(false);
+        // Refresh products and stats to reflect inventory reduction and new sale
+        fetchProducts();
+        fetchStats();
       } else {
         const error = await res.json();
         toast({
@@ -525,7 +552,7 @@ export default function POSPage() {
               <div className="lg:col-span-12 space-y-4">
                 {/* Search Bar Group */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Card className="border-none shadow-md overflow-hidden bg-white">
+                  <Card className="border-none shadow-md bg-white">
                     <CardContent className="p-4">
                       <Label htmlFor="productCode" className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Quick Scan / Entry</Label>
                       <div className="relative group">
@@ -543,7 +570,7 @@ export default function POSPage() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-none shadow-md overflow-hidden bg-white">
+                  <Card className="border-none shadow-md bg-white">
                     <CardContent className="p-4">
                       <Label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Catalog Search</Label>
                       <div className="relative" ref={dropdownRef}>
