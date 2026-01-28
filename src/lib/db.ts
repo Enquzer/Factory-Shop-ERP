@@ -1360,6 +1360,8 @@ export const initializeDatabase = async (database: any) => {
         minimumStockLevel REAL DEFAULT 0,
         costPerUnit REAL DEFAULT 0,
         supplier TEXT,
+        source TEXT DEFAULT 'MANUAL', -- 'PURCHASED', 'MANUAL', 'OTHER'
+        purchaseRequestId TEXT, -- Reference to purchase request if sourced from purchase
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -1391,6 +1393,10 @@ export const initializeDatabase = async (database: any) => {
         approvedDate DATETIME,
         orderedDate DATETIME,
         receivedDate DATETIME,
+        costPerUnit REAL,
+        supplier TEXT,
+        notes TEXT,
+        rejectionReason TEXT,
         FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE CASCADE
       )
     `);
@@ -1412,6 +1418,14 @@ export const initializeDatabase = async (database: any) => {
         FOREIGN KEY (materialId) REFERENCES raw_materials (id) ON DELETE CASCADE
       )
     `);
+
+    // Add type and color columns to existing material_requisitions table
+    try {
+      await database.exec(`ALTER TABLE material_requisitions ADD COLUMN type TEXT`);
+    } catch (e) {}
+    try {
+      await database.exec(`ALTER TABLE material_requisitions ADD COLUMN color TEXT`);
+    } catch (e) {}
 
     // Create production ledger (activity log) table
     await database.exec(`

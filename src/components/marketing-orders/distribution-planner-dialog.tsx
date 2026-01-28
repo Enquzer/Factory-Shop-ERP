@@ -42,6 +42,7 @@ interface TendencyData {
     sizeStock: Record<string, number>;
     variantStock: { color: string; size: string; quantity: number }[];
   };
+  shopScores?: Record<string, number>;
 }
 
 export interface PlanningResultItem {
@@ -55,6 +56,7 @@ interface DistributionPlannerDialogProps {
   onOpenChange: (open: boolean) => void;
   onConfirm: (items: PlanningResultItem[]) => void;
   defaultQuantity?: number;
+  category?: string; // Content context for smarter AI
 }
 
 export function DistributionPlannerDialog({
@@ -62,6 +64,7 @@ export function DistributionPlannerDialog({
   onOpenChange,
   onConfirm,
   defaultQuantity = 1200,
+  category = ""
 }: DistributionPlannerDialogProps) {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loadingShops, setLoadingShops] = useState(false);
@@ -103,7 +106,12 @@ export function DistributionPlannerDialog({
 
   const fetchTendency = async () => {
     try {
-      const res = await fetch('/api/analytics/order-tendency');
+      // Fetch with category context if available
+      const url = category 
+        ? `/api/analytics/order-tendency?category=${encodeURIComponent(category)}`
+        : '/api/analytics/order-tendency';
+        
+      const res = await fetch(url);
       const data = await res.json();
       setTendencyData(data);
     } catch (e) {
@@ -118,6 +126,23 @@ export function DistributionPlannerDialog({
         setQtyPerVariant(shops.length * multiple);
      }
   }, [shops, multiple]);
+
+  // Smart Priority Adjustment: If the priority % is too low for the number of priority shops, suggest a boost
+  useEffect(() => {
+    if (shops.length === 0 || priorityShopIds.length === 0) return;
+    
+    // Calculate "Fair Share" based on shop count (e.g. 2 shops / 3 total = 66%)
+    const distinctPriorityShare = (priorityShopIds.length / shops.length) * 100;
+    
+    // Add a small buffer (e.g. +5%) to bias towards priority
+    const recommended = Math.min(80, Math.round(distinctPriorityShare + 5));
+    
+    // Only auto-adjust if the current setting is significantly under-serving the priority group
+    // e.g. if we have 66% of shops as priority but only 30% allocated
+    if (priorityPercent < distinctPriorityShare * 0.8) {
+       setPriorityPercent(recommended);
+    }
+  }, [shops.length, priorityShopIds.length]);
 
   const fetchShops = async () => {
     setLoadingShops(true);
@@ -151,11 +176,18 @@ export function DistributionPlannerDialog({
     const exact = tendencyData.variantPercentages.find(v => v.color === color && v.size === size);
     if (exact) return exact.percentage;
 
+    // Check if components exist at all in history
+    const colorExists = tendencyData.colorPercentages.some(c => c.color === color);
+    const sizeExists = tendencyData.sizePercentages.some(s => s.size === size);
+
+    // If either color or size is totally new, return null to force "Equal Distribution" fallback for this variant
+    // This allows New Colors to get a fair share instead of being penalized
+    if (!colorExists || !sizeExists) return null;
+
     // Derived match (Color Weight * Size Weight)
     const colorWeight = tendencyData.colorPercentages.find(c => c.color === color)?.percentage || 1;
     const sizeWeight = tendencyData.sizePercentages.find(s => s.size === size)?.percentage || 1;
     
-    // Normalize to 100 based on selected matrix if needed, but for now simple product
     return (colorWeight * sizeWeight) / 100;
   };
 
@@ -214,13 +246,14 @@ export function DistributionPlannerDialog({
             targetQty = Math.max(multiple, Math.round(targetQty / multiple) * multiple);
          }
 
-         const params = {
-            totalQuantity: targetQty,
-            priorityPercentage: priorityPercent,
-            multiple: multiple,
-            priorityShopIds: priorityShopIds,
-            allShops: shops.map(s => ({ id: s.id, name: s.name })),
-         };
+          const params = {
+             totalQuantity: targetQty,
+             priorityPercentage: priorityPercent,
+             multiple: multiple,
+             priorityShopIds: priorityShopIds,
+             allShops: shops.map(s => ({ id: s.id, name: s.name })),
+             shopScores: tendencyData?.shopScores // Pass the scores
+          };
 
          const result = calculateDistribution(params);
          newAllocations[key] = result;
@@ -241,14 +274,17 @@ export function DistributionPlannerDialog({
     
   }, [shops, qtyPerVariant, multiple, priorityPercent, priorityShopIds, colors, sizes, isApplyingTrends, totalProjectQty, manualVariantQtys, isBalancingStock]);
 
-
   // Suggestions for missing colors
   const suggestedBestSellers = useMemo(() => {
     if (!tendencyData) return [];
     
+    // Prohibited generic colors that shouldn't be suggested for specific production
+    const EXCLUDED_COLORS = ["mix", "mixed", "assorted", "various", "random", "standard"];
+    
     // Find colors in tendency that are NOT in current matrix
     return tendencyData.colorPercentages
       .filter(cp => !colors.includes(cp.color))
+      .filter(cp => !EXCLUDED_COLORS.includes(cp.color.toLowerCase()))
       .filter(cp => cp.percentage > 10) // Only suggest if > 10% share
       .slice(0, 3);
   }, [tendencyData, colors]);
@@ -391,10 +427,13 @@ export function DistributionPlannerDialog({
                        )}
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-bold text-muted-foreground uppercase">
-                        {isApplyingTrends ? "Total Project Units" : "Base Qty / Variant"}
-                      </Label>
+                      <div className="space-y-1.5">
+                      <div className="flex justify-between items-center bg-transparent">
+                          <Label className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                            {isApplyingTrends ? "Total Production Units" : "Planned Qty per Combo"}
+                            <span className="text-[9px] text-muted-foreground/60 normal-case font-normal">(e.g. Red-S)</span>
+                          </Label>
+                      </div>
                       <Input 
                         type="number" 
                         value={isApplyingTrends ? totalProjectQty : qtyPerVariant} 
@@ -422,7 +461,7 @@ export function DistributionPlannerDialog({
                             <span className="text-[9px] font-bold text-blue-900">pcs</span>
                           </div>
                         </div>
-                        <p className="text-[8px] text-blue-600 leading-tight">Minimum units required to satisfy all active shops ({shops.length}) based on pack size.</p>
+                        <p className="text-[8px] text-blue-600 leading-tight">Calculated minimum to ensure every active shop gets at least 1 pack.</p>
                       </div>
                     </div>
 
@@ -456,9 +495,14 @@ export function DistributionPlannerDialog({
                           max={80} min={10} step={5} 
                           onValueChange={(vals: number[]) => setPriorityPercent(vals[0])} 
                         />
-                       <div className="flex justify-between text-[9px] font-bold text-muted-foreground/60 uppercase">
-                          <span>Fair</span>
-                          <span>Priority</span>
+                       <div className="flex justify-between items-center px-1 pt-1">
+                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Fair</span>
+                          <div className="flex gap-2 text-[9px] font-black">
+                             <span className="text-primary">{Math.round(totalOrderQty * (priorityPercent/100)).toLocaleString()} pcs Priority</span>
+                             <span className="text-slate-300">/</span>
+                             <span className="text-slate-500">{Math.round(totalOrderQty * ((100-priorityPercent)/100)).toLocaleString()} pcs Std</span>
+                          </div>
+                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">High</span>
                        </div>
                      </div>
                      

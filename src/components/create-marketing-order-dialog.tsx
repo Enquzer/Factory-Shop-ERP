@@ -755,6 +755,7 @@ export function CreateMarketingOrderDialog({
               onOpenChange={setIsPlannerOpen}
               onConfirm={handlePlannerConfirm}
               defaultQuantity={1200}
+              category={category}
             />
           </div>
 

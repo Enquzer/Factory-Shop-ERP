@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getRawMaterials, createRawMaterial, updateRawMaterial } from '@/lib/raw-materials';
+import { getRawMaterials, createRawMaterial, updateRawMaterial, deleteRawMaterial } from '@/lib/raw-materials';
 
 export async function GET() {
   try {
@@ -35,5 +35,21 @@ export async function PUT(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update raw material' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    }
+
+    await deleteRawMaterial(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to delete raw material' }, { status: 500 });
   }
 }

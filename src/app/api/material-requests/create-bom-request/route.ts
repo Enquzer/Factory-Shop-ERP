@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         // Insert temporary material record
         await db.run(
           `INSERT INTO raw_materials 
-           (id, name, category, unitOfMeasure, currentBalance, minimumStockLevel, costPerUnit, supplier, createdAt, updatedAt)
+           (id, name, category, unitOfMeasure, currentBalance, minimumStockLevel, costPerUnit, supplier, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
           [
             materialIdToUse,

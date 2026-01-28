@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, AlertCircle, ShoppingCart, Send, Layers } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, ShoppingCart, Send, Layers, AlertTriangle, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { 
   Dialog,
@@ -19,27 +19,76 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from '@/contexts/auth-context';
+import { useRouter } from 'next/navigation';
 
 export default function MaterialIssuancePage() {
   const { toast } = useToast();
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
   const [requisitions, setRequisitions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReq, setSelectedReq] = useState<any>(null);
   const [issueQty, setIssueQty] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
+  const [purchaseReason, setPurchaseReason] = useState('');
 
+  // Check authentication
   useEffect(() => {
-    fetchRequisitions();
-  }, []);
+    if (!authLoading) {
+      if (!user) {
+        router.push('/store/login');
+        return;
+      }
+      
+      // Ensure user is store or factory role
+      if (user.role !== 'store' && user.role !== 'factory') {
+        toast({ 
+          title: "Access Denied", 
+          description: "You don't have permission to access this page.", 
+          variant: "destructive" 
+        });
+        router.push('/store/dashboard');
+        return;
+      }
+      
+      fetchRequisitions();
+    }
+  }, [user, authLoading, router, toast]);
+
+  // Remove the original useEffect since we moved the logic above
 
   const fetchRequisitions = async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
-      const res = await fetch('/api/requisitions');
+      // Add authorization header
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const res = await fetch('/api/requisitions', {
+        headers
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       setRequisitions(Array.isArray(data) ? data : []);
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to fetch requisitions", variant: "destructive" });
+    } catch (error: any) {
+      console.error('Error fetching requisitions:', error);
+      toast({ title: "Error", description: error.message || "Failed to fetch requisitions", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -55,9 +104,18 @@ export default function MaterialIssuancePage() {
 
     setIsSubmitting(true);
     try {
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const res = await fetch('/api/requisitions/issue', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           requisitionId: selectedReq.id,
           quantity: issueQty
@@ -70,14 +128,87 @@ export default function MaterialIssuancePage() {
         fetchRequisitions();
       } else {
         const err = await res.json();
-        throw new Error(err.error);
+        throw new Error(err.error || 'Failed to issue material');
       }
     } catch (error: any) {
+      console.error('Error issuing material:', error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleCreatePurchaseRequest = async () => {
+    if (!selectedReq) return;
+
+    const shortfall = (selectedReq.quantityRequested - selectedReq.quantityIssued) - selectedReq.currentBalance;
+    
+    if (shortfall <= 0) {
+      toast({ title: "No Shortfall", description: "Sufficient stock available", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const res = await fetch('/api/purchase-requests', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          materialId: selectedReq.materialId,
+          quantity: shortfall,
+          reason: purchaseReason || `Shortfall for Order ${selectedReq.orderNumber} - ${selectedReq.productName}. Required: ${selectedReq.quantityRequested.toFixed(2)}, Available: ${selectedReq.currentBalance.toFixed(2)}`
+        })
+      });
+      
+      if (res.ok) {
+        const result = await res.json();
+        toast({ 
+          title: "Purchase Request Created", 
+          description: `Request for ${shortfall.toFixed(2)} ${selectedReq.unitOfMeasure} of ${selectedReq.materialName} sent to Finance for approval. Request ID: ${result.id || 'N/A'}` 
+        });
+        setShowPurchaseDialog(false);
+        setPurchaseReason('');
+        setSelectedReq(null);
+        fetchRequisitions();
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create purchase request');
+      }
+    } catch (error: any) {
+      console.error('Error creating purchase request:', error);
+      toast({ title: "Error", description: error.message || "Failed to create purchase request", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getShortfall = (req: any) => {
+    const remaining = req.quantityRequested - req.quantityIssued;
+    return Math.max(0, remaining - req.currentBalance);
+  };
+
+  // Show loading state while checking auth
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // If user is not authenticated or not authorized, don't render
+  if (!user || (user.role !== 'store' && user.role !== 'factory')) {
+    return null;
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-8">
@@ -121,86 +252,184 @@ export default function MaterialIssuancePage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  requisitions.map(req => (
-                    <TableRow key={req.id}>
-                      <TableCell className="font-bold">{req.orderNumber}</TableCell>
-                      <TableCell>{req.productName}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                            <Layers className="h-3 w-3 text-slate-400" />
-                            {req.materialName}
-                        </div>
-                      </TableCell>
-                      <TableCell>{req.quantityRequested.toFixed(2)} {req.unitOfMeasure}</TableCell>
-                      <TableCell>{req.quantityIssued.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <span className={req.currentBalance < (req.quantityRequested - req.quantityIssued) ? 'text-red-600 font-bold' : ''}>
-                          {req.currentBalance.toFixed(2)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={req.status === 'Pending' ? 'outline' : 'secondary'}>
-                          {req.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-black">
-                        <Dialog open={selectedReq?.id === req.id} onOpenChange={(open) => !open && setSelectedReq(null)}>
-                          <DialogTrigger asChild>
-                            <Button size="sm" onClick={() => {
-                                setSelectedReq(req);
-                                setIssueQty(req.quantityRequested - req.quantityIssued);
-                            }}>
-                              Issue
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Issue Material</DialogTitle>
-                              <DialogDescription>
-                                Confirm quantity to be issued from stock for Order {req.orderNumber}.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Material</Label>
-                                <div className="col-span-3 font-semibold">{req.materialName}</div>
-                              </div>
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Remaining</Label>
-                                <div className="col-span-3">{(req.quantityRequested - req.quantityIssued).toFixed(2)} {req.unitOfMeasure}</div>
-                              </div>
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Available</Label>
-                                <div className={`col-span-3 font-bold ${req.currentBalance < 1 ? 'text-red-600' : 'text-green-600'}`}>
-                                  {req.currentBalance.toFixed(2)} {req.unitOfMeasure}
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="qty" className="text-right text-black">Issue Qty</Label>
-                                <Input 
-                                  id="qty" 
-                                  type="number" 
-                                  value={issueQty} 
-                                  onChange={e => setIssueQty(parseFloat(e.target.value))}
-                                  className="col-span-3"
-                                />
-                              </div>
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setSelectedReq(null)}>Cancel</Button>
-                              <Button 
-                                onClick={handleIssue} 
-                                disabled={isSubmitting || issueQty <= 0 || issueQty > req.currentBalance}
-                              >
-                                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-                                Confirm Issuance
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  requisitions.map(req => {
+                    const shortfall = getShortfall(req);
+                    const hasShortfall = shortfall > 0;
+                    
+                    return (
+                      <TableRow key={req.id} className={hasShortfall ? 'bg-red-50' : ''}>
+                        <TableCell className="font-bold">{req.orderNumber}</TableCell>
+                        <TableCell>{req.productName}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                              <Layers className="h-3 w-3 text-slate-400" />
+                              {req.materialName}
+                          </div>
+                        </TableCell>
+                        <TableCell>{req.quantityRequested.toFixed(2)} {req.unitOfMeasure}</TableCell>
+                        <TableCell>{req.quantityIssued.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span className={req.currentBalance < (req.quantityRequested - req.quantityIssued) ? 'text-red-600 font-bold' : ''}>
+                              {req.currentBalance.toFixed(2)}
+                            </span>
+                            {hasShortfall && (
+                              <Badge variant="destructive" className="text-[10px] w-fit">
+                                Short: {shortfall.toFixed(2)}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={req.status === 'Pending' ? 'outline' : 'secondary'}>
+                            {req.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            {req.currentBalance > 0 && (
+                              <Dialog open={selectedReq?.id === req.id && !showPurchaseDialog} onOpenChange={(open) => !open && setSelectedReq(null)}>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="default" onClick={() => {
+                                      setSelectedReq(req);
+                                      setIssueQty(Math.min(req.quantityRequested - req.quantityIssued, req.currentBalance));
+                                  }}>
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Issue
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Issue Material</DialogTitle>
+                                    <DialogDescription>
+                                      Confirm quantity to be issued from stock for Order {req.orderNumber}.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="grid gap-4 py-4">
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Material</Label>
+                                      <div className="col-span-3 font-semibold">{req.materialName}</div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Remaining</Label>
+                                      <div className="col-span-3">{(req.quantityRequested - req.quantityIssued).toFixed(2)} {req.unitOfMeasure}</div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Available</Label>
+                                      <div className={`col-span-3 font-bold ${req.currentBalance < 1 ? 'text-red-600' : 'text-green-600'}`}>
+                                        {req.currentBalance.toFixed(2)} {req.unitOfMeasure}
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label htmlFor="qty" className="text-right text-black">Issue Qty</Label>
+                                      <Input 
+                                        id="qty" 
+                                        type="number" 
+                                        value={issueQty} 
+                                        onChange={e => setIssueQty(parseFloat(e.target.value))}
+                                        className="col-span-3"
+                                        max={req.currentBalance}
+                                      />
+                                    </div>
+                                    {hasShortfall && (
+                                      <Alert variant="destructive">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertDescription>
+                                          Shortfall of {shortfall.toFixed(2)} {req.unitOfMeasure}. Create a purchase request after partial issuance.
+                                        </AlertDescription>
+                                      </Alert>
+                                    )}
+                                  </div>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setSelectedReq(null)}>Cancel</Button>
+                                    <Button 
+                                      onClick={handleIssue} 
+                                      disabled={isSubmitting || issueQty <= 0 || issueQty > req.currentBalance}
+                                    >
+                                      {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                                      Confirm Issuance
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                            
+                            {hasShortfall && (
+                              <Dialog open={showPurchaseDialog && selectedReq?.id === req.id} onOpenChange={(open) => {
+                                setShowPurchaseDialog(open);
+                                if (!open) setSelectedReq(null);
+                              }}>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="destructive" onClick={() => {
+                                    setSelectedReq(req);
+                                    setShowPurchaseDialog(true);
+                                    setPurchaseReason(`Shortfall for Order ${req.orderNumber} - ${req.productName}`);
+                                  }}>
+                                    <FileText className="h-3 w-3 mr-1" />
+                                    Purchase
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Create Purchase Request</DialogTitle>
+                                    <DialogDescription>
+                                      Submit a purchase request to Finance for material shortfall.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="grid gap-4 py-4">
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Material</Label>
+                                      <div className="col-span-3 font-semibold">{req.materialName}</div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Order</Label>
+                                      <div className="col-span-3">{req.orderNumber} - {req.productName}</div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Required</Label>
+                                      <div className="col-span-3">{(req.quantityRequested - req.quantityIssued).toFixed(2)} {req.unitOfMeasure}</div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Available</Label>
+                                      <div className="col-span-3 text-red-600 font-bold">{req.currentBalance.toFixed(2)} {req.unitOfMeasure}</div>
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                      <Label className="text-right">Shortfall</Label>
+                                      <div className="col-span-3 text-red-600 font-bold text-lg">{shortfall.toFixed(2)} {req.unitOfMeasure}</div>
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="reason">Reason / Notes</Label>
+                                      <Textarea 
+                                        id="reason"
+                                        value={purchaseReason}
+                                        onChange={e => setPurchaseReason(e.target.value)}
+                                        placeholder="Additional details for finance team..."
+                                        rows={3}
+                                      />
+                                    </div>
+                                  </div>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => {
+                                      setShowPurchaseDialog(false);
+                                      setSelectedReq(null);
+                                    }}>Cancel</Button>
+                                    <Button 
+                                      onClick={handleCreatePurchaseRequest} 
+                                      disabled={isSubmitting}
+                                      className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                                      Submit to Finance
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -230,8 +459,8 @@ export default function MaterialIssuancePage() {
                         <AlertCircle className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                        <h3 className="font-bold text-amber-900">Stock Warnings</h3>
-                        <p className="text-sm text-amber-700 mt-1">If the requested quantity exceeds the stock balance, the row will be highlighted. You can perform "Part-Issuance" if only partial stock is available.</p>
+                        <h3 className="font-bold text-amber-900">Stock Warnings & Purchase Requests</h3>
+                        <p className="text-sm text-amber-700 mt-1">If the requested quantity exceeds the stock balance, the row will be highlighted in red. You can perform "Part-Issuance" for available stock and create a "Purchase Request" for the shortfall, which will be sent to Finance for approval.</p>
                     </div>
                 </div>
               </CardContent>

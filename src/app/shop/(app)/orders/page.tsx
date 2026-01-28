@@ -142,10 +142,13 @@ export default function ShopOrdersPage() {
         }
     };
 
+    const [isUploading, setIsUploading] = useState(false);
+
     const handlePaymentSubmit = async () => {
         if (!selectedOrderForPayment || !paymentSlipFile) return;
 
         try {
+            setIsUploading(true);
             // First, upload the file
             const formData = new FormData();
             formData.append('file', paymentSlipFile);
@@ -192,6 +195,9 @@ export default function ShopOrdersPage() {
             }
         } catch (error) {
             console.error("Error confirming payment:", error);
+            alert("Failed to submit payment. Please try again.");
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -430,9 +436,16 @@ export default function ShopOrdersPage() {
                             <Button variant="outline" onClick={() => setShowPaymentForm(false)}>Cancel</Button>
                             <Button 
                                 onClick={handlePaymentSubmit}
-                                disabled={!paymentSlipFile}
+                                disabled={!paymentSlipFile || isUploading}
                             >
-                                Submit
+                                {isUploading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Submitting...
+                                    </>
+                                ) : (
+                                    "Submit"
+                                )}
                             </Button>
                         </div>
                     </div>

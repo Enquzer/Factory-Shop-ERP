@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, Loader2, Save, X, Search, Filter, Layers, Beaker, Scissors } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, Save, X, Search, Filter, Layers, Beaker, Scissors, ShoppingCart, HelpCircle } from "lucide-react";
 import { 
   Dialog,
   DialogContent,
@@ -39,6 +39,8 @@ interface RawMaterial {
   minimumStockLevel: number;
   costPerUnit: number;
   supplier?: string;
+  source?: 'PURCHASED' | 'MANUAL' | 'OTHER';
+  purchaseRequestId?: string;
   updatedAt?: string;
 }
 
@@ -60,6 +62,8 @@ export default function RawMaterialsPage() {
     supplier: ''
   });
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchMaterials();
   }, []);
@@ -77,33 +81,75 @@ export default function RawMaterialsPage() {
     }
   };
 
-  const handleAddMaterial = async (e: React.FormEvent) => {
+  const handleSaveMaterial = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/raw-materials', {
-        method: 'POST',
+      const url = '/api/raw-materials';
+      const method = editingId ? 'PUT' : 'POST';
+      const body = editingId ? { ...formData, id: editingId } : formData;
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(body)
       });
+
       if (res.ok) {
-        toast({ title: "Success", description: "Raw material registered successfully" });
+        toast({ title: "Success", description: `Raw material ${editingId ? 'updated' : 'registered'} successfully` });
         setIsAddDialogOpen(false);
-        setFormData({
-          name: '',
-          category: 'Fabric',
-          unitOfMeasure: 'Meter',
-          currentBalance: 0,
-          minimumStockLevel: 10,
-          costPerUnit: 0,
-          supplier: ''
-        });
+        resetForm();
         fetchMaterials();
+      } else {
+        throw new Error('Failed to save');
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to register material", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to save material", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      category: 'Fabric',
+      unitOfMeasure: 'Meter',
+      currentBalance: 0,
+      minimumStockLevel: 10,
+      costPerUnit: 0,
+      supplier: ''
+    });
+    setEditingId(null);
+  };
+
+  const handleEdit = (material: RawMaterial) => {
+    setFormData({
+      name: material.name,
+      category: material.category,
+      unitOfMeasure: material.unitOfMeasure,
+      currentBalance: material.currentBalance,
+      minimumStockLevel: material.minimumStockLevel,
+      costPerUnit: material.costPerUnit,
+      supplier: material.supplier || ''
+    });
+    setEditingId(material.id);
+    setIsAddDialogOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this material?')) return;
+    
+    try {
+      const res = await fetch(`/api/raw-materials?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast({ title: "Success", description: "Material deleted successfully" });
+        fetchMaterials();
+      } else {
+        throw new Error('Failed to delete');
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete material", variant: "destructive" });
     }
   };
 
@@ -132,17 +178,20 @@ export default function RawMaterialsPage() {
           <p className="text-muted-foreground text-lg">Manage fabric, trims, and production accessories inventory.</p>
         </div>
         
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+          setIsAddDialogOpen(open);
+          if (!open) resetForm();
+        }}>
           <DialogTrigger asChild>
-            <Button className="bg-teal-600 hover:bg-teal-700 shadow-lg transition-all transform hover:scale-105">
+            <Button className="bg-teal-600 hover:bg-teal-700 shadow-lg transition-all transform hover:scale-105" onClick={resetForm}>
               <Plus className="mr-2 h-4 w-4" /> Register New Material
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
-            <form onSubmit={handleAddMaterial}>
+            <form onSubmit={handleSaveMaterial}>
               <DialogHeader>
-                <DialogTitle>Register Raw Material</DialogTitle>
-                <DialogDescription>Add a new item to the factory's raw material inventory.</DialogDescription>
+                <DialogTitle>{editingId ? 'Edit Raw Material' : 'Register Raw Material'}</DialogTitle>
+                <DialogDescription>{editingId ? 'Update the details of this raw material.' : 'Add a new item to the factory\'s raw material inventory.'}</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
@@ -201,7 +250,7 @@ export default function RawMaterialsPage() {
               <DialogFooter>
                 <Button type="submit" disabled={isSubmitting} className="w-full">
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                  Save Material
+                  {editingId ? 'Update Material' : 'Save Material'}
                 </Button>
               </DialogFooter>
             </form>
@@ -238,6 +287,7 @@ export default function RawMaterialsPage() {
                 <TableRow>
                   <TableHead>Material</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Stock Level</TableHead>
                   <TableHead>Cost/Unit</TableHead>
                   <TableHead>Supplier</TableHead>
@@ -247,7 +297,7 @@ export default function RawMaterialsPage() {
               <TableBody>
                 {filteredMaterials.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                       No raw materials found.
                     </TableCell>
                   </TableRow>
@@ -265,6 +315,28 @@ export default function RawMaterialsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-2">
+                          {material.source === 'PURCHASED' && (
+                            <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-200">
+                              <ShoppingCart className="h-3 w-3 mr-1" />
+                              Purchased
+                            </Badge>
+                          )}
+                          {material.source === 'MANUAL' && (
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                              <Plus className="h-3 w-3 mr-1" />
+                              Manual
+                            </Badge>
+                          )}
+                          {(!material.source || material.source === 'OTHER') && (
+                            <Badge variant="outline" className="text-gray-600">
+                              <HelpCircle className="h-3 w-3 mr-1" />
+                              Other
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className={`text-sm font-semibold flex items-center gap-2 ${material.currentBalance < material.minimumStockLevel ? 'text-red-600' : 'text-slate-700'}`}>
                           {material.currentBalance} {material.unitOfMeasure}
                           {material.currentBalance < material.minimumStockLevel && (
@@ -277,8 +349,8 @@ export default function RawMaterialsPage() {
                       <TableCell className="text-sm">{material.supplier || '-'}</TableCell>
                       <TableCell className="text-right">
                          <div className="flex justify-end gap-1">
-                            <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-teal-600"><Edit2 className="h-4 w-4" /></Button>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleEdit(material)} className="h-8 w-8 hover:text-teal-600"><Edit2 className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDelete(material.id)} className="h-8 w-8 hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
                          </div>
                       </TableCell>
                     </TableRow>

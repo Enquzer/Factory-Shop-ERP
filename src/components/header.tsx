@@ -28,7 +28,7 @@ import { HelpCenter } from '@/components/help-center';
 
 type Notification = {
   id: string;
-  userType: 'factory' | 'shop';
+  userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing';
   shopId?: string;
   title: string;
   description: string;
@@ -47,8 +47,21 @@ export function Header() {
   useEffect(() => {
     // Create a polling function to fetch notifications periodically
     const fetchNotifications = async () => {
+      if (!user) return;
+      
       try {
-        const response = await fetch('/api/notifications?userType=factory');
+        // Map user role to userType for notifications
+        let userType = user.role;
+        
+        // Handle special cases
+        if (user.role === 'sample_maker') userType = 'sample_maker';
+        if (user.role === 'quality_inspection') userType = 'quality_inspection';
+        
+        const queryParams = new URLSearchParams({
+          userType
+        });
+        
+        const response = await fetch(`/api/notifications?${queryParams}`);
         if (response.ok) {
           const newNotifications = await response.json();
           setNotifications(newNotifications);
@@ -67,12 +80,24 @@ export function Header() {
 
     // Cleanup subscription on component unmount
     return () => clearInterval(intervalId);
-  }, []);
+  }, [user]);
 
   const handleMarkAsRead = async () => {
     try {
+      if (!user) return;
+      
+      // Map user role to userType for notifications
+      let userType = user.role;
+      if (user.role === 'sample_maker') userType = 'sample_maker';
+      if (user.role === 'quality_inspection') userType = 'quality_inspection';
+      
+      const queryParams = new URLSearchParams({
+        userType,
+        markAll: 'true'
+      });
+      
       // Use the correct endpoint for marking all notifications as read with query parameters
-      const response = await fetch('/api/notifications?userType=factory&markAll=true', {
+      const response = await fetch(`/api/notifications?${queryParams}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

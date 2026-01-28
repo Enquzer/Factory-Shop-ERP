@@ -19,24 +19,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
+    // Allow store, factory, and planning users to create purchase requests
+    if (user.role !== 'store' && user.role !== 'factory' && user.role !== 'planning') {
+      return NextResponse.json({ 
+        error: `Unauthorized: Store, Factory, or Planning access required. Your role: ${user.role}` 
+      }, { status: 403 });
+    }
+    
     const data = await request.json();
     if (!data.materialId && !data.materialName) {
       return NextResponse.json({ error: 'Material name or ID is required' }, { status: 400 });
     }
     
-    // If it's a new material request, we might need to handle it differently 
-    // but for now, we'll store it in the purchase_requests table.
-    // Note: The purchase_requests table expects a materialId. 
-    // If it's a "New" material, we might need a placeholder or a new column.
-    // Let's check the schema again.
+    // Log the request for debugging
+    console.log(`Purchase request created by ${user.username} (${user.role}):`, data);
     
     const id = await createPurchaseRequest({
       materialId: data.materialId || 'NEW', // Placeholder for new materials
       quantity: data.quantity || 0,
-      reason: data.reason || `Direct request from Designer for Style BOM. ${data.materialName ? `Requested Material: ${data.materialName}` : ''}`,
+      reason: data.reason || `Request from ${user.role} user ${user.username}. ${data.materialName ? `Requested Material: ${data.materialName}` : ''}`,
       requesterId: user.id.toString()
     });
     
+    console.log(`Purchase request created with ID: ${id}`);
     return NextResponse.json({ success: true, id });
   } catch (error) {
     console.error('Error creating purchase request:', error);

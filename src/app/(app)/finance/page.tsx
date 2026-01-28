@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   Clock,
   CreditCard,
-  Truck
+  Truck,
+  FileText
 } from 'lucide-react';
 import { Order, getOrders } from '@/lib/orders';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -145,6 +146,16 @@ export default function FinanceManagementPage() {
           <DollarSign className="h-4 w-4 mr-2" />
           Active
         </Badge>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex gap-4 flex-wrap">
+        <Button asChild variant="outline" className="border-blue-200 hover:bg-blue-50 text-blue-700">
+          <a href="/finance/purchase-requests">
+            <FileText className="mr-2 h-4 w-4" />
+            Purchase Requests
+          </a>
+        </Button>
       </div>
 
       {/* Metrics Cards */}

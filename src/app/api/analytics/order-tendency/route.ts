@@ -1,21 +1,28 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const category = searchParams.get('category'); // Optional filter
+
     const db = await getDb();
 
     // 1. Get all order items with their variant details (size/color)
-    // joining with product_variants gives us the attributes
-    const orderTendencies = await db.all(`
+    // joining with product_variants AND products to allow category filtering
+    const query = `
       SELECT 
         pv.size, 
         pv.color, 
         SUM(oi.quantity) as total_quantity
       FROM order_items oi
       JOIN product_variants pv ON oi.variantId = pv.id
+      JOIN products p ON pv.productId = p.id
+      ${category ? `WHERE p.category = ?` : ''}
       GROUP BY pv.size, pv.color
-    `);
+    `;
+    
+    const orderTendencies = await db.all(query, category ? [category] : []);
 
     // 2. Aggregate by size
     const sizeTendency: Record<string, number> = {};
@@ -75,6 +82,34 @@ export async function GET() {
       sizeStock[s.size] = (sizeStock[s.size] || 0) + q;
       totalStock += q;
     });
+    
+    // 6. Shop Performance (Share of Total Volume)
+    // Identify which shops drive the most volume to weight distribution intelligently
+    const shopPerformanceRaw = await db.all(`
+      SELECT 
+        o.shopId, 
+        SUM(oi.quantity) as total_volume
+      FROM order_items oi
+      JOIN orders o ON oi.orderId = o.id
+      GROUP BY o.shopId
+    `);
+
+    const shopScores: Record<string, number> = {};
+    let totalShopVolume = 0;
+
+    shopPerformanceRaw.forEach((sp: any) => {
+        const vol = Number(sp.total_volume);
+        shopScores[sp.shopId] = vol;
+        totalShopVolume += vol;
+    });
+
+    // Normalize to percentages (0-100)
+    const shopScorePercentages: Record<string, number> = {};
+    if (totalShopVolume > 0) {
+        Object.keys(shopScores).forEach(shopId => {
+            shopScorePercentages[shopId] = (shopScores[shopId] / totalShopVolume) * 100;
+        });
+    }
 
     return NextResponse.json({
       totalUnits,
@@ -90,7 +125,8 @@ export async function GET() {
           size: s.size,
           quantity: s.current_stock
         }))
-      }
+      },
+      shopScores: shopScorePercentages
     });
 
   } catch (error) {

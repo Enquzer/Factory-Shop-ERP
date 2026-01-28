@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { ShoppingCart, Plus, Minus, Trash2, Users, TrendingUp, DollarSign, Package, Search, Calendar, ChevronDown, X, Check, Square, User, BarChart3, ShoppingCart as CartIcon, Award } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import VisitorCounterUpdated from '@/components/visitor-counter-updated';
+import SalesTrendChart from '@/components/sales-trend-chart';
 import { toast } from '@/hooks/use-toast';
 
 // Use shop inventory item type
@@ -92,6 +93,7 @@ export default function POSPage() {
     bestSellingProducts: []
   });
   const [activeTab, setActiveTab] = useState('shop');
+  const [salesDates, setSalesDates] = useState<Set<string>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Get shopId for the current user
@@ -156,6 +158,26 @@ export default function POSPage() {
       fetchStats();
     }
   }, [shopId, selectedDate]);
+
+  // Fetch sales dates for calendar highlighting
+  useEffect(() => {
+    if (shopId) {
+      fetchSalesDates();
+    }
+  }, [shopId]);
+
+  const fetchSalesDates = async () => {
+    if (!shopId) return;
+    try {
+      const res = await fetch(`/api/pos/sales/dates?shopId=${shopId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSalesDates(new Set(data.dates || []));
+      }
+    } catch (error) {
+      console.error('Error fetching sales dates:', error);
+    }
+  };
 
   const fetchProducts = async () => {
     if (!shopId) return;
@@ -470,6 +492,7 @@ export default function POSPage() {
         // Refresh products and stats to reflect inventory reduction and new sale
         fetchProducts();
         fetchStats();
+        fetchSalesDates(); // Update calendar highlights
       } else {
         const error = await res.json();
         toast({
@@ -513,7 +536,7 @@ export default function POSPage() {
           </div>
           
           <div className="hidden md:flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
+            <div className="relative flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
               <Calendar className="h-4 w-4 text-slate-500" />
               <input 
                 type="date" 
@@ -521,6 +544,9 @@ export default function POSPage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="bg-transparent border-none text-sm font-bold focus:outline-none"
               />
+              {salesDates.has(selectedDate) && (
+                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-sm" title="Sales recorded on this date" />
+              )}
             </div>
           </div>
 
@@ -1023,6 +1049,9 @@ export default function POSPage() {
                        </div>
                     </CardContent>
                  </Card>
+
+                  {/* Sales Trend Chart */}
+                  <SalesTrendChart shopId={shopId} selectedDate={selectedDate} />
 
                  {/* Top Products View */}
                  {stats.bestSellingProducts.length > 0 && (

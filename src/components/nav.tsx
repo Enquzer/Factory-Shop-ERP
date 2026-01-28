@@ -47,11 +47,13 @@ const storeLinks = [
   { href: '/store/issue', label: 'Material Issuance', icon: ShoppingCart },
   { href: '/store/inventory', label: 'Store Inventory', icon: Package },
   { href: '/store/orders', label: 'Shop Orders', icon: ShoppingCart },
+  { href: '/store/purchase-requests', label: 'My Purchase Requests', icon: ShoppingCart },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
 const financeLinks = [
   { href: '/finance', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/finance/purchase-requests', label: 'Purchase Requests', icon: ShoppingCart },
   { href: '/finance/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/finance/reports', label: 'Financial Reports', icon: FileText },
   { href: '/profile', label: 'Profile', icon: User },
@@ -122,6 +124,8 @@ export function Nav() {
           { href: '/production-dashboard', label: 'Production Dashboard', icon: LayoutDashboard },
           { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
           { href: '/order-planning', label: 'Order Planning', icon: GanttChart },
+          { href: '/store/issue', label: 'Material Requests', icon: ShoppingCart },
+          { href: '/planning/purchase-requests', label: 'My Purchase Requests', icon: ShoppingCart },
           { href: '/profile', label: 'Profile', icon: User },
         ];
       } else if (user.role === 'sewing') {

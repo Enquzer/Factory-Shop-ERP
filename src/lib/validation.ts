@@ -192,7 +192,7 @@ export const userSchema = z.object({
 
 // Notification validation schema
 export const notificationSchema = z.object({
-  userType: z.enum(['factory', 'shop', 'store', 'finance', 'planning', 'sample_maker', 'cutting', 'sewing', 'finishing', 'packing', 'quality_inspection', 'marketing']),
+  userType: z.enum(['factory', 'shop', 'store', 'finance', 'planning', 'sample_maker', 'cutting', 'sewing', 'finishing', 'packing', 'quality_inspection', 'designer', 'marketing']),
   shopId: z.string().max(50, 'Shop ID must be less than 50 characters').optional().nullable(),
   title: z.string().min(1, 'Title is required').max(100, 'Title must be less than 100 characters'),
   description: z.string().min(1, 'Description is required').max(500, 'Description must be less than 500 characters'),

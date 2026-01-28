@@ -10,6 +10,8 @@ export type RawMaterial = {
   minimumStockLevel: number;
   costPerUnit: number;
   supplier?: string;
+  source?: 'PURCHASED' | 'MANUAL' | 'OTHER'; // Origin of the inventory
+  purchaseRequestId?: string; // Link to purchase request if applicable
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -26,6 +28,10 @@ export type PurchaseRequest = {
   orderedDate?: Date;
   receivedDate?: Date;
   materialName?: string; // For joining in queries
+  costPerUnit?: number;
+  supplier?: string;
+  notes?: string;
+  rejectionReason?: string;
 };
 
 // --- Raw Material Registry Functions ---
@@ -33,7 +39,7 @@ export type PurchaseRequest = {
 export async function getRawMaterials(): Promise<RawMaterial[]> {
   try {
     const db = await getDb();
-    const materials = await db.all('SELECT * FROM raw_materials ORDER BY name ASC');
+    const materials = await db.all('SELECT *, COALESCE(source, "MANUAL") as source FROM raw_materials ORDER BY name ASC');
     return materials.map((m: any) => ({
       ...m,
       createdAt: new Date(m.created_at),
@@ -66,9 +72,9 @@ export async function createRawMaterial(material: Omit<RawMaterial, 'id' | 'crea
     const db = await getDb();
     const id = `RM-${Date.now()}`;
     await db.run(`
-      INSERT INTO raw_materials (id, name, category, unitOfMeasure, currentBalance, minimumStockLevel, costPerUnit, supplier)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, material.name, material.category, material.unitOfMeasure, material.currentBalance, material.minimumStockLevel, material.costPerUnit, material.supplier]);
+      INSERT INTO raw_materials (id, name, category, unitOfMeasure, currentBalance, minimumStockLevel, costPerUnit, supplier, source, purchaseRequestId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, material.name, material.category, material.unitOfMeasure, material.currentBalance, material.minimumStockLevel, material.costPerUnit, material.supplier, material.source || 'MANUAL', material.purchaseRequestId]);
     
     resetDbCache();
     return id;
@@ -99,6 +105,8 @@ export async function updateRawMaterial(id: string, updates: Partial<RawMaterial
     addField('minimumStockLevel', updates.minimumStockLevel);
     addField('costPerUnit', updates.costPerUnit);
     addField('supplier', updates.supplier);
+    addField('source', updates.source);
+    addField('purchaseRequestId', updates.purchaseRequestId);
 
     if (fields.length === 0) return;
 
@@ -113,6 +121,17 @@ export async function updateRawMaterial(id: string, updates: Partial<RawMaterial
   }
 }
 
+export async function deleteRawMaterial(id: string): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.run('DELETE FROM raw_materials WHERE id = ?', [id]);
+    resetDbCache();
+  } catch (error) {
+    console.error('Error deleting raw material:', error);
+    throw error;
+  }
+}
+
 // --- Purchase Request Workflow ---
 
 export async function createPurchaseRequest(request: Omit<PurchaseRequest, 'id' | 'status' | 'requestedDate'>): Promise<string> {
@@ -120,9 +139,9 @@ export async function createPurchaseRequest(request: Omit<PurchaseRequest, 'id' 
     const db = await getDb();
     const id = `PR-${Date.now()}`;
     await db.run(`
-      INSERT INTO purchase_requests (id, materialId, quantity, reason, status, requesterId)
-      VALUES (?, ?, ?, ?, 'Pending', ?)
-    `, [id, request.materialId, request.quantity, request.reason, request.requesterId]);
+      INSERT INTO purchase_requests (id, materialId, quantity, reason, status, requesterId, costPerUnit, supplier, notes)
+      VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?)
+    `, [id, request.materialId, request.quantity, request.reason, request.requesterId, request.costPerUnit, request.supplier, request.notes]);
     resetDbCache();
     return id;
   } catch (error) {
@@ -149,7 +168,14 @@ export async function updatePurchaseRequestStatus(id: string, status: PurchaseRe
     if (status === 'Received') {
       const pr = await db.get('SELECT materialId, quantity FROM purchase_requests WHERE id = ?', [id]);
       if (pr) {
-        await db.run('UPDATE raw_materials SET currentBalance = currentBalance + ? WHERE id = ?', [pr.quantity, pr.materialId]);
+        // Update the material record to mark it as PURCHASED source
+        await db.run(`
+          UPDATE raw_materials 
+          SET currentBalance = currentBalance + ?, 
+              source = 'PURCHASED',
+              purchaseRequestId = ?
+          WHERE id = ?
+        `, [pr.quantity, id, pr.materialId]);
       }
     }
     
