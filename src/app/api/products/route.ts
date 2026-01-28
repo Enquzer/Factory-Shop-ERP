@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
 }
 
 // PUT /api/products/:id - Update a product (protected - factory only)
-export async function PUT(request: NextRequest) {
+export async function PUT(request: NextRequest, context: any) {
   const handler = withRoleAuth(async (req, user) => {
     try {
       console.log('PUT /api/products called');
@@ -202,9 +202,8 @@ export async function PUT(request: NextRequest) {
       // Validate input data (only validate provided fields)
       if (Object.keys(sanitizedData).length > 0) {
         try {
-          // Create a partial schema for validation
-          const partialSchema = productSchema.partial();
-          partialSchema.parse(sanitizedData);
+          // Validate using our schema (which now allows partial updates)
+          productSchema.parse(sanitizedData);
           console.log('Validation passed');
         } catch (validationError: any) {
           console.error('Validation error:', validationError);
@@ -260,11 +259,11 @@ export async function PUT(request: NextRequest) {
     }
   }, ['factory', 'sample_maker', 'designer']);
 
-  return handler(request);
+  return handler(request, context);
 }
 
 // DELETE /api/products/:id - Delete a product (protected - factory only)
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest, context: any) {
   const handler = withRoleAuth(async (req, user) => {
     try {
       const { searchParams } = new URL(req.url);
@@ -302,5 +301,5 @@ export async function DELETE(request: NextRequest) {
     }
   }, 'factory');
 
-  return handler(request);
+  return handler(request, context);
 }

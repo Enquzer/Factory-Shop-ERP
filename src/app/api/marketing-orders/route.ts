@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
           name: orderData.productName,
           category: orderData.category || 'Unisex',
           price: orderData.price || 0,
+          cost: orderData.cost || 0,
           minimumStockLevel: 0,
           description: orderData.description || '',
           imageUrl: orderData.imageUrl || undefined, // Use uploaded image URL if provided
@@ -100,9 +101,9 @@ export async function POST(request: NextRequest) {
         const productId = `PRD-${Date.now()}`;
         
         await db.run(`
-          INSERT INTO products (id, productCode, name, category, price, minimumStockLevel, description, imageUrl, readyToDeliver, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        `, productId, productData.productCode, productData.name, productData.category, productData.price, productData.minimumStockLevel, productData.description, productData.imageUrl, productData.readyToDeliver);
+          INSERT INTO products (id, productCode, name, category, price, cost, minimumStockLevel, description, imageUrl, readyToDeliver, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `, productId, productData.productCode, productData.name, productData.category, productData.price, productData.cost, productData.minimumStockLevel, productData.description, productData.imageUrl, productData.readyToDeliver);
         
         // Insert the variants
         for (const variant of productData.variants) {

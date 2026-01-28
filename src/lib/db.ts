@@ -113,6 +113,7 @@ export const initializeDatabase = async (database: any) => {
         name TEXT NOT NULL,
         category TEXT NOT NULL,
         price REAL NOT NULL,
+        cost REAL,  -- New field for production costing
         minimumStockLevel INTEGER NOT NULL,
         imageUrl TEXT,
         description TEXT,
@@ -121,6 +122,15 @@ export const initializeDatabase = async (database: any) => {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add cost column to existing products table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE products ADD COLUMN cost REAL
+      `);
+    } catch (error) {
+      console.log('cost column already exists in products or was added successfully');
+    }
 
     // Add imageUrl column to existing products table if it doesn't exist
     try {
@@ -180,12 +190,32 @@ export const initializeDatabase = async (database: any) => {
       CREATE TABLE IF NOT EXISTS product_age_pricing (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         productId TEXT NOT NULL,
-        ageMin INTEGER NOT NULL,
-        ageMax INTEGER NOT NULL,
+        ageMin INTEGER,
+        ageMax INTEGER,
+        sizes TEXT,
         price REAL NOT NULL,
+        cost REAL, -- New field for production costing
         FOREIGN KEY (productId) REFERENCES products (id) ON DELETE CASCADE
       )
     `);
+
+    // Add cost column to existing product_age_pricing table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE product_age_pricing ADD COLUMN cost REAL
+      `);
+    } catch (error) {
+      console.log('cost column already exists in product_age_pricing or was added successfully');
+    }
+
+    // Add sizes column to existing product_age_pricing table if it doesn't exist
+    try {
+      await database.exec(`
+        ALTER TABLE product_age_pricing ADD COLUMN sizes TEXT
+      `);
+    } catch (error) {
+      // Column might already exist
+    }
 
     // Create holiday discounts table
     await database.exec(`

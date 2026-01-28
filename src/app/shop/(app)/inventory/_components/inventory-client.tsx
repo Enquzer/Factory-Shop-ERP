@@ -452,10 +452,17 @@ export function InventoryClientPage({ inventory, onInventoryUpdate }: { inventor
                                                             <span className="text-xs">?</span>
                                                         </div>
                                                     )}
-                                                    <span>{item.name}</span>
-                                                    {('productCode' in item) && item.productCode && (
-                                                        <span className="text-xs text-muted-foreground">({item.productCode})</span>
-                                                    )}
+                                                     <span>
+                                                        {item.name}
+                                                        {'totalStock' in item && (
+                                                            <span className="text-xs font-normal text-muted-foreground ml-1">
+                                                                (Sizes: {[...new Set(item.variants.map(v => v.size))].sort().join(', ')})
+                                                            </span>
+                                                        )}
+                                                     </span>
+                                                     {('productCode' in item) && item.productCode && (
+                                                         <span className="text-xs text-muted-foreground ml-1">({item.productCode})</span>
+                                                     )}
                                                 </div>
                                             </TableCell>
                                             <TableCell>{variantDisplay}</TableCell>

@@ -152,6 +152,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
     const [marketingPrice, setMarketingPrice] = useState(product.price);
     const [marketingMainImage, setMarketingMainImage] = useState<File | null>(null);
     const [marketingMainImagePreview, setMarketingMainImagePreview] = useState<string | null>(product.imageUrl || null);
+    const [marketingCost, setMarketingCost] = useState(product.cost || 0);
     
     const [marketingOrderData, setMarketingOrderData] = useState({
         description: '',
@@ -191,6 +192,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             setMarketingProductCode(prod.productCode);
             setMarketingCategory(prod.category);
             setMarketingPrice(prod.price);
+            setMarketingCost(prod.cost || 0);
             setMarketingMainImagePreview(prod.imageUrl || null);
             setIsNewProduct(false);
             
@@ -208,6 +210,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             setMarketingProductCode("");
             setMarketingCategory("");
             setMarketingPrice(0);
+            setMarketingCost(0);
             setMarketingMainImagePreview(null);
             setQuantities({});
             setManualItems([]);
@@ -299,8 +302,17 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
         const currentQuantity = quantities[variantId] || 0;
         const newQuantity = Math.max(0, currentQuantity + amount);
         
-        // Check available stock
-        const availableStock = getRealTimeAvailableStock(variantId);
+        // Factory users can place marketing orders for production and are not limited by current stock
+        if (user?.role === 'factory') {
+            setQuantities(prev => ({
+                ...prev,
+                [variantId]: newQuantity
+            }));
+            return;
+        }
+        
+        // For shop users, strictly return the shop inventory
+        const availableStock = getAvailableStock(variantId);
         
         // For shop users, also check factory stock
         if (user?.role === 'shop') {
@@ -326,17 +338,6 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             });
             return;
           }
-        }
-        
-        // For shop users, we've already validated against factory stock above
-        // For factory users, check against actual stock
-        if (user?.role === 'factory' && newQuantity > availableStock && amount > 0) {
-            toast({
-                title: "Insufficient Stock",
-                description: `Only ${availableStock} items available in stock.`,
-                variant: "destructive",
-            });
-            return;
         }
         
         setQuantities(prev => ({
@@ -382,6 +383,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             const response = await fetch(`/api/products?id=${product.id}`, {
                 method: 'PUT',
                 headers: {
+                    ...createAuthHeaders(),
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
@@ -473,6 +475,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                 orderData.isNewProduct = true;
                 orderData.category = marketingCategory;
                 orderData.price = marketingPrice;
+                orderData.cost = marketingCost;
                 
                 if (marketingMainImage) {
                     const formData = new FormData();
@@ -498,7 +501,10 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
 
             const response = await fetch('/api/marketing-orders', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    ...createAuthHeaders(),
+                    'Content-Type': 'application/json' 
+                },
                 body: JSON.stringify(orderData),
             });
             
@@ -511,6 +517,30 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
             toast({ title: "Error", description: error.message, variant: "destructive" });
         }
     };
+
+    const getPriceForVariant = (variant: any) => {
+        if (!product.agePricing || product.agePricing.length === 0) return product.price;
+
+        const variantSize = variant.size?.trim().toLowerCase();
+        
+        // 1. Try label match (sizes column)
+        const labelMatch = product.agePricing.find(p => 
+            p.sizes?.split(',').map((s: string) => s.trim().toLowerCase()).includes(variantSize)
+        );
+        if (labelMatch) return labelMatch.price;
+
+        // 2. Try numeric range match
+        const sizeNum = parseInt(variantSize);
+        if (!isNaN(sizeNum)) {
+            const rangeMatch = product.agePricing.find(p => 
+                (p.ageMin !== undefined && p.ageMax !== undefined) &&
+                sizeNum >= (p.ageMin || 0) && sizeNum <= (p.ageMax || 0)
+            );
+            if (rangeMatch) return rangeMatch.price;
+        }
+
+        return product.price;
+    };
     
     // For shop users, get their inventory
     const shopId = user?.id ? String(user.id) : '';
@@ -518,7 +548,9 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
     
     const totalSelected = Object.values(quantities).reduce((sum, qty) => sum + qty, 0);
     const subTotal = Object.entries(quantities).reduce((total, [variantId, quantity]) => {
-        return total + (product.price * quantity);
+        const variant = product.variants.find(v => v.id === variantId);
+        const price = variant ? getPriceForVariant(variant) : product.price;
+        return total + (price * quantity);
     }, 0);
     const discountAmount = subTotal * shopDiscount;
     const finalTotal = subTotal - discountAmount;
@@ -533,8 +565,8 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
               {user?.role === 'factory' 
                 ? "Place a marketing order for production with detailed size and color breakdown." 
                 : isSimplifiedMode
-                   ? "Enter bulk quantity (multiples of 12). Variants are distributed automatically. Unit Price: ETB " + product.price.toFixed(2)
-                   : "Select the color, size, and quantity you wish to order. Unit Price: ETB " + product.price.toFixed(2)}
+                   ? "Enter bulk quantity (multiples of 12). Variants are distributed automatically."
+                   : "Select the color, size, and quantity you wish to order."}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 max-h-[65vh] overflow-y-auto pr-4">
@@ -563,26 +595,86 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                </div>
              )}
              
-             {/* Stock information for shop users */}
-             {user?.role === 'shop' && (
-               <div className="mb-4 p-4 border rounded-lg bg-muted">
-                 <div className="flex items-center justify-between">
-                   <span className="font-medium">Your Stock</span>
-                 </div>
-                 <div className="flex items-center mt-2">
-                   <Store className="h-4 w-4 mr-2 text-green-500" />
-                   <span className="text-sm">
-                     {product.variants.reduce((total, variant) => {
-                       const availableStock = getRealTimeAvailableStock(variant.id);
-                       return total + Math.max(0, availableStock);
-                     }, 0)} units available in your inventory
-                   </span>
-                 </div>
-                 <p className="text-xs text-muted-foreground mt-2">
-                   This shows the total quantity of this product available in your shop inventory.
-                 </p>
-               </div>
-             )}
+              {/* Stock information for shop users */}
+              {user?.role === 'shop' && (
+                <div className="mb-4 p-4 border rounded-lg bg-muted">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">Your Stock</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-primary">
+                        {product.agePricing && product.agePricing.length > 0
+                          ? `Pricing: From ETB ${Math.min(...product.agePricing.map(p => p.price)).toFixed(2)}`
+                          : `Selling Price: ETB ${product.price.toFixed(2)}`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <Store className="h-4 w-4 mr-2 text-green-500" />
+                    <span className="text-sm">
+                      {product.variants.reduce((total, variant) => {
+                        const availableStock = getRealTimeAvailableStock(variant.id);
+                        return total + Math.max(0, availableStock);
+                      }, 0)} units available in your inventory
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    This shows the total quantity of this product available in your shop inventory.
+                  </p>
+                </div>
+              )}
+
+              {/* Cost information for factory users */}
+              {user?.role === 'factory' && (
+                <div className="mb-4 p-4 border rounded-lg bg-primary/5 border-primary/20">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-primary flex items-center gap-2">
+                            <Factory className="h-4 w-4" /> Production & Costing Detail
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="p-2 bg-background rounded border border-primary/10">
+                            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Base Selling Price</p>
+                            <p className="text-lg font-bold">ETB {product.price.toFixed(2)}</p>
+                        </div>
+                        <div className="p-2 bg-background rounded border border-primary/10">
+                            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Base Production Cost</p>
+                            <p className="text-lg font-bold text-blue-600">ETB {product.cost?.toFixed(2) || "0.00"}</p>
+                        </div>
+                    </div>
+                    {product.agePricing && product.agePricing.length > 0 && (
+                        <div className="mt-4">
+                            <p className="text-xs font-bold mb-2 uppercase text-muted-foreground">Age-Based Pricing & Costing Breakdown</p>
+                            <div className="rounded border overflow-hidden">
+                                <table className="w-full text-[10px]">
+                                    <thead className="bg-muted">
+                                        <tr className="divide-x">
+                                            <th className="p-1.5 text-left">Ages/Sizes</th>
+                                            <th className="p-1.5 text-right">Price (ETB)</th>
+                                            <th className="p-1.5 text-right">Cost (ETB)</th>
+                                            <th className="p-1.5 text-right">Margin (%)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {product.agePricing.map((ap, idx) => {
+                                            const margin = ap.price > 0 ? ((ap.price - (ap.cost || 0)) / ap.price) * 100 : 0;
+                                            return (
+                                                <tr key={idx} className="divide-x hover:bg-muted/30">
+                                                    <td className="p-1.5 font-medium">{ap.sizes || `${ap.ageMin}-${ap.ageMax} yrs`}</td>
+                                                    <td className="p-1.5 text-right font-bold">ETB {ap.price.toFixed(2)}</td>
+                                                    <td className="p-1.5 text-right text-blue-600">ETB {ap.cost?.toFixed(2) || "0.00"}</td>
+                                                    <td className={cn("p-1.5 text-right font-bold", margin > 20 ? "text-green-600" : "text-amber-600")}>
+                                                        {margin.toFixed(1)}%
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+              )}
              
              {isSimplifiedMode && (
                  <div className="space-y-6 mb-6">
@@ -735,7 +827,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, -1)} 
-                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0)}
+                                                      disabled={orderedQuantity === 0}
                                                   >
                                                       <MinusCircle className="h-4 w-4" />
                                                   </Button>
@@ -745,27 +837,16 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       value={orderedQuantity}
                                                       onChange={(e) => {
                                                           const value = parseInt(e.target.value) || 0;
-                                                          const maxAllowed = user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
-                                                          if (value <= maxAllowed) {
-                                                              setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
-                                                          } else {
-                                                              toast({
-                                                                  title: "Insufficient Stock",
-                                                                  description: `Only ${maxAllowed} items available in stock.`,
-                                                                  variant: "destructive",
-                                                              });
-                                                          }
+                                                          // No stock limits for factory production orders
+                                                          setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
                                                       }}
                                                       min="0"
-                                                      max={user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
-                                                      disabled={user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0}
                                                   />
                                                   <Button 
                                                       size="icon" 
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, 1)} 
-                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= variant.stock && variant.stock > 0) : orderedQuantity >= variant.stock}
                                                   >
                                                       <PlusCircle className="h-4 w-4" />
                                                   </Button>
@@ -816,7 +897,13 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                       return (
                                           <div key={variant.id} className="grid grid-cols-3 items-center gap-2">
                                               <div className="space-y-1">
-                                                  <p className="font-medium">{variant.size}</p>
+                                                  <p className="font-medium">{variant.size}
+                                                       {product.agePricing && product.agePricing.length > 0 && (
+                                                           <span className="ml-2 text-xs font-bold text-primary">
+                                                               ETB {getPriceForVariant(variant).toFixed(2)}
+                                                           </span>
+                                                       )}
+</p>
                                                   {user?.role === 'shop' ? (
                                                       // For shops, show both factory and shop stock
                                                       <>
@@ -852,7 +939,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, -1)} 
-                                                      disabled={orderedQuantity === 0 || (user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0)}
+                                                      disabled={orderedQuantity === 0 || (variant.stock === 0)}
                                                   >
                                                       <MinusCircle className="h-4 w-4" />
                                                   </Button>
@@ -862,7 +949,7 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                       value={orderedQuantity}
                                                       onChange={(e) => {
                                                           const value = parseInt(e.target.value) || 0;
-                                                          const maxAllowed = user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0);
+                                                          const maxAllowed = variant.stock + (quantities[variant.id] || 0);
                                                           if (value <= maxAllowed) {
                                                               setQuantities(prev => ({...prev, [variant.id]: Math.max(0, value)}));
                                                           } else {
@@ -874,15 +961,15 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                                           }
                                                       }}
                                                       min="0"
-                                                      max={user?.role === 'shop' ? variant.stock + (quantities[variant.id] || 0) : variant.stock + (quantities[variant.id] || 0)}
-                                                      disabled={user?.role === 'shop' ? (variant.stock === 0) : variant.stock === 0}
+                                                      max={variant.stock + (quantities[variant.id] || 0)}
+                                                      disabled={variant.stock === 0}
                                                   />
                                                   <Button 
                                                       size="icon" 
                                                       variant="outline" 
                                                       className="h-8 w-8" 
                                                       onClick={() => handleQuantityChange(variant.id, 1)} 
-                                                      disabled={user?.role === 'shop' ? (orderedQuantity >= variant.stock && variant.stock > 0) : orderedQuantity >= variant.stock}
+                                                      disabled={orderedQuantity >= variant.stock && variant.stock > 0}
                                                   >
                                                       <PlusCircle className="h-4 w-4" />
                                                   </Button>
@@ -928,7 +1015,6 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                   {user?.role === 'factory' ? (
                       <Button 
                           onClick={() => setIsMarketingOrderDialogOpen(true)} 
-                          disabled={totalSelected === 0} 
                           className="w-full sm:w-auto"
                       >
                           <Plus className="mr-2 h-4 w-4" />
@@ -1124,6 +1210,17 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                                     value={marketingPrice || ""} 
                                     onChange={e => setMarketingPrice(Number(e.target.value))} 
                                     className="h-8 text-sm"
+                                    placeholder="Selling Price"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Cost (ETB)</Label>
+                                <Input 
+                                    type="number" 
+                                    value={marketingCost || ""} 
+                                    onChange={e => setMarketingCost(Number(e.target.value))} 
+                                    className="h-8 text-sm"
+                                    placeholder="Production Cost"
                                 />
                             </div>
                         </div>
@@ -1137,34 +1234,31 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
               
               {!isNewProduct ? (
                 /* Existing Product Breakdown */
-                <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
-                    {Object.entries(quantities)
-                      .filter(([_, q]) => q > 0)
-                      .map(([vid, q]) => {
-                        const v = (selectedMarketingProduct || product).variants.find(v => v.id === vid);
-                        return v ? (
-                          <div key={vid} className="flex justify-between items-center p-2 text-sm">
-                            <span>{v.color} - {v.size}</span>
+                <div className="max-h-60 overflow-y-auto border rounded-md divide-y">
+                    {(selectedMarketingProduct || product).variants.map((v) => {
+                        const q = quantities[v.id] || 0;
+                        return (
+                          <div key={v.id} className="flex justify-between items-center p-2 text-sm hover:bg-muted/50 transition-colors">
+                            <div className="flex flex-col">
+                                <span className={cn("font-medium", q > 0 && "text-primary font-bold")}>{v.color} - {v.size}</span>
+                                <span className="text-[10px] text-muted-foreground">Current Factory Stock: {v.stock}</span>
+                            </div>
                             <div className="flex items-center gap-2">
                                 <Input 
                                     type="number" 
-                                    value={q} 
+                                    value={q || ""} 
+                                    placeholder="0"
                                     onChange={e => {
                                         const val = Math.max(0, parseInt(e.target.value) || 0);
-                                        setQuantities(prev => ({ ...prev, [vid]: val }));
+                                        setQuantities(prev => ({ ...prev, [v.id]: val }));
                                     }}
-                                    className="h-7 w-16 text-center"
+                                    className={cn("h-7 w-20 text-center", q > 0 && "border-primary ring-1 ring-primary/20")}
                                 />
-                                <span className="text-muted-foreground">units</span>
+                                <span className="text-muted-foreground w-8 text-xs">units</span>
                             </div>
                           </div>
-                        ) : null;
-                      })}
-                    {Object.values(quantities).filter(q => q > 0).length === 0 && (
-                        <div className="p-4 text-center text-sm text-muted-foreground">
-                            No variants selected. Go back to pick items or add manual below.
-                        </div>
-                    )}
+                        );
+                    })}
                 </div>
               ) : (
                 /* New Product Manual Items */

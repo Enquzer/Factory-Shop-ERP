@@ -51,9 +51,11 @@ const variantSchema = z.object({
 
 const agePricingSchema = z.object({
   id: z.number().optional(),
-  ageMin: z.coerce.number().int().nonnegative("Minimum age must be a non-negative number"),
-  ageMax: z.coerce.number().int().positive("Maximum age must be a positive number"),
+  ageMin: z.coerce.number().int().nonnegative("Minimum age must be a non-negative number").optional(),
+  ageMax: z.coerce.number().int().nonnegative("Maximum age must be a non-negative number").optional(),
+  sizes: z.string().optional().nullable(),
   price: z.coerce.number().positive("Price must be a positive number"),
+  cost: z.coerce.number().nonnegative("Cost must be a non-negative number").optional(),
 });
 
 const productSchema = z.object({
@@ -61,6 +63,7 @@ const productSchema = z.object({
   productCode: z.string().regex(/^[A-Z]{2}(-[A-Z]{2})?-\d{3,}([/-]\d{2,})?$/i, "Code must follow format: XX-XXX, XX-XXX/XX, XX-XXXX, or XX-XX-XXX/XX"),
   category: z.string().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be a positive number"),
+  cost: z.coerce.number().nonnegative("Cost must be a non-negative number").optional(),
   description: z.string().optional(),
   minimumStockLevel: z.coerce.number().int().nonnegative("Minimum stock must be a non-negative number").optional(),
   imageUrl: z.any(),
@@ -158,6 +161,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
       ...product,
       imageUrl: product.imageUrl,
       description: product.description || "",
+      cost: product.cost || 0,
       variants: normalizedVariants,
       agePricing: product.agePricing || [],
     },
@@ -173,6 +177,37 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     name: "agePricing",
   });
 
+  const syncPricingFromSizes = () => {
+    const variants = form.getValues("variants");
+    const uniqueSizes = [...new Set(variants.map(v => v.size))].sort();
+    
+    const currentPricing = form.getValues("agePricing") || [];
+    // Helper to see if a size is already covered
+    const sizesInPricing = new Set(currentPricing.flatMap(p => p.sizes ? p.sizes.split(',').map(s => s.trim()) : []));
+    
+    const basePrice = form.getValues("price") || 0;
+    
+    uniqueSizes.forEach(size => {
+        if (!sizesInPricing.has(size)) {
+            const sizeNum = parseInt(size);
+            const basePrice = form.getValues("price") || 0;
+            const baseCost = form.getValues("cost") || 0;
+            appendAgePricing({ 
+                ageMin: isNaN(sizeNum) ? 0 : sizeNum, 
+                ageMax: isNaN(sizeNum) ? 0 : sizeNum, 
+                price: basePrice,
+                cost: baseCost,
+                sizes: size 
+            });
+        }
+    });
+
+    toast({
+        title: "Pricing Synced",
+        description: `Added missing sizes to the pricing list.`,
+    });
+  };
+
   useEffect(() => {
     // Reset form when product changes
     const normalizedVariants = product.variants.map(v => ({
@@ -185,6 +220,7 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
         ...product,
         imageUrl: product.imageUrl,
         description: product.description || "",
+        cost: product.cost || 0,
         variants: normalizedVariants,
         agePricing: product.agePricing || [],
     });
@@ -309,12 +345,15 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
           minimumStockLevel: data.minimumStockLevel,
           imageUrl: mainImageUrl,
           description: data.description,
+          cost: data.cost,
           variants: variantsWithImages, // Include variants in the update
           // Handle agePricing properly by ensuring it matches the expected structure
           agePricing: data.agePricing ? data.agePricing.map((pricing: any) => ({
-            ageMin: pricing.ageMin,
-            ageMax: pricing.ageMax,
+            ageMin: pricing.ageMin || 0,
+            ageMax: pricing.ageMax || 0,
+            sizes: pricing.sizes || null,
             price: pricing.price,
+            cost: pricing.cost || 0,
             productId: product.id
           })) : []
       };
@@ -542,7 +581,20 @@ return (
               name="price"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Base Price (ETB)</FormLabel>
+                  <FormLabel>Selling Price (ETB)</FormLabel>
+                  <FormControl>
+                    <Input type="number" step="0.01" {...field} disabled={isLoading} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="cost"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Production Cost (ETB)</FormLabel>
                   <FormControl>
                     <Input type="number" step="0.01" {...field} disabled={isLoading} />
                   </FormControl>
@@ -674,47 +726,77 @@ return (
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">Age-Based Pricing</h3>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => appendAgePricing({ ageMin: 0, ageMax: 0, price: 0 })}
-                className="text-sm"
-                disabled={isLoading}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Pricing
-              </Button>
+              <div className="space-y-1">
+                <h3 className="text-lg font-medium">Age-Based Pricing/Costing</h3>
+                <p className="text-sm text-muted-foreground italic">Automate by syncing sizes from variants below.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={syncPricingFromSizes}
+                    className="text-sm"
+                    disabled={isLoading}
+                >
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Sync from Sizes
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => appendAgePricing({ ageMin: 0, ageMax: 0, sizes: "", price: 0 })}
+                    className="text-sm"
+                    disabled={isLoading}
+                >
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Add Manual
+                </Button>
+              </div>
             </div>
             <div className="space-y-4">
               {agePricingFields.map((field, index) => (
-                <div key={field.id} className="grid grid-cols-1 sm:grid-cols-4 gap-4 border p-4 rounded-md relative">
+                <div key={field.id} className="grid grid-cols-1 sm:grid-cols-5 gap-4 border p-4 rounded-md relative bg-muted/30">
                   <FormField
                     control={form.control}
-                    name={`agePricing.${index}.ageMin`}
+                    name={`agePricing.${index}.sizes`}
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Min Age</FormLabel>
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>Sizes (e.g. 2, 4, 6)</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="e.g., 1" {...field} disabled={isLoading} />
+                          <Input placeholder="Size labels" {...field} value={field.value || ""} disabled={isLoading} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name={`agePricing.${index}.ageMax`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Max Age</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="e.g., 4" {...field} disabled={isLoading} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-1">
+                    <FormField
+                        control={form.control}
+                        name={`agePricing.${index}.ageMin`}
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="text-[10px] uppercase">Min</FormLabel>
+                            <FormControl>
+                            <Input type="number" placeholder="0" {...field} disabled={isLoading} className="h-8" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name={`agePricing.${index}.ageMax`}
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="text-[10px] uppercase">Max</FormLabel>
+                            <FormControl>
+                            <Input type="number" placeholder="0" {...field} disabled={isLoading} className="h-8" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                  </div>
                   <FormField
                     control={form.control}
                     name={`agePricing.${index}.price`}
@@ -722,7 +804,20 @@ return (
                       <FormItem>
                         <FormLabel>Price (ETB)</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" placeholder="e.g., 1200" {...field} disabled={isLoading} />
+                          <Input type="number" step="0.01" placeholder="1200" {...field} disabled={isLoading} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`agePricing.${index}.cost`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cost (ETB)</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" placeholder="800" {...field} disabled={isLoading} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

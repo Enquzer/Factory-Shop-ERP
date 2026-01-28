@@ -91,6 +91,7 @@ export async function POST(request: Request) {
     for (const row of parsedData) {
       let productCode = row.productCode?.toString()?.trim();
       let sellingPriceStr = row.sellingPrice?.toString()?.trim();
+      let productionCostStr = (row.productionCost || row.production_cost || row.cost)?.toString()?.trim();
       let imageUrl = row.image || row.imageUrl || null;
       let name = row.name?.toString()?.trim() || null;
       let category = row.category?.toString()?.trim() || 'Unisex';
@@ -117,6 +118,12 @@ export async function POST(request: Request) {
       if (isNaN(sellingPrice)) {
         console.warn(`Skipping row with invalid selling price for product ${productCode}:`, row);
         continue;
+      }
+
+      // Try to parse the production cost
+      let productionCost = parseFloat(productionCostStr || "");
+      if (isNaN(productionCost)) {
+        productionCost = 0; // Default to 0 if invalid or not provided
       }
 
       // Validate image URL if provided
@@ -162,7 +169,8 @@ export async function POST(request: Request) {
             imageUrl: imageUrl || existingProduct.imageUrl,
             name: name || existingProduct.name,
             category: category || existingProduct.category,
-            description: description || existingProduct.description
+            description: description || existingProduct.description,
+            cost: productionCost || existingProduct.cost
           };
           
           await updateProduct(existingProduct.id, updateData);
@@ -186,6 +194,7 @@ export async function POST(request: Request) {
           name: name || productCode, // Use product code as name if not provided
           category: category || 'Unisex', // Default category
           price: sellingPrice,
+          cost: productionCost,
           minimumStockLevel: 10, // Default minimum stock level
           variants: [], // For now, create without variants
           imageUrl: imageUrl || null,

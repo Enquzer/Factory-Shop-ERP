@@ -241,9 +241,17 @@ export default function POSPage() {
       const existing = productGroups.get(id);
       
       if (!existing) {
-        productGroups.set(id, item);
-      } else if (item.stock > 0 && (existing.stock <= 0)) {
-        productGroups.set(id, item);
+        productGroups.set(id, { ...item });
+      } else {
+        // Find minimum price across all variants for this product
+        if (item.price < (existing.price || Infinity)) {
+            existing.price = item.price;
+        }
+        if (item.stock > 0 && existing.stock <= 0) {
+            // Prefer variant with stock for image/name
+            existing.stock = item.stock;
+            existing.imageUrl = item.imageUrl || existing.imageUrl;
+        }
       }
     });
 

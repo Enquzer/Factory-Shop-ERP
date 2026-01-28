@@ -28,6 +28,7 @@ import {
   Filter,
   ChevronDown,
   Image as ImageIcon,
+  Layers,
 } from "lucide-react";
 import { format, subDays, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -268,6 +269,7 @@ type DashboardClientPageProps = {
   orders: Order[];
   shops: Shop[];
   marketingOrders: MarketingOrder[];
+  rawMaterials: any[]; // Raw materials from /api/raw-materials
 };
 
 export function DashboardClientPage({
@@ -275,6 +277,7 @@ export function DashboardClientPage({
   orders: initialOrders,
   shops: initialShops,
   marketingOrders: initialMarketingOrders,
+  rawMaterials: initialRawMaterials,
 }: DashboardClientPageProps) {
   const [products, setProducts] = useState(
     Array.isArray(initialProducts) ? initialProducts : []
@@ -287,6 +290,9 @@ export function DashboardClientPage({
   );
   const [marketingOrders, setMarketingOrders] = useState(
     Array.isArray(initialMarketingOrders) ? initialMarketingOrders : []
+  );
+  const [rawMaterials, setRawMaterials] = useState(
+    Array.isArray(initialRawMaterials) ? initialRawMaterials : []
   );
   const [date, setDate] = useState<DateRange | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
@@ -314,7 +320,7 @@ export function DashboardClientPage({
       const timestamp = Date.now();
       const authHeaders = createAuthHeaders();
 
-      const [freshProducts, freshShops, freshOrders, freshMarketingOrders] =
+      const [freshProducts, freshShops, freshOrders, freshMarketingOrders, freshRawMaterials] =
         await Promise.all([
           fetch(`/api/products?t=${timestamp}`, { headers: authHeaders }).then(
             (res) => res.json()
@@ -328,6 +334,9 @@ export function DashboardClientPage({
           fetch(`/api/marketing-orders?t=${timestamp}`, {
             headers: authHeaders,
           }).then((res) => res.json()),
+          fetch(`/api/raw-materials?t=${timestamp}`, { headers: authHeaders }).then(
+            (res) => res.json()
+          ),
         ]);
 
       setProducts(
@@ -345,6 +354,11 @@ export function DashboardClientPage({
         Array.isArray(freshMarketingOrders)
           ? freshMarketingOrders
           : freshMarketingOrders?.marketingOrders || []
+      );
+      setRawMaterials(
+        Array.isArray(freshRawMaterials)
+          ? freshRawMaterials
+          : freshRawMaterials?.rawMaterials || []
       );
 
       await fetchKpis();
@@ -407,6 +421,7 @@ export function DashboardClientPage({
     const safeShops = Array.isArray(shops) ? shops : [];
     const safeOrders = Array.isArray(orders) ? orders : [];
     const safeProducts = Array.isArray(products) ? products : [];
+    const safeRawMaterials = Array.isArray(rawMaterials) ? rawMaterials : [];
     const safeMarketingOrders = Array.isArray(marketingOrders)
       ? marketingOrders
       : [];
@@ -415,6 +430,14 @@ export function DashboardClientPage({
       acc[shop.id] = shop.name;
       return acc;
     }, {} as Record<string, string>);
+
+    // Create a map of active shops only
+    const activeShopsMap = safeShops
+      .filter(shop => shop.status === 'Active')
+      .reduce((acc, shop) => {
+        acc[shop.id] = shop.name;
+        return acc;
+      }, {} as Record<string, string>);
 
     const filteredOrders = safeOrders.filter((order) => {
       // Date filter
@@ -429,7 +452,23 @@ export function DashboardClientPage({
         }
       }
 
-      // Shop filter
+      // Shop filter - only include orders from active shops
+      const sId = order.shopId;
+      const sName = order.shopName;
+      
+      // Check if either shopId or shopName corresponds to an active shop
+      const hasActiveShopById = sId && activeShopsMap[sId];
+      const hasActiveShopByName = sName && safeShops.some(shop => 
+        shop.name === sName && shop.status === 'Active'
+      );
+      
+      if (sId || sName) {
+        if (!hasActiveShopById && !hasActiveShopByName) {
+          return false; // Skip orders that don't belong to an active shop
+        }
+      }
+
+      // Shop name filter
       if (selectedShop && selectedShop !== "all") {
         if (order.shopId !== selectedShop && order.shopName !== selectedShop)
           return false;
@@ -486,12 +525,12 @@ export function DashboardClientPage({
       }
 
       const sId = order.shopId;
-      if (sId) {
-        const sName = order.shopName || shopMap[sId] || "Unknown Shop";
-        if (!shopPerformance[sId]) {
-          shopPerformance[sId] = { name: sName, sales: 0, quantity: 0 };
+      if (sId && activeShopsMap[sId]) {
+        const officialName = activeShopsMap[sId];
+        if (!shopPerformance[officialName]) {
+          shopPerformance[officialName] = { name: officialName, sales: 0, quantity: 0 };
         }
-        shopPerformance[sId].sales += Number(order.amount) || 0;
+        shopPerformance[officialName].sales += Number(order.amount) || 0;
       }
 
       // Handle items which might be a JSON string if not parsed by the API
@@ -507,9 +546,13 @@ export function DashboardClientPage({
       (Array.isArray(items) ? items : []).forEach((item) => {
         const qty = Number(item.quantity) || 0;
         
-        // Accumulate quantity for shop regardless of product linking
-        if (sId && shopPerformance[sId]) {
-             shopPerformance[sId].quantity += qty;
+        // Accumulate quantity for shop using official name
+        const sId = order.shopId;
+        if (sId && activeShopsMap[sId]) {
+             const officialName = activeShopsMap[sId];
+             if (shopPerformance[officialName]) {
+                shopPerformance[officialName].quantity += qty;
+             }
         }
 
         const productId = item.productId;
@@ -539,11 +582,41 @@ export function DashboardClientPage({
 
     // Stock & Category
     filteredProducts.forEach((product) => {
+      const productPrice = Number(product.price) || 0;
+      const totalStockValue = (product.variants || []).reduce(
+        (vSum, variant) => {
+          const stock = Number(variant.stock) || 0;
+          if (stock <= 0) return vSum;
+          
+          let price = productPrice;
+          if (product.agePricing && product.agePricing.length > 0) {
+            const variantSize = variant.size?.trim().toLowerCase();
+            const labelMatch = product.agePricing.find(p => 
+              p.sizes?.split(',').map((s: string) => s.trim().toLowerCase()).includes(variantSize)
+            );
+            if (labelMatch) {
+              price = labelMatch.price;
+            } else {
+              const sizeNum = parseInt(variantSize);
+              if (!isNaN(sizeNum)) {
+                const rangeMatch = product.agePricing.find(p => 
+                  p.ageMin !== undefined && p.ageMax !== undefined &&
+                  sizeNum >= (p.ageMin || 0) && sizeNum <= (p.ageMax || 0)
+                );
+                if (rangeMatch) price = rangeMatch.price;
+              }
+            }
+          }
+          return vSum + (price * stock);
+        },
+        0
+      );
+
       const totalStock = (product.variants || []).reduce(
         (vSum, variant) => vSum + (Number(variant.stock) || 0),
         0
       );
-      const stockValue = (Number(product.price) || 0) * totalStock;
+      const stockValue = totalStockValue;
 
       const cat = product.category || "Uncategorized";
       if (!categoryStats[cat]) {
@@ -592,9 +665,11 @@ export function DashboardClientPage({
             (s, v) => s + (v.stock || 0),
             0
           );
-          return total < (p.minimumStockLevel || 10);
-        }).length,
-
+          return total === 0; // Only count items that are completely out of stock
+        }).length +
+        safeRawMaterials.filter((rm: any) => 
+          rm.currentBalance === 0 // Only count raw materials that are completely out of stock
+        ).length,
       salesTrend:
         apiKpis.salesTrend && apiKpis.salesTrend.length > 0
           ? apiKpis.salesTrend
@@ -613,8 +688,7 @@ export function DashboardClientPage({
         apiKpis.shopRanking && apiKpis.shopRanking.length > 0
           ? apiKpis.shopRanking
           : Object.values(shopPerformance)
-              .filter((s) => s.name !== "Unknown" && s.name !== "Unknown Shop")
-              .sort((a, b) => b.sales - a.sales)
+              .sort((a: any, b: any) => b.sales - a.sales)
               .slice(0, 10),
 
       categoryData: Object.values(categoryStats).map((c) => ({
@@ -707,16 +781,35 @@ export function DashboardClientPage({
   }, [currentKpis]);
 
   const lowStockProducts = useMemo(() => {
-    return products
+    // Get out of stock products
+    const lowStockFinishedGoods = products
       .filter((p) => {
         const total = (p.variants || []).reduce(
           (s, v) => s + (v.stock || 0),
           0
         );
-        return total < (p.minimumStockLevel || 10);
+        return total === 0;
       })
+      .map(p => ({
+        ...p,
+        type: 'finished-goods',
+        stock: 0
+      }));
+
+    // Get out of stock raw materials
+    const lowStockRawMaterials = rawMaterials
+      .filter((rm) => rm.currentBalance === 0)
+      .map(rm => ({
+        ...rm,
+        type: 'raw-materials',
+        stock: 0
+      }));
+
+    // Combine and sort by stock level (lowest first)
+    return [...lowStockFinishedGoods, ...lowStockRawMaterials]
+      .sort((a, b) => a.stock - b.stock)
       .slice(0, 5);
-  }, [products]);
+  }, [products, rawMaterials]);
 
   const exportToPDF = async () => {
     try {
@@ -925,10 +1018,10 @@ export function DashboardClientPage({
             desc: "In catalog",
           },
           {
-            title: "Low Stock Items",
+            title: "Out of Stock Items",
             value: currentKpis?.lowStockAlerts || 0,
             icon: AlertTriangle,
-            desc: "Critical level",
+            desc: "Immediate action required",
             color: "text-red-600",
           },
           {
@@ -1307,7 +1400,7 @@ export function DashboardClientPage({
         {/* Low Stock Items List */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Low Stock Alert</CardTitle>
+            <CardTitle>Out of Stock Alert</CardTitle>
             <Button variant="link" size="sm" asChild>
               <Link href="/inventory">View inventory</Link>
             </Button>
@@ -1315,37 +1408,44 @@ export function DashboardClientPage({
           <CardContent>
             <div className="space-y-4">
               {lowStockProducts.length > 0 ? (
-                lowStockProducts.map((p: any) => {
-                  const totalStock = (p.variants || []).reduce(
+                lowStockProducts.map((item: any) => {
+                  const isRawMaterial = item.type === 'raw-materials';
+                  const stock = isRawMaterial ? item.currentBalance : (item.variants || []).reduce(
                     (s: number, v: any) => s + (v.stock || 0),
                     0
                   );
+                  
                   return (
                     <div
-                      key={p.id}
+                      key={item.id}
                       className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded overflow-hidden bg-muted">
-                          {p.imageUrl ? (
+                        <div className="h-8 w-8 rounded overflow-hidden bg-muted flex items-center justify-center">
+                          {isRawMaterial ? (
+                            <Layers className="h-4 w-4 text-muted-foreground" />
+                          ) : item.imageUrl ? (
                             <img
-                              src={p.imageUrl}
+                              src={item.imageUrl}
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            <ImageIcon className="h-4 w-4 m-2 text-muted-foreground" />
+                            <ImageIcon className="h-4 w-4 text-muted-foreground" />
                           )}
                         </div>
                         <div>
-                          <p className="text-sm font-medium">{p.name}</p>
+                          <p className="text-sm font-medium">{item.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {p.category}
+                            {isRawMaterial ? `${item.category} (${item.unitOfMeasure})` : item.category}
+                            <span className="ml-2 px-1.5 py-0.5 bg-muted rounded text-[9px]">
+                              {isRawMaterial ? 'Raw Material' : 'Finished Goods'}
+                            </span>
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-bold text-red-600">
-                          {totalStock}
+                          {stock}
                         </p>
                         <p className="text-[10px] text-muted-foreground">
                           in stock

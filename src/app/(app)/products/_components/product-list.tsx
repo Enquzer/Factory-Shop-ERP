@@ -316,7 +316,11 @@ export function ProductList({
                             </CardHeader>
                             <CardContent className="p-4">
                                 <div className="space-y-1">
-                                    <p className="text-base sm:text-lg font-semibold">ETB {product.price.toFixed(2)}</p>
+                                    <p className="text-base sm:text-lg font-semibold">
+                                        {product.agePricing && product.agePricing.length > 0 
+                                            ? `From ETB ${Math.min(...product.agePricing.map(p => p.price)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            : `ETB ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                    </p>
                                     <div className="flex items-center text-sm">
                                         <Package className="h-4 w-4 mr-1" />
                                         <Badge variant={stockInfo.variant} className="text-xs">{stockInfo.text}</Badge>

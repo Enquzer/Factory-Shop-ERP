@@ -244,6 +244,30 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const getPriceForVariant = (product: Product, variant: ProductVariant): number => {
+    if (!product.agePricing || product.agePricing.length === 0) return product.price;
+
+    // 1. Try label match (sizes column)
+    if (variant.size) {
+        const labelMatch = product.agePricing.find(p => 
+            p.sizes?.split(',').map((s: string) => s.trim().toLowerCase()).includes(variant.size.toLowerCase())
+        );
+        if (labelMatch) return labelMatch.price;
+
+        // 2. Try numeric range match
+        const sizeNum = parseInt(variant.size);
+        if (!isNaN(sizeNum)) {
+            const rangeMatch = product.agePricing.find(p => 
+                p.ageMin !== undefined && p.ageMax !== undefined &&
+                sizeNum >= (p.ageMin || 0) && sizeNum <= (p.ageMax || 0)
+            );
+            if (rangeMatch) return rangeMatch.price;
+        }
+    }
+
+    return product.price;
+  };
+
   const addItem = async (product: Product, variant: ProductVariant, quantity: number = 1) => {
     // Check factory stock before adding item to cart
     const factoryStock = await getFactoryStock(variant.id);
@@ -277,10 +301,13 @@ export function OrderProvider({ children }: { children: ReactNode }) {
             : item
         );
       }
+      
+      const variantPrice = getPriceForVariant(product, variant);
+      
       return [...prevItems, { 
           productId: product.id,
           name: product.name,
-          price: product.price,
+          price: variantPrice,
           productCode: product.productCode,
           imageUrl: variant.imageUrl || product.imageUrl || "",
           variant, 
@@ -532,10 +559,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
           return;
         }
         
+        const variantPrice = getPriceForVariant(product, variant);
+
         orderItems.push({
           productId: product.id,
           name: product.name,
-          price: product.price,
+          price: variantPrice,
           imageUrl: product.imageUrl || "",
           productCode: product.productCode,
           variant: variant,

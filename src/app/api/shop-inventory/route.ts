@@ -32,25 +32,28 @@ export async function GET(request: Request) {
       // If variant visibility is disabled, aggregate the inventory by product
       const inventory = await getShopInventory(shop.id);
       
-      // Group inventory items by product and aggregate stock
+      // Group inventory items by product AND price to aggregate stock
       const productMap = new Map();
       
       for (const item of inventory) {
-        if (productMap.has(item.productId)) {
-          // Add to existing product's stock
-          const existingProduct = productMap.get(item.productId);
-          existingProduct.totalStock += item.stock;
-          existingProduct.variants.push({
+        const aggregationKey = `${item.productId}-${item.price}`;
+        
+        if (productMap.has(aggregationKey)) {
+          // Add to existing product group's stock
+          const existingGroup = productMap.get(aggregationKey);
+          existingGroup.totalStock += item.stock;
+          existingGroup.variants.push({
             color: item.color,
             size: item.size,
             stock: item.stock
           });
         } else {
-          // Add new product
-          productMap.set(item.productId, {
+          // Add new product price group
+          productMap.set(aggregationKey, {
             productId: item.productId,
             name: item.name,
             price: item.price,
+            productCode: item.productCode,
             totalStock: item.stock,
             variants: [{
               color: item.color,

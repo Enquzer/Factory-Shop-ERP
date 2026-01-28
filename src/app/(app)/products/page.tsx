@@ -169,10 +169,10 @@ export default function ProductsPage({
 
     const handleDownloadTemplate = () => {
         // Create a CSV template with sample data using the new product code formats
-        const csvContent = "productCode,sellingPrice,image,name,category,description\n"
-            + "CK-008/01,29.99,https://example.com/image1.jpg,Product Name 1,Men,A description for product 1\n"
-            + "CK-0002,39.99,https://example.com/image2.jpg,Product Name 2,Women,A description for product 2\n"
-            + "CK-pn-11/01,49.99,https://example.com/image3.jpg,Product Name 3,Kids,A description for product 3";
+        const csvContent = "productCode,sellingPrice,productionCost,image,name,category,description\n"
+            + "CK-008/01,29.99,15.50,https://example.com/image1.jpg,Product Name 1,Men,A description for product 1\n"
+            + "CK-0002,39.99,20.00,https://example.com/image2.jpg,Product Name 2,Women,A description for product 2\n"
+            + "CK-pn-11/01,49.99,25.00,https://example.com/image3.jpg,Product Name 3,Kids,A description for product 3";
         
         const blob = new Blob([csvContent], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);

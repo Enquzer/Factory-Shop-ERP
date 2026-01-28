@@ -16,6 +16,7 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 import { DistributionPlannerDialog } from "./marketing-orders/distribution-planner-dialog";
 import { PlusCircle, Trash2, Upload, Image as ImageIcon, Search, Check, ChevronsUpDown, Calculator } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -266,7 +267,13 @@ export function CreateMarketingOrderDialog({
     const filename = `${productCode.toUpperCase()}_${prefix}_${Date.now()}.${ext}`;
     formData.append('filename', filename);
 
-    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const res = await fetch('/api/upload', { 
+      method: 'POST', 
+      headers: {
+        ...createAuthHeaders()
+      },
+      body: formData 
+    });
     if (res.ok) {
       const data = await res.json();
       return data.imageUrl; // The API returns imageUrl for the path

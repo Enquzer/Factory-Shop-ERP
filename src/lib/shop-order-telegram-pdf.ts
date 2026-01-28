@@ -138,20 +138,22 @@ export async function generateOrderTelegramPDF(orderId: string, stage: 'order_pl
     // For this implementation, we'll assume item.price is the buying price
     // and we might need to back-calculate or store selling price.
     // Let's look up the product to be sure.
-    const product = await db.get('SELECT price, productCode FROM products WHERE id = ?', item.productId);
+    // Use the price from the order item, which already accounts for age-based pricing
+    const catalogPrice = item.price;
+    const discountRate = shop.discount || 0; // Assuming decimal (e.g., 0.15)
     
-    const sellingPrice = product ? product.price : item.price / (1 - (shop.discount / 100));
-    const reduction = shop.discount;
-    const buyingPrice = item.price;
+    const sellingPrice = catalogPrice;
+    const reductionPercent = (discountRate * 100).toFixed(0);
+    const buyingPrice = catalogPrice * (1 - discountRate);
     const quantity = item.quantity;
     const totalBuyingPrice = buyingPrice * quantity;
 
     tableData.push([
       (i + 1).toString(), // Unique Product #
-      product?.productCode || item.productId,
+      item.productCode || item.productId,
       '', // Picture placeholder
       sellingPrice.toLocaleString(),
-      `${reduction}%`,
+      `${reductionPercent}%`,
       buyingPrice.toLocaleString(),
       quantity.toString(),
       totalBuyingPrice.toLocaleString()

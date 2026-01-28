@@ -224,7 +224,11 @@ export function ShopProductCard({ product, shopSettings, onClick }: ShopProductC
             <h3 className="font-medium truncate text-sm sm:text-base pr-2" title={product.name}>{product.name}</h3>
             <p className="text-xs text-muted-foreground">{product.productCode}</p>
           </div>
-          <span className="font-bold text-sm">ETB {product.price.toLocaleString()}</span>
+          <span className="font-bold text-sm">
+            {product.agePricing && product.agePricing.length > 0 
+                ? `From ETB ${Math.min(...product.agePricing.map(p => p.price)).toLocaleString()}`
+                : `ETB ${product.price.toLocaleString()}`}
+          </span>
         </div>
         
         {!isSimplifiedMode && (

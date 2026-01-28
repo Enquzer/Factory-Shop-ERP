@@ -2,6 +2,7 @@ import { getOrdersFromDB } from "@/lib/orders";
 import { getProducts } from "@/lib/products-sqlite";
 import { getShops } from "@/lib/shops";
 import { getMarketingOrdersFromDB } from "@/lib/marketing-orders";
+import { getRawMaterials } from "@/lib/raw-materials";
 import { DashboardClientPage } from "./_components/dashboard-client";
 
 export const dynamic = 'force-dynamic';
@@ -9,11 +10,12 @@ export const revalidate = 0;
 
 export default async function DashboardPage() {
     try {
-        const [products, orders, shops, marketingOrders] = await Promise.all([
+        const [products, orders, shops, marketingOrders, rawMaterials] = await Promise.all([
             getProducts(),
             getOrdersFromDB(),
             getShops(),
-            getMarketingOrdersFromDB()
+            getMarketingOrdersFromDB(),
+            getRawMaterials()
         ]);
 
         return (
@@ -22,6 +24,7 @@ export default async function DashboardPage() {
                 orders={orders}
                 shops={shops}
                 marketingOrders={marketingOrders}
+                rawMaterials={rawMaterials}
             />
         )
     } catch (error) {

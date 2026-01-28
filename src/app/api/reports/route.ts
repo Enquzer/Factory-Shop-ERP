@@ -294,29 +294,45 @@ export async function GET(request: Request) {
       });
     }
 
-    // Top Performing Shop (by Sales)
-    const shopSales: { [key: string]: { name: string, sales: number } } = {};
-    orderItems.forEach((item: any) => {
-      if (!shopSales[item.shopId]) {
-        shopSales[item.shopId] = { name: item.shopName || 'Unknown Shop', sales: 0 };
+    // 4. Shop Performance & Sales KPIs
+    // Shop Ranking (by Value and Quantity)
+    
+    // Get all active shops to ensure we only include them and consolidate by name
+    const activeShopsList = await db.all(`SELECT id, name FROM shops WHERE status = 'Active'`);
+    const activeShopIds = new Set(activeShopsList.map((s: any) => s.id));
+    const shopIdToOfficialName = activeShopsList.reduce((acc: any, s: any) => { acc[s.id] = s.name; return acc; }, {} as any);
+
+    const shopPerformanceAgg: { [key: string]: { name: string, sales: number, quantity: number } } = {};
+    
+    // Accumulate sales from fetchedOrders (once per order)
+    fetchedOrders.forEach((order: any) => {
+      if (!order.shopId || !activeShopIds.has(order.shopId)) return;
+      
+      const officialName = shopIdToOfficialName[order.shopId];
+      if (!officialName) return;
+
+      if (!shopPerformanceAgg[officialName]) {
+        shopPerformanceAgg[officialName] = { name: officialName, sales: 0, quantity: 0 };
       }
-      shopSales[item.shopId].sales += item.amount;
+      shopPerformanceAgg[officialName].sales += (Number(order.amount) || 0);
     });
 
-    // Get shop names
-    const shopIds = Object.keys(shopSales);
-    if (shopIds.length > 0) {
-      const shopsQuery = `SELECT id, name FROM shops WHERE id IN (${shopIds.map(() => '?').join(',')})`;
-      const shops = await db.all(shopsQuery, ...shopIds);
-      shops.forEach((shop: any) => {
-        if (shopSales[shop.id]) {
-          shopSales[shop.id].name = shop.name;
-        }
-      });
-    }
+    // Accumulate quantity from orderItems
+    orderItems.forEach((item: any) => {
+      if (!item.shopId || !activeShopIds.has(item.shopId)) return;
+      
+      const officialName = shopIdToOfficialName[item.shopId];
+      if (!officialName) return;
 
-    const topPerformingShop = Object.values(shopSales)
-      .sort((a, b) => b.sales - a.sales)[0] || { name: 'N/A', sales: 0 };
+      if (shopPerformanceAgg[officialName]) {
+        shopPerformanceAgg[officialName].quantity += (Number(item.quantity) || 0);
+      }
+    });
+
+    const shopRanking = Object.values(shopPerformanceAgg)
+      .sort((a, b) => b.sales - a.sales);
+
+    const topPerformingShop = shopRanking[0] || { name: 'N/A', sales: 0, quantity: 0 };
 
     // 2. Inventory & Stock KPIs
     // Total Stock (Quantity and Value)
@@ -357,9 +373,19 @@ export async function GET(request: Request) {
       SELECT COUNT(*) as lowStockCount
       FROM product_variants pv
       JOIN products p ON pv.productId = p.id
-      WHERE pv.stock < p.minimumStockLevel
+      WHERE pv.stock = 0
     `);
-    const lowStockAlerts = lowStockResult[0]?.lowStockCount || 0;
+    const lowStockProductCount = lowStockResult[0]?.lowStockCount || 0;
+
+    // Get low stock raw materials count
+    const lowStockRawMaterialsResult = await db.all(`
+      SELECT COUNT(*) as lowStockCount
+      FROM raw_materials
+      WHERE currentBalance = 0
+    `);
+    const lowStockRawMaterialsCount = lowStockRawMaterialsResult[0]?.lowStockCount || 0;
+
+    const lowStockAlerts = lowStockProductCount + lowStockRawMaterialsCount;
 
     // 3. Production & Marketing Order KPIs
     // Production Efficiency
@@ -374,12 +400,6 @@ export async function GET(request: Request) {
     const productionEfficiency = productionEfficiencyResult?.total > 0 ?
       (productionEfficiencyResult.completed / productionEfficiencyResult.total) * 100 : 0;
 
-    // 4. Shop Performance & Sales KPIs
-    // Shop Ranking (by Value)
-    const shopRanking = Object.entries(shopSales)
-      .map(([id, data]) => ({ id, name: data.name, sales: data.sales }))
-      .filter(shop => shop.name && shop.name !== 'Unknown Shop')
-      .sort((a, b) => b.sales - a.sales);
 
     // 5. Comparative & Trend Analytics
     // Previous period for comparison
