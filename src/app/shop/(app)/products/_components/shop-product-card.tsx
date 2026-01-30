@@ -17,6 +17,7 @@ import { distributeOrderQuantity } from "@/lib/ai-distribution";
 import { MiniStockChart } from "./mini-stock-chart";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { ProductFeedbackSummary } from "@/components/product-feedback-summary";
 
 interface ShopProductCardProps {
   product: Product;
@@ -237,6 +238,15 @@ export function ShopProductCard({ product, shopSettings, onClick }: ShopProductC
                 {totalStock} in Factory
              </div>
         )}
+        
+        {/* Product Feedback Summary */}
+        <div className="mt-2">
+          <ProductFeedbackSummary 
+            product={product} 
+            className="text-xs" 
+            showButton={false}
+          />
+        </div>
       </CardContent>
     </Card>
   );

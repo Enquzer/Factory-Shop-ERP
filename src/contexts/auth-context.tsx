@@ -1,17 +1,8 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authenticateUser as authUser } from '@/lib/auth';
+import { authenticateUser as authUser, type User } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-
-
-type User = {
-  id: number;
-  username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer';
-  profilePictureUrl?: string;
-  createdAt: Date;
-};
 
 type AuthResult = {
   success: boolean;
@@ -53,7 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string) => {
     setIsLoggingIn(true); // Set login loading state
     try {
+      console.log('Attempting login for:', username);
       const result: AuthResult = await authUser(username, password);
+      console.log('Login result:', result);
       
       if (result.success && result.user) {
         // Store the token if it exists
@@ -64,12 +57,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Use the user data directly from the response
         setUser(result.user);
         localStorage.setItem('user', JSON.stringify(result.user));
+        console.log('User set successfully:', result.user);
         
         return { success: true };
       } else {
+        console.log('Login failed:', result.message);
         return { success: false, message: result.message };
       }
     } catch (error) {
+      console.error('Login error:', error);
       return { success: false, message: 'An error occurred during login' };
     } finally {
       setIsLoggingIn(false); // Reset login loading state

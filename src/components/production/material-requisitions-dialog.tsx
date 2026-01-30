@@ -22,6 +22,9 @@ interface Requisition {
   status: string;
   unitOfMeasure: string;
   issuedDate?: string;
+  purchaseStatus?: string;
+  purchaseId?: string;
+  purchaseQuantity?: number;
 }
 
 interface MaterialRequisitionsDialogProps {
@@ -60,6 +63,29 @@ export function MaterialRequisitionsDialog({ orderId, orderNumber, isOpen, onOpe
       case 'Part-Issued': return <Badge className="bg-blue-100 text-blue-700 border-none"><Clock className="h-3 w-3 mr-1" /> Partial</Badge>;
       default: return <Badge variant="outline" className="text-slate-500 border-slate-200">Pending</Badge>;
     }
+  };
+  
+  const getPurchaseBadge = (req: Requisition) => {
+    if (!req.purchaseStatus) return null;
+    
+    let variant: "outline" | "secondary" | "default" | "destructive" = "outline";
+    let text = req.purchaseStatus;
+    
+    switch (req.purchaseStatus) {
+      case 'Pending': variant = "outline"; text = "P.R. Pending"; break;
+      case 'Approved': variant = "secondary"; text = "P.O. Approved"; break;
+      case 'Ordered': variant = "default"; text = "P.O. Sent"; break;
+      case 'Received': return <Badge className="bg-blue-600 text-white border-none">Purchased & Received</Badge>;
+      case 'Rejected': variant = "destructive"; text = "P.O. Rejected"; break;
+    }
+    
+    return (
+      <div className="flex flex-col gap-1 mt-1">
+        <Badge variant={variant} className="text-[9px] w-fit px-1 h-4">
+          {text} {req.purchaseQuantity ? `(${req.purchaseQuantity})` : ''}
+        </Badge>
+      </div>
+    );
   };
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -131,7 +157,8 @@ export function MaterialRequisitionsDialog({ orderId, orderNumber, isOpen, onOpe
                   <TableHead className="text-right">Requested</TableHead>
                   <TableHead className="text-right">Issued</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Last Issued</TableHead>
+                  <TableHead>Purchase Tracking</TableHead>
+                  <TableHead>Last Activity</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -146,6 +173,14 @@ export function MaterialRequisitionsDialog({ orderId, orderNumber, isOpen, onOpe
                     <TableCell className="text-right">{req.quantityRequested.toFixed(2)} {req.unitOfMeasure}</TableCell>
                     <TableCell className="text-right font-bold">{req.quantityIssued.toFixed(2)}</TableCell>
                     <TableCell>{getStatusBadge(req.status)}</TableCell>
+                    <TableCell>
+                        {getPurchaseBadge(req)}
+                        {req.status === 'Completed' ? (
+                            <span className="text-[10px] text-green-600 font-medium">Ready for Production</span>
+                        ) : req.purchaseStatus === 'Received' ? (
+                            <span className="text-[10px] text-blue-600 font-medium block mt-1">Stock Replenished</span>
+                        ) : null}
+                    </TableCell>
                     <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap">
                         {req.issuedDate ? new Date(req.issuedDate).toLocaleDateString() : '-'}
                     </TableCell>

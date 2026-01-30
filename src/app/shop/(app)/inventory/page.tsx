@@ -25,7 +25,7 @@ type AggregatedInventoryItem = {
 type InventoryItem = ShopInventoryItem | AggregatedInventoryItem;
 
 export default function ShopInventoryPage() {
-    const { user, isLoading: authLoading } = useAuth();
+    const { user, isLoading: authLoading, logout } = useAuth();
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -41,10 +41,22 @@ export default function ShopInventoryPage() {
             setLoading(true);
             setError(null);
             
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                setError('Authentication required');
+                return;
+            }
+            
             // Fetch shop data
             const shopResponse = await fetch(`/api/shops/${user.username}`);
             if (!shopResponse.ok) {
-                throw new Error('Failed to fetch shop data');
+                const errorText = await shopResponse.text();
+                console.error('Shop API error:', shopResponse.status, errorText);
+                if (shopResponse.status === 401) {
+                    logout();
+                    return;
+                }
+                throw new Error(`Failed to fetch shop data: ${shopResponse.status} ${errorText}`);
             }
             
             const shop = await shopResponse.json();
@@ -52,7 +64,13 @@ export default function ShopInventoryPage() {
             // Fetch inventory data with variant visibility settings based on shop preference
             const inventoryResponse = await fetch(`/api/shop-inventory?username=${user.username}&withVariantVisibility=true&shopId=${shop.id}`);
             if (!inventoryResponse.ok) {
-                throw new Error('Failed to fetch inventory data');
+                const errorText = await inventoryResponse.text();
+                console.error('Inventory API error:', inventoryResponse.status, errorText);
+                if (inventoryResponse.status === 401) {
+                    logout();
+                    return;
+                }
+                throw new Error(`Failed to fetch inventory data: ${inventoryResponse.status} ${errorText}`);
             }
             
             const inventoryData = await inventoryResponse.json();

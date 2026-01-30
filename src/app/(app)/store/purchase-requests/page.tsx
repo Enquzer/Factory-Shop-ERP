@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import { authenticatedFetch } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,7 @@ export type StorePurchaseRequest = {
 
 export default function StorePurchaseRequestsPage() {
   const { toast } = useToast();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
   const router = useRouter();
   const [requests, setRequests] = useState<StorePurchaseRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +50,7 @@ export default function StorePurchaseRequestsPage() {
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
-        router.push('/store/login');
+        router.push('/');
         return;
       }
       
@@ -73,21 +74,24 @@ export default function StorePurchaseRequestsPage() {
     
     setLoading(true);
     try {
+      // Check if auth token exists
       const token = localStorage.getItem('authToken');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in again", variant: "destructive" });
+        router.push('/');
+        return;
       }
       
       // Fetch only requests made by this user
-      const res = await fetch(`/api/purchase-requests/my-requests`, {
-        headers
-      });
+      const res = await authenticatedFetch(`/api/purchase-requests/my-requests`);
       
       if (!res.ok) {
+        if (res.status === 401) {
+          toast({ title: "Session Expired", description: "Please log in again", variant: "destructive" });
+          logout();
+          router.push('/');
+          return;
+        }
         throw new Error(`HTTP error! status: ${res.status}`);
       }
       

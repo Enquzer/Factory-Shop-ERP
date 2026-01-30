@@ -46,6 +46,11 @@ export type Order = {
     actualDispatchDate?: string;    // Factory's actual dispatch date
     confirmationDate?: string;      // Shop's confirmation date
     paymentRequested?: boolean;     // Whether finance has requested payment
+    // Pad number fields
+    padNumber?: string;
+    padSequence?: number;
+    padPrefix?: string;
+    padFormat?: string;
 }
 
 // Client-side function to fetch orders from API

@@ -52,6 +52,7 @@ import { calculateDemandWeights } from "@/lib/variant-demand";
 import { useShopInventory } from "@/hooks/use-shop-inventory";
 import { StockDistributionToggle } from "@/components/stock-distribution-toggle";
 import { createAuthHeaders } from "@/lib/auth-helpers";
+import { ProductFeedbackSummary } from "@/components/product-feedback-summary";
 
 // Fixed TypeScript error with useShopInventory hook usage
 
@@ -569,6 +570,18 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
                    : "Select the color, size, and quantity you wish to order."}
             </DialogDescription>
           </DialogHeader>
+          
+          {/* Product Feedback Summary */}
+          {user?.role === 'shop' && (
+            <div className="px-6 pb-4">
+              <ProductFeedbackSummary 
+                product={product} 
+                className="text-sm" 
+                showButton={true}
+              />
+            </div>
+          )}
+          
           <div className="py-4 max-h-[65vh] overflow-y-auto pr-4">
              {/* Factory controls */}
              {user?.role === 'factory' && (

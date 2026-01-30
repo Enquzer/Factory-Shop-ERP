@@ -22,6 +22,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
+    // --- ENFORCE MATERIAL FULFILLMENT LOGIC ---
+    if (!order.isMaterialsConfirmed) {
+      return NextResponse.json({ 
+        error: 'Incomplete Material Fulfillment', 
+        details: 'You cannot release this order to production until raw materials availability is confirmed in the Fulfillment Center.' 
+      }, { status: 400 });
+    }
+
     // Apply updates (status, dates, etc.)
     const success = await updateMarketingOrderInDB(orderId, {
       ...updates,

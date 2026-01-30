@@ -10,17 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Plus, Download, PackageCheck } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
-
-interface RawMaterial {
-  id: string;
-  name: string;
-  category: string;
-  unitOfMeasure: string;
-  currentBalance: number;
-  minimumStockLevel: number;
-  costPerUnit: number;
-  supplier: string;
-}
+import { RawMaterial } from '@/lib/raw-materials';
+import { authenticatedFetch } from '@/lib/utils';
 
 interface BOMItem {
   id: string;
@@ -37,6 +28,7 @@ interface BOMItem {
   requestedQty?: number; // Added for requested quantity
   calculatedCost?: number; // Added for calculated cost
   isCustom?: boolean; // Added to identify custom materials not in the database
+  materialImageUrl?: string; // Raw material image URL
 }
 
 interface MarketingOrderItem {
@@ -148,12 +140,14 @@ export function BOMModificationDialog({
         const calculatedTotal = quantityForColor * bomItem.quantityPerUnit * (1 + (bomItem.wastagePercentage / 100));
         const totalCost = calculatedTotal * (bomItem.cost || 0);
         
-        // Find cost from available materials if not already set
+        // Find cost and image from available materials if not already set
         let itemCost = bomItem.cost || 0;
-        if (!itemCost && bomItem.materialName) {
+        let materialImageUrl = bomItem.materialImageUrl || '';
+        if (bomItem.materialName) {
           const matchedMaterial = materials.find(mat => mat.name === bomItem.materialName);
           if (matchedMaterial) {
-            itemCost = matchedMaterial.costPerUnit;
+            if (!itemCost) itemCost = matchedMaterial.costPerUnit;
+            materialImageUrl = matchedMaterial.imageUrl || '';
           }
         }
         
@@ -167,7 +161,8 @@ export function BOMModificationDialog({
           calculatedTotal,
           requestedQty: quantityForColor,
           cost: itemCost,
-          calculatedCost
+          calculatedCost,
+          materialImageUrl
         });
       });
     });
@@ -205,7 +200,8 @@ export function BOMModificationDialog({
           calculatedTotal: quantity * 1 * (1 + (5 / 100)),
           requestedQty: quantity,
           cost: fabricCostPerUnit,
-          calculatedCost: quantity * 1 * (1 + (5 / 100)) * fabricCostPerUnit
+          calculatedCost: quantity * 1 * (1 + (5 / 100)) * fabricCostPerUnit,
+          materialImageUrl: fabricMaterial?.imageUrl || ''
         };
         aggregatedItems.push(fabricEntry);
       }
@@ -228,7 +224,8 @@ export function BOMModificationDialog({
           calculatedTotal: quantity * 0.1 * (1 + (10 / 100)),
           requestedQty: quantity,
           cost: threadCostPerUnit,
-          calculatedCost: quantity * 0.1 * (1 + (10 / 100)) * threadCostPerUnit
+          calculatedCost: quantity * 0.1 * (1 + (10 / 100)) * threadCostPerUnit,
+          materialImageUrl: threadMaterial?.imageUrl || ''
         };
         aggregatedItems.push(threadEntry);
       }
@@ -252,7 +249,8 @@ export function BOMModificationDialog({
       cost: 0,
       requestedQty: orderDetails.quantity || 1,
       calculatedTotal: 0,
-      calculatedCost: 0
+      calculatedCost: 0,
+      materialImageUrl: ''
     };
     setBomItems(prev => [...prev, newItem]);
   };
@@ -462,12 +460,8 @@ export function BOMModificationDialog({
       };
 
       // Send request to the store for BOM materials
-      const response = await fetch('/api/material-requests/create-bom-request', {
+      const response = await authenticatedFetch('/api/material-requests/create-bom-request', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
         body: JSON.stringify(storeRequest)
       });
 

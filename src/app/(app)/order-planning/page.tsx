@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Table, 
   TableBody, 
@@ -50,8 +51,11 @@ import {
   Pencil, 
   Send, 
   AlertCircle, 
+  CheckCircle2,
   Layers, 
   Shirt, 
+  Rocket,
+  BarChart4,
   ChevronDown 
 } from "lucide-react";
 import { useAuth } from '@/contexts/auth-context';
@@ -67,6 +71,7 @@ import {
 import { format, addDays } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { generateProductionPlanningPDF, generateOrderPDF, downloadPDF } from '@/lib/pdf-generator';
+import { authenticatedFetch } from '@/lib/utils';
 import { generateBOMPDF, downloadBOMPDF } from '@/lib/bom-pdf-generator';
 import html2canvas from 'html2canvas';
 
@@ -89,6 +94,7 @@ interface PlanningRow extends MarketingOrder {
 export default function OrderPlanningPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<MarketingOrder | null>(null);
@@ -140,6 +146,32 @@ export default function OrderPlanningPage() {
       return '';
     }
   };
+
+  const formatDateValue = (dateString: string): string => {
+    if (!dateString) return '';
+    
+    // If it's already in YYYY-MM-DD format, return as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // If it's a datetime string with time component, extract just the date part
+    if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}/.test(dateString)) {
+      return dateString.split(' ')[0];
+    }
+    
+    // For other formats, try to parse and format as YYYY-MM-DD
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      
+      // Format as YYYY-MM-DD
+      return format(date, 'yyyy-MM-dd');
+    } catch {
+      return '';
+    }
+  };
+
 
   const getAutoOutput = (smv: number, mp: number, efficiency: number) => {
     if (!smv || smv <= 0) return 0;
@@ -324,11 +356,21 @@ export default function OrderPlanningPage() {
   };
 
   const handleReleaseOrder = async (order: MarketingOrder) => {
-    if (!order.cuttingStartDate || !order.sewingStartDate || !order.packingStartDate) {
-      if (!confirm('Some planned dates are missing. Release anyway?')) return;
-    } else {
-      if (!confirm(`Release order ${order.orderNumber} to production teams (Cutting, Sewing, Packing)?`)) return;
+    if (!order.isMaterialsConfirmed) {
+      toast({ 
+        title: "Release Blocked", 
+        description: "You must confirm material availability in the Fulfillment Center before releasing to production.", 
+        variant: "destructive" 
+      });
+      return;
     }
+
+    const hasMissingDates = !order.cuttingStartDate || !order.sewingStartDate || !order.packingStartDate;
+    const confirmMsg = hasMissingDates 
+      ? 'Some planned dates are missing. Release anyway?' 
+      : `Release order ${order.orderNumber} to production teams (Cutting, Sewing, Packing)?`;
+
+    if (!confirm(confirmMsg)) return;
 
     try {
       const response = await fetch('/api/production-release', {
@@ -340,12 +382,10 @@ export default function OrderPlanningPage() {
         body: JSON.stringify({
           orderId: order.id,
           updates: {
-             // Pass current values to ensure backend has latest
              cuttingStartDate: order.cuttingStartDate,
              cuttingFinishDate: order.cuttingFinishDate,
              packingStartDate: order.packingStartDate,
              packingFinishDate: order.packingFinishDate,
-             // Ensure sewing dates are also synced if changed recently
              sewingStartDate: order.sewingStartDate,
              sewingFinishDate: order.sewingFinishDate
           }
@@ -358,10 +398,7 @@ export default function OrderPlanningPage() {
       }
       
       toast({ title: "Success", description: "Order released to production teams." });
-      
-      // Update local state status
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Cutting' } : o));
-
     } catch (error: any) {
       console.error('Release failed:', error);
       toast({ title: "Release Failed", description: error.message, variant: "destructive" });
@@ -616,6 +653,15 @@ export default function OrderPlanningPage() {
               <DropdownMenuItem onClick={() => handleExportPDF('packing')}>Packing Plan PDF</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button 
+            onClick={() => router.push('/order-planning/consumption')} 
+            variant="outline" 
+            size="sm" 
+            className="h-[40px] border-primary/20 text-primary hover:bg-primary/5 font-bold"
+          >
+            <BarChart4 className="mr-2 h-4 w-4" />
+            Consumption Analysis
+          </Button>
           <Button onClick={fetchOrders} variant="secondary" size="sm" className="h-[40px]">
             Refresh Data
           </Button>
@@ -701,7 +747,12 @@ export default function OrderPlanningPage() {
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
                              {(!order.isComponent || order.componentIndex === 0) ? (
-                               <span className="font-semibold text-[10px]">{order.orderNumber}</span>
+                               <span 
+                                 className="font-semibold text-[10px] cursor-pointer hover:text-primary hover:underline transition-all"
+                                 onClick={() => router.push(`/order-planning/${order.id}`)}
+                               >
+                                 {order.orderNumber}
+                               </span>
                              ) : (
                                <span className="text-[10px] text-muted-foreground/40 italic">-- same order --</span>
                              )}
@@ -709,6 +760,15 @@ export default function OrderPlanningPage() {
                                <Badge variant="secondary" className={cn("text-[8px] h-4 px-1 uppercase font-bold", order.isMock ? "bg-slate-200 text-slate-500" : "bg-amber-100 text-amber-700")}>
                                  {order.componentName}
                                </Badge>
+                             )}
+                             {(!order.isComponent || order.componentIndex === 0) && (
+                               <span title={order.isMaterialsConfirmed ? "Materials Secured" : "Materials Pending"}>
+                                 {order.isMaterialsConfirmed ? (
+                                   <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                 ) : (
+                                   <AlertCircle className="h-3 w-3 text-amber-500" />
+                                 )}
+                               </span>
                              )}
                           </div>
                           {(!order.isComponent || order.componentIndex === 0) && (
@@ -789,14 +849,14 @@ export default function OrderPlanningPage() {
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
-                              value={order.cuttingStartDate || ''}
+                              value={formatDateValue(order.cuttingStartDate || '')}
                               onChange={(e) => handleUpdatePlanning(order.displayId, { cuttingStartDate: e.target.value }, order.isComponent, order.mainOrderId)}
                               placeholder="Start"
                            />
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
-                              value={order.cuttingFinishDate || ''}
+                              value={formatDateValue(order.cuttingFinishDate || '')}
                               onChange={(e) => handleUpdatePlanning(order.displayId, { cuttingFinishDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                          </div>
@@ -808,7 +868,7 @@ export default function OrderPlanningPage() {
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
-                              value={order.sewingStartDate || ''}
+                              value={formatDateValue(order.sewingStartDate || '')}
                               onChange={(e) => handleUpdatePlanning(order.displayId, { sewingStartDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                            <div className="text-[8px] font-medium text-center text-green-700">
@@ -823,13 +883,13 @@ export default function OrderPlanningPage() {
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
-                              value={order.packingStartDate || ''}
+                              value={formatDateValue(order.packingStartDate || '')}
                               onChange={(e) => handleUpdatePlanning(order.displayId, { packingStartDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                            <Input 
                               type="date" 
                               className="h-6 text-[8px] p-1 w-full bg-transparent border-none focus:bg-background"
-                              value={order.packingFinishDate || ''}
+                              value={formatDateValue(order.packingFinishDate || '')}
                               onChange={(e) => handleUpdatePlanning(order.displayId, { packingFinishDate: e.target.value }, order.isComponent, order.mainOrderId)}
                            />
                          </div>
@@ -855,11 +915,24 @@ export default function OrderPlanningPage() {
                                 Edit Details
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => router.push(`/order-planning/${order.id}`)}
+                                className="bg-primary/5 font-bold text-primary"
+                              >
+                                <Rocket className="mr-2 h-4 w-4" />
+                                Order Fulfillment Center
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
                                 onClick={() => handleReleaseOrder(order)}
-                                className="text-blue-600 focus:text-blue-600"
+                                className={cn(
+                                  "text-blue-600 focus:text-blue-600",
+                                  !order.isMaterialsConfirmed && "opacity-50 grayscale cursor-not-allowed"
+                                )}
+                                disabled={!order.isMaterialsConfirmed}
+                                title={!order.isMaterialsConfirmed ? "Materials must be confirmed in the Fulfillment Center first" : ""}
                               >
                                 <Send className="mr-2 h-4 w-4" />
-                                Release to Production
+                                Release to Production {!order.isMaterialsConfirmed && "(Locked)"}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => {
@@ -887,11 +960,7 @@ export default function OrderPlanningPage() {
                                     
                                     const orderDetails = await orderResponse.json();
                                     
-                                    const response = await fetch(`/api/requisitions?orderId=${order.id}`, {
-                                      headers: {
-                                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                                      }
-                                    });
+                                    const response = await authenticatedFetch(`/api/requisitions?orderId=${order.id}`);
                                     
                                     if (!response.ok) {
                                       throw new Error('Failed to fetch BOM items');

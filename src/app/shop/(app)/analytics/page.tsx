@@ -19,7 +19,7 @@ export default function ShopAnalyticsPage() {
     useEffect(() => {
         const fetchData = async () => {
             if (!user || user.role !== 'shop') {
-                router.push('/shop/login');
+                router.push('/');
                 return;
             }
 

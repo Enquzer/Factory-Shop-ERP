@@ -15,6 +15,11 @@ export function PublicWebsiteHeader() {
         </div>
         <div className="flex flex-1 items-center justify-end space-x-2">
           <Button variant="ghost" size="sm" className="flex items-center gap-2" asChild>
+            <Link href="/ecommerce">
+              <span>Shop Now</span>
+            </Link>
+          </Button>
+          <Button variant="ghost" size="sm" className="flex items-center gap-2" asChild>
             <Link href="/login">
               <LogIn className="h-4 w-4" />
               <span>Login</span>

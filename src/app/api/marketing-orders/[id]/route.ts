@@ -3,6 +3,7 @@ import { getMarketingOrderByIdFromDB, updateMarketingOrderInDB, deleteMarketingO
 import { getDb } from '@/lib/db';
 import { createNotification } from '@/lib/notifications';
 import { authenticateRequest } from '@/lib/auth-middleware';
+import { createReceivingVoucher } from '@/lib/receiving-vouchers';
 
 // GET /api/marketing-orders/:id - Get a specific marketing order by ID
 export async function GET(request: Request, { params }: { params: { id: string } }) {
@@ -136,6 +137,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
               
               // Set the flag so we don't add inventory again
               await db.run('UPDATE marketing_orders SET inventoryAdded = 1 WHERE id = ?', params.id);
+
+              // Generate receiving voucher for the finished goods
+              try {
+                const receivingVoucher = await createReceivingVoucher(params.id, user.id.toString());
+                console.log(`Created receiving voucher ${receivingVoucher.id} with pad number ${receivingVoucher.padNumber}`);
+              } catch (voucherError) {
+                console.error('Error creating receiving voucher:', voucherError);
+                // Don't fail the entire operation if voucher creation fails
+              }
 
               // Notify shops about new stock availability
               await createNotification({

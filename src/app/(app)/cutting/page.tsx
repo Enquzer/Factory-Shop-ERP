@@ -48,11 +48,15 @@ import {
   requestQC,
   CuttingRecord,
   CuttingItem,
-  ProductComponent
+  ProductComponent,
+  createPartialHandover,
+  getHandovers,
+  CuttingHandover
 } from '@/lib/cutting';
-import { getMarketingOrders, MarketingOrder } from '@/lib/marketing-orders';
+import { getMarketingOrders, MarketingOrder, getQualityInspections, QualityInspection } from '@/lib/marketing-orders';
 import { format } from 'date-fns';
 import Image from 'next/image';
+import { generateHandoverPDF } from '@/lib/handover-pdf-generator';
 
 export default function CuttingPage() {
   const { user } = useAuth();
@@ -72,10 +76,40 @@ export default function CuttingPage() {
   const [recordsSearchTerm, setRecordsSearchTerm] = useState('');
   const [selectedOrderIdForHistory, setSelectedOrderIdForHistory] = useState<string | null>(null);
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+  const [handoverQuantities, setHandoverQuantities] = useState<Record<number, number>>({});
+  const [latestQualityInspection, setLatestQualityInspection] = useState<QualityInspection | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [lastHandoverId, setLastHandoverId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (selectedRecord && isHandoverDialogOpen) {
+      // Initialize handover quantities to remaining units
+      const initialQtys: Record<number, number> = {};
+      selectedRecord.items?.forEach(item => {
+        initialQtys[item.id] = Math.max(0, item.cutQuantity - (item.totalHandedOver || 0));
+      });
+      setHandoverQuantities(initialQtys);
+      
+      // Fetch latest quality inspection for the order
+      const fetchQualityData = async () => {
+        try {
+          const inspections = await getQualityInspections(selectedRecord.orderId);
+          if (inspections.length > 0) {
+            setLatestQualityInspection(inspections[0]);
+          } else {
+            setLatestQualityInspection(null);
+          }
+        } catch (error) {
+          console.error('Error fetching quality data:', error);
+        }
+      };
+      fetchQualityData();
+    }
+  }, [selectedRecord?.id, isHandoverDialogOpen]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -231,22 +265,84 @@ export default function CuttingPage() {
       });
       return;
     }
+
+    const itemsToHandover = selectedRecord.items?.map(item => ({
+      cuttingItemId: item.id,
+      quantity: handoverQuantities[item.id] || 0
+    })).filter(i => i.quantity > 0);
+
+    if (!itemsToHandover || itemsToHandover.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please enter quantity for at least one item",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      await handoverToProduction(selectedRecord.id, productionReceiverName);
+      const handoverId = await createPartialHandover(selectedRecord.id, {
+        orderId: selectedRecord.orderId,
+        receivedBy: productionReceiverName,
+        handoverDate: new Date().toISOString(),
+        handoverBy: user?.username || 'System',
+        qualityInspectorBy: latestQualityInspection?.inspectorId || undefined,
+        items: itemsToHandover
+      });
+
       toast({
         title: "Success",
-        description: "Handed over to production successfully"
+        description: "Handed over successfully"
       });
-      setIsHandoverDialogOpen(false);
+      
+      setLastHandoverId(handoverId);
+      // setIsHandoverDialogOpen(false); // Keep open to show PDF download
       setProductionReceiverName('');
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error handing over:', error);
       toast({
         title: "Error",
-        description: "Failed to handover to production",
+        description: error.message || "Failed to handover to production",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleDownloadHandoverPDF = async (handoverId: number) => {
+    if (!selectedRecord) return;
+    setIsGeneratingPDF(true);
+    try {
+      const handovers = await getHandovers(selectedRecord.id);
+      const handover = handovers.find(h => h.id === handoverId);
+      if (!handover) throw new Error('Handover record not found');
+
+      const order = orders.find(o => o.id === selectedRecord.orderId);
+      if (!order) throw new Error('Order details not found');
+
+      const blob = await generateHandoverPDF(
+        order,
+        handover,
+        handover.items || [],
+        latestQualityInspection || undefined
+      );
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `handover_${order.orderNumber}_HO${handoverId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF",
+        variant: "destructive"
+      });
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
@@ -954,49 +1050,174 @@ export default function CuttingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Handover Dialog */}
-      <Dialog open={isHandoverDialogOpen} onOpenChange={setIsHandoverDialogOpen}>
-        <DialogContent>
+      <Dialog open={isHandoverDialogOpen} onOpenChange={(open) => {
+        setIsHandoverDialogOpen(open);
+        if (!open) {
+          setLastHandoverId(null);
+          setHandoverQuantities({});
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-primary" />
-              Handover to Production
+              <Package className="h-5 w-5 text-blue-500" />
+              Cutting to Production Handover
+              {selectedRecord && (
+                <Badge variant="outline" className="ml-2">
+                  Order: {selectedRecord.orderNumber}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Production Receiver Name *</label>
-              <Input
-                placeholder="Enter name of person receiving in production..."
-                value={productionReceiverName}
-                onChange={(e) => setProductionReceiverName(e.target.value)}
-              />
+          
+          <div className="space-y-6 py-4">
+            {/* Handover Info */}
+            <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-3 rounded-lg">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>Date: {format(new Date(), 'dd MMM yyyy')}</span>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                <span>Time: {format(new Date(), 'HH:mm')}</span>
+              </div>
             </div>
-            <div className="p-4 bg-muted/30 rounded-lg">
-              <p className="text-sm text-muted-foreground">
-                By confirming this handover, you certify that:
-              </p>
-              <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
-                <li>All pieces have been cut according to specifications</li>
-                <li>QC check has been passed</li>
-                <li>All components are ready for production</li>
-                <li>Size and color breakdown is accurate</li>
-              </ul>
+
+            {/* Quality Summary */}
+            {latestQualityInspection ? (
+              <div className="border border-green-200 bg-green-50/50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-2 text-green-700">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Latest Quality Report
+                  </h4>
+                  <Badge variant="outline" className="bg-green-100 text-green-700 hover:bg-green-100">
+                    {latestQualityInspection.status.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs text-green-800">
+                  <div>Stage: {latestQualityInspection.stage}</div>
+                  <div>Passed: {latestQualityInspection.quantityPassed}</div>
+                  <div>Inspector: {latestQualityInspection.inspectorId || 'N/A'}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-amber-200 bg-amber-50/50 rounded-lg p-3 flex items-center gap-2 text-sm text-amber-700">
+                <AlertCircle className="h-4 w-4" />
+                No quality report found for this order.
+              </div>
+            )}
+
+            {/* Quantity Selection */}
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead>Size/Color</TableHead>
+                    <TableHead className="text-center">Cut Qty</TableHead>
+                    <TableHead className="text-center">Handed Over</TableHead>
+                    <TableHead className="text-right w-32">To Handover</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedRecord?.items?.map((item) => {
+                    const available = Math.max(0, item.cutQuantity - (item.totalHandedOver || 0));
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium text-xs">
+                          {item.size} / {item.color}
+                        </TableCell>
+                        <TableCell className="text-center text-xs">{item.cutQuantity}</TableCell>
+                        <TableCell className="text-center text-xs">
+                          <Badge variant="secondary" className="font-normal">
+                            {item.totalHandedOver || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            className="h-8 text-right text-xs"
+                            min={0}
+                            max={available}
+                            value={handoverQuantities[item.id] ?? available}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              setHandoverQuantities(prev => ({
+                                ...prev,
+                                [item.id]: Math.min(val, available)
+                              }));
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
+
+            {/* Signatures */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Sewing/Production Receiver Name *</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Enter name of person receiving..."
+                    className="pl-9"
+                    value={productionReceiverName}
+                    onChange={(e) => setProductionReceiverName(e.target.value)}
+                    disabled={!!lastHandoverId}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Post-Handover Success Actions */}
+            {lastHandoverId && (
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex flex-col items-center gap-3 animate-in fade-in zoom-in duration-300">
+                <p className="text-sm text-blue-700 font-medium flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-blue-500" />
+                  Handover record created!
+                </p>
+                <Button 
+                  onClick={() => handleDownloadHandoverPDF(lastHandoverId)}
+                  disabled={isGeneratingPDF}
+                  variant="default"
+                  className="bg-blue-600 hover:bg-blue-700 w-full"
+                >
+                  {isGeneratingPDF ? (
+                    <span className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 animate-spin" />
+                      Generating PDF...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Download Handover PDF
+                    </span>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => {
               setIsHandoverDialogOpen(false);
               setProductionReceiverName('');
+              setLastHandoverId(null);
             }}>
-              Cancel
+              {lastHandoverId ? 'Close' : 'Cancel'}
             </Button>
-            <Button 
-              onClick={handleHandover}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Confirm Handover
-            </Button>
+            {!lastHandoverId && (
+              <Button 
+                onClick={handleHandover}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                Complete Handover
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

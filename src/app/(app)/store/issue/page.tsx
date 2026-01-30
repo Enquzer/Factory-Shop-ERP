@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { authenticatedFetch } from "@/lib/utils";
 import { Loader2, CheckCircle, AlertCircle, ShoppingCart, Send, Layers, AlertTriangle, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -21,12 +22,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PadNumberDisplay } from "@/components/pad-number-display";
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 
 export default function MaterialIssuancePage() {
   const { toast } = useToast();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
   const router = useRouter();
   const [requisitions, setRequisitions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +42,7 @@ export default function MaterialIssuancePage() {
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
-        router.push('/store/login');
+        router.push('/');
         return;
       }
       
@@ -66,21 +68,23 @@ export default function MaterialIssuancePage() {
     
     setLoading(true);
     try {
-      // Add authorization header
       const token = localStorage.getItem('authToken');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in again", variant: "destructive" });
+        router.push('/');
+        return;
       }
       
-      const res = await fetch('/api/requisitions', {
-        headers
-      });
+      // Add authorization header
+      const res = await authenticatedFetch('/api/requisitions');
       
       if (!res.ok) {
+        if (res.status === 401) {
+          toast({ title: "Session Expired", description: "Please log in again", variant: "destructive" });
+          logout();
+          router.push('/');
+          return;
+        }
         throw new Error(`HTTP error! status: ${res.status}`);
       }
       
@@ -165,7 +169,9 @@ export default function MaterialIssuancePage() {
         body: JSON.stringify({
           materialId: selectedReq.materialId,
           quantity: shortfall,
-          reason: purchaseReason || `Shortfall for Order ${selectedReq.orderNumber} - ${selectedReq.productName}. Required: ${selectedReq.quantityRequested.toFixed(2)}, Available: ${selectedReq.currentBalance.toFixed(2)}`
+          reason: purchaseReason || `Shortfall for Order ${selectedReq.orderNumber} - ${selectedReq.productName}. Required: ${selectedReq.quantityRequested.toFixed(2)}, Available: ${selectedReq.currentBalance.toFixed(2)}`,
+          orderId: selectedReq.orderId,
+          requisitionId: selectedReq.id
         })
       });
       
@@ -240,6 +246,7 @@ export default function MaterialIssuancePage() {
                   <TableHead>Req. Qty</TableHead>
                   <TableHead>Issued</TableHead>
                   <TableHead>Stock Balance</TableHead>
+                  <TableHead>Pad Number</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -247,7 +254,7 @@ export default function MaterialIssuancePage() {
               <TableBody>
                 {requisitions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                       No pending material requests.
                     </TableCell>
                   </TableRow>
@@ -279,6 +286,15 @@ export default function MaterialIssuancePage() {
                               </Badge>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <PadNumberDisplay 
+                            padNumber={req.padNumber}
+                            type="material"
+                            recordId={req.id}
+                            editable={user?.role === 'store'}
+                            className="text-xs"
+                          />
                         </TableCell>
                         <TableCell>
                           <Badge variant={req.status === 'Pending' ? 'outline' : 'secondary'}>

@@ -37,6 +37,17 @@ const nextConfig = {
     // This is a workaround for a known issue with Genkit and Next.js.
     // It prevents webpack from trying to bundle server-side dependencies.
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    
+    // Prevent sqlite3 and other Node.js specific modules from being bundled in client-side code
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        os: false,
+      };
+    }
+    
     return config;
   },
   // Add security headers

@@ -57,6 +57,33 @@ export type CuttingItem = {
   remarks?: string;
   created_at: string;
   updated_at: string;
+  totalHandedOver?: number; // Aggregate field
+};
+
+export type CuttingHandover = {
+  id: number;
+  cuttingRecordId: number;
+  orderId: string;
+  handoverDate: string;
+  handoverBy: string;
+  receivedBy: string;
+  qualityInspectorBy?: string;
+  cuttingSignature?: string;
+  sewingSignature?: string;
+  qualitySignature?: string;
+  pdfUrl?: string;
+  created_at: string;
+  items?: CuttingHandoverItem[];
+};
+
+export type CuttingHandoverItem = {
+  id: number;
+  handoverId: number;
+  cuttingItemId: number;
+  quantity: number;
+  // Join fields
+  size?: string;
+  color?: string;
 };
 
 export type ProductComponent = {
@@ -76,12 +103,14 @@ export async function getCuttingRecordsFromDB(): Promise<CuttingRecord[]> {
     ORDER BY cr.created_at DESC
   `);
 
-  // Fetch items for each record
+  // Fetch items for each record with summed handover quantities
   for (const record of records) {
     const items = await db.all(`
-      SELECT * FROM cutting_items
-      WHERE cuttingRecordId = ?
-      ORDER BY size, color
+      SELECT ci.*, 
+             COALESCE((SELECT SUM(chi.quantity) FROM cutting_handover_items chi WHERE chi.cuttingItemId = ci.id), 0) as totalHandedOver
+      FROM cutting_items ci
+      WHERE ci.cuttingRecordId = ?
+      ORDER BY ci.size, ci.color
     `, record.id);
     record.items = items;
   }
@@ -103,9 +132,11 @@ export async function getCuttingRecordByIdFromDB(id: number): Promise<CuttingRec
   if (!record) return null;
 
   const items = await db.all(`
-    SELECT * FROM cutting_items
-    WHERE cuttingRecordId = ?
-    ORDER BY size, color
+    SELECT ci.*, 
+           COALESCE((SELECT SUM(chi.quantity) FROM cutting_handover_items chi WHERE chi.cuttingItemId = ci.id), 0) as totalHandedOver
+    FROM cutting_items ci
+    WHERE ci.cuttingRecordId = ?
+    ORDER BY ci.size, ci.color
   `, id);
   record.items = items;
 
@@ -487,7 +518,6 @@ async function calculateKPIMetrics(db: any, recordId: number) {
         sewingStartDelay = 0; // Early start doesn't count as negative delay
       }
     }
-    
     // Update the cutting record with calculated delays
     await db.run(`
       UPDATE cutting_records 
@@ -497,6 +527,127 @@ async function calculateKPIMetrics(db: any, recordId: number) {
       WHERE id = ?
     `, cuttingDelay, sewingStartDelay, recordId);
   }
+}
+
+export async function createHandoverRecordFromDB(
+  data: Omit<CuttingHandover, 'id' | 'created_at' | 'items'> & { items: Omit<CuttingHandoverItem, 'id' | 'handoverId'>[] }
+): Promise<number> {
+  const db = await getDb();
+  
+  // Insert main handover record
+  const result = await db.run(`
+    INSERT INTO cutting_handovers (
+      cuttingRecordId, orderId, handoverDate, handoverBy, receivedBy, 
+      qualityInspectorBy, cuttingSignature, sewingSignature, qualitySignature, pdfUrl
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, 
+    data.cuttingRecordId, 
+    data.orderId, 
+    data.handoverDate, 
+    data.handoverBy, 
+    data.receivedBy,
+    data.qualityInspectorBy || null,
+    data.cuttingSignature || null,
+    data.sewingSignature || null,
+    data.qualitySignature || null,
+    data.pdfUrl || null
+  );
+
+  const handoverId = result.lastID;
+
+  // Insert handover items
+  for (const item of data.items) {
+    if (item.quantity > 0) {
+      await db.run(`
+        INSERT INTO cutting_handover_items (handoverId, cuttingItemId, quantity)
+        VALUES (?, ?, ?)
+      `, handoverId, item.cuttingItemId, item.quantity);
+    }
+  }
+
+  // Update cutting record status if all units are handed over
+  // We can check the total handed over vs total cut
+  const items = await db.all(`
+    SELECT ci.id, ci.cutQuantity, 
+           COALESCE((SELECT SUM(chi.quantity) FROM cutting_handover_items chi WHERE chi.cuttingItemId = ci.id), 0) as totalHandedOver
+    FROM cutting_items ci
+    WHERE ci.cuttingRecordId = ?
+  `, data.cuttingRecordId);
+
+  const allHandedOver = items.every((i: any) => i.totalHandedOver >= i.cutQuantity);
+  
+  if (allHandedOver) {
+    await db.run(`
+      UPDATE cutting_records 
+      SET status = 'handed_over',
+          handedOverToProduction = 1,
+          handoverDate = ?,
+          handoverBy = ?,
+          productionReceivedBy = ?,
+          sewingNotified = 1,
+          sewingNotifiedDate = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `, data.handoverDate, data.handoverBy, data.receivedBy, data.handoverDate, data.cuttingRecordId);
+    
+    // Update marketing order status
+    await db.run(`
+      UPDATE marketing_orders 
+      SET cuttingHandedOver = 1,
+          cuttingStatus = 'handed_over'
+      WHERE id = ?
+    `, data.orderId);
+  } else {
+    // Still in progress but partially handed over
+    await db.run(`
+      UPDATE cutting_records 
+      SET sewingNotified = 1,
+          sewingNotifiedDate = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `, data.handoverDate, data.cuttingRecordId);
+  }
+
+  return handoverId;
+}
+
+export async function getHandoversByRecordIdFromDB(recordId: number): Promise<CuttingHandover[]> {
+  const db = await getDb();
+  const handovers = await db.all(`
+    SELECT * FROM cutting_handovers
+    WHERE cuttingRecordId = ?
+    ORDER BY handoverDate DESC
+  `, recordId);
+
+  for (const handover of handovers) {
+    handover.items = await db.all(`
+      SELECT chi.*, ci.size, ci.color
+      FROM cutting_handover_items chi
+      JOIN cutting_items ci ON chi.cuttingItemId = ci.id
+      WHERE chi.handoverId = ?
+    `, handover.id);
+  }
+
+  return handovers;
+}
+
+export async function getHandoverByIdFromDB(id: number): Promise<CuttingHandover | null> {
+  const db = await getDb();
+  const handover = await db.get(`
+    SELECT * FROM cutting_handovers
+    WHERE id = ?
+  `, id);
+
+  if (!handover) return null;
+
+  handover.items = await db.all(`
+    SELECT chi.*, ci.size, ci.color
+    FROM cutting_handover_items chi
+    JOIN cutting_items ci ON chi.cuttingItemId = ci.id
+    WHERE chi.handoverId = ?
+  `, id);
+
+  return handover;
 }
 
 // Client-side functions
@@ -620,4 +771,36 @@ export async function acceptCut(recordId: number, sewingResponsiblePerson?: stri
     body: JSON.stringify({ sewingResponsiblePerson })
   });
   return response.ok;
+}
+
+export async function createPartialHandover(
+  recordId: number, 
+  data: Omit<CuttingHandover, 'id' | 'created_at' | 'items' | 'cuttingRecordId'> & { items: { cuttingItemId: number, quantity: number }[] }
+): Promise<number> {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`/api/cutting/${recordId}/partial-handover`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create partial handover');
+  }
+  const result = await response.json();
+  return result.id;
+}
+
+export async function getHandovers(recordId: number): Promise<CuttingHandover[]> {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`/api/cutting/${recordId}/handovers`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) throw new Error('Failed to fetch handovers');
+  return response.json();
 }

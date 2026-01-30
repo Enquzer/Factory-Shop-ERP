@@ -91,7 +91,7 @@ export function RawMaterialSelector({ onSelect, value, placeholder }: RawMateria
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
     try {
-      const res = await fetch('/api/purchase-requests', {
+      const res = await fetch('/api/designer/material-requests', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -104,13 +104,29 @@ export function RawMaterialSelector({ onSelect, value, placeholder }: RawMateria
         })
       });
       
+      const result = await res.json();
+      
       if (res.ok) {
-        toast({ title: "Success", description: "Purchase request submitted to Store department." });
+        toast({ 
+          title: "Success", 
+          description: result.message || "Material request sent to Store department successfully." 
+        });
         setIsRequestModalOpen(false);
         setNewRequest({ name: '', quantity: 1, reason: '' });
+      } else {
+        toast({ 
+          title: "Error", 
+          description: result.error || "Failed to submit request",
+          variant: "destructive" 
+        });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to submit request", variant: "destructive" });
+      console.error('Error submitting material request:', error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to submit request. Please try again.",
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -194,7 +210,10 @@ export function RawMaterialSelector({ onSelect, value, placeholder }: RawMateria
           <DialogHeader>
             <DialogTitle>Request New Purchase</DialogTitle>
             <DialogDescription>
-              Material not in registry? Send a purchase request to the Store department.
+              Material not in registry? Send a material request to the Store department.
+              <div className="mt-2 text-sm text-muted-foreground">
+                Store will review and create purchase requests as needed.
+              </div>
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

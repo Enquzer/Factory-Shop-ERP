@@ -541,8 +541,9 @@ export default function QualityInspectionDashboardPage() {
                              <Image 
                                src={order.imageUrl} 
                                alt={order.productName} 
-                               fill 
-                               className="object-cover"
+                               width={64} 
+                               height={64} 
+                               className="object-cover w-full h-full"
                              />
                           ) : (
                              <div className="flex items-center justify-center h-full w-full text-gray-400">

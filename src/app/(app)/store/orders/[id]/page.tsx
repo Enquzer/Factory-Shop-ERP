@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
+import { PadNumberDisplay } from "@/components/pad-number-display";
 
 export default function StoreOrderDetailsPage() {
   const params = useParams();
@@ -290,6 +291,21 @@ export default function StoreOrderDetailsPage() {
                         <div className="flex items-center gap-2 mt-1">
                             <Building className="h-4 w-4 text-muted-foreground" />
                             <span className="font-bold text-lg">{order.shopName}</span>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                        <Label className="text-xs uppercase text-muted-foreground">Pad Number</Label>
+                        <div className="mt-2">
+                            <PadNumberDisplay 
+                                padNumber={order.padNumber}
+                                type="finished"
+                                recordId={order.id}
+                                editable={true}
+                                className="text-sm"
+                            />
                         </div>
                     </div>
 

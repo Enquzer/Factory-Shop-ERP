@@ -96,9 +96,9 @@ const VariantImagePreview = ({ control, index }: { control: any; index: number }
       <Image 
         src={preview} 
         alt={`Variant ${index + 1} preview`} 
-        fill 
-        sizes="(max-width: 768px) 50vw, 25vw"
-        style={{ objectFit: "cover" }} 
+        width={300}
+        height={128}
+        className="object-cover w-full h-full"
         priority={false} // Set to false for non-critical images
       />
     </div>
@@ -258,7 +258,7 @@ export default function NewProductPage() {
         agePricing: data.agePricing ? data.agePricing.map(p => ({
             ageMin: p.ageMin || 0,
             ageMax: p.ageMax || 0,
-            sizes: p.sizes || null,
+            sizes: p.sizes || undefined,
             price: p.price,
             cost: p.cost || 0
         })) : []

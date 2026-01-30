@@ -68,7 +68,7 @@ export default function FinancePurchaseRequestsPage() {
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
-        router.push('/finance/login');
+        router.push('/');
         return;
       }
       

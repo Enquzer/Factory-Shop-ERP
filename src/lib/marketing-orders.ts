@@ -124,6 +124,13 @@ export type MarketingOrder = {
   isNewProduct?: boolean;
   components?: MarketingOrderComponent[];
   styleComponents?: string; // JSON string from styles table
+  isMaterialsConfirmed?: boolean;
+  
+  // Receiving voucher fields
+  receivingVoucherPadNumber?: string;
+  receivingVoucherSequence?: number;
+  receivingVoucherPrefix?: string;
+  receivingVoucherFormat?: string;
 };
 
 export type OperationBulletinItem = {
@@ -456,6 +463,7 @@ export async function getMarketingOrdersFromDB(): Promise<MarketingOrder[]> {
           packingFinishDate: order.packingFinishDate,
           isNewProduct: order.isNewProduct === 1,
           isPlanningApproved: order.isPlanningApproved === 1,
+          isMaterialsConfirmed: order.isMaterialsConfirmed === 1,
           styleComponents: order.styleComponents,
           items: items.map((item: any) => ({
             id: item.id,
@@ -547,6 +555,11 @@ export async function getMarketingOrderByIdFromDB(id: string): Promise<Marketing
       packingFinishDate: order.packingFinishDate,
       isNewProduct: order.isNewProduct === 1,
       isPlanningApproved: order.isPlanningApproved === 1,
+      isMaterialsConfirmed: order.isMaterialsConfirmed === 1,
+      receivingVoucherPadNumber: order.receivingVoucherPadNumber,
+      receivingVoucherSequence: order.receivingVoucherSequence,
+      receivingVoucherPrefix: order.receivingVoucherPrefix,
+      receivingVoucherFormat: order.receivingVoucherFormat,
       items
     };
   } catch (error) {
@@ -918,6 +931,10 @@ export async function updateMarketingOrderInDB(id: string, order: Partial<Market
     if (order.isPlanningApproved !== undefined) {
       fields.push('isPlanningApproved = ?');
       values.push(order.isPlanningApproved ? 1 : 0);
+    }
+    if (order.isMaterialsConfirmed !== undefined) {
+      fields.push('isMaterialsConfirmed = ?');
+      values.push(order.isMaterialsConfirmed ? 1 : 0);
     }
     if (order.priority !== undefined) {
       fields.push('priority = ?');

@@ -19,10 +19,10 @@ export function ShopAppProvider({ children }: { children: React.ReactNode }) {
     const [redirecting, setRedirecting] = useState(false);
 
     useEffect(() => {
-        // If user is not authenticated and not loading, redirect to shop login
+        // If user is not authenticated and not loading, redirect to main login
         if (!isLoading && !user) {
             setRedirecting(true);
-            router.push('/shop/login');
+            router.push('/');
         }
         // If user is authenticated but not a shop user, redirect to appropriate dashboard
         else if (!isLoading && user && user.role !== 'shop') {

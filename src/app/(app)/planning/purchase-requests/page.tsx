@@ -40,7 +40,7 @@ export type PlanningPurchaseRequest = {
 
 export default function PlanningPurchaseRequestsPage() {
   const { toast } = useToast();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
   const router = useRouter();
   const [requests, setRequests] = useState<PlanningPurchaseRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +74,12 @@ export default function PlanningPurchaseRequestsPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('authToken');
+      if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in again", variant: "destructive" });
+        router.push('/login');
+        return;
+      }
+      
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -88,6 +94,12 @@ export default function PlanningPurchaseRequestsPage() {
       });
       
       if (!res.ok) {
+        if (res.status === 401) {
+          toast({ title: "Session Expired", description: "Please log in again", variant: "destructive" });
+          logout();
+          router.push('/login');
+          return;
+        }
         throw new Error(`HTTP error! status: ${res.status}`);
       }
       

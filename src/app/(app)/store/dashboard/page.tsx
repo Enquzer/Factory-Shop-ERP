@@ -28,6 +28,7 @@ import { Order, getOrders } from '@/lib/orders';
 import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { authenticatedFetch } from '@/lib/utils';
 
 export default function StoreDashboardPage() {
   const [marketingOrders, setMarketingOrders] = useState<MarketingOrder[]>([]);
@@ -80,12 +81,18 @@ export default function StoreDashboardPage() {
 
   const fetchData = async () => {
     try {
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const [mOrders, sOrders, pData, rmData, reqData] = await Promise.all([
         getMarketingOrders(),
         getOrders(),
-        fetch('/api/products').then(res => res.json()),
-        fetch('/api/raw-materials').then(res => res.json()),
-        fetch('/api/requisitions').then(res => res.json())
+        authenticatedFetch('/api/products').then(res => res.json()),
+        authenticatedFetch('/api/raw-materials').then(res => res.json()),
+        authenticatedFetch('/api/requisitions').then(res => res.json())
       ]);
       setMarketingOrders(mOrders);
       setShopOrders(sOrders);

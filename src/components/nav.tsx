@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers } from 'lucide-react';
+import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -27,6 +27,7 @@ const factoryLinks = [
   { href: '/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
   { href: '/order-planning', label: 'Order Planning', icon: GanttChart },
+  { href: '/order-fulfillment', label: 'Fulfillment Center', icon: Rocket },
   { href: '/cutting', label: 'Cutting Department', icon: Scissors },
   { href: '/production-dashboard', label: 'Production Dashboard', icon: LayoutDashboard },
   { href: '/sample-management', label: 'Sample Management', icon: FlaskConical },
@@ -34,7 +35,7 @@ const factoryLinks = [
   { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/settings/telegram', label: 'Telegram Channels', icon: Bell },
   { href: '/users', label: 'User Management', icon: User }, // Using User icon instead of Users
-  { href: '/store', label: 'Store Management', icon: Package },
+
   { href: '/finance', label: 'Finance Management', icon: FileText },
   { href: '/designer', label: 'Designer', icon: Palette },
   { href: '/profile', label: 'Profile', icon: User },
@@ -124,7 +125,8 @@ export function Nav() {
           { href: '/production-dashboard', label: 'Production Dashboard', icon: LayoutDashboard },
           { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
           { href: '/order-planning', label: 'Order Planning', icon: GanttChart },
-          { href: '/store/issue', label: 'Material Requests', icon: ShoppingCart },
+          { href: '/order-planning/consumption', label: 'Material Consumption', icon: BarChart4 },
+          { href: '/order-fulfillment', label: 'Fulfillment Center', icon: Rocket },
           { href: '/planning/purchase-requests', label: 'My Purchase Requests', icon: ShoppingCart },
           { href: '/profile', label: 'Profile', icon: User },
         ];
@@ -158,6 +160,7 @@ export function Nav() {
         { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
         { href: '/order-planning', label: 'Order Planning', icon: GanttChart },
+        { href: '/order-fulfillment', label: 'Fulfillment Center', icon: Rocket },
         { href: '/products', label: 'Products', icon: Package },
         { href: '/reports', label: 'Reports', icon: FileText },
         { href: '/profile', label: 'Profile', icon: User },

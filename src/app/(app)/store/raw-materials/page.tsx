@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, Loader2, Save, X, Search, Filter, Layers, Beaker, Scissors } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, Save, X, Search, Filter, Layers, Beaker, Scissors, Upload } from "lucide-react";
 import { 
   Dialog,
   DialogContent,
@@ -36,6 +36,7 @@ interface RawMaterial {
   minimumStockLevel: number;
   costPerUnit: number;
   supplier?: string;
+  imageUrl?: string;
   updatedAt?: string;
 }
 
@@ -54,8 +55,14 @@ export default function RawMaterialsPage() {
     currentBalance: 0,
     minimumStockLevel: 10,
     costPerUnit: 0,
-    supplier: ''
+    supplier: '',
+    imageUrl: ''
   });
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isImageUploading, setIsImageUploading] = useState(false);
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categories, setCategories] = useState<string[]>(['Fabric', 'Trims', 'Accessories', 'Thread']);
 
   useEffect(() => {
     fetchMaterials();
@@ -93,8 +100,10 @@ export default function RawMaterialsPage() {
           currentBalance: 0,
           minimumStockLevel: 10,
           costPerUnit: 0,
-          supplier: ''
+          supplier: '',
+          imageUrl: ''
         });
+        setImagePreview(null);
         fetchMaterials();
       }
     } catch (error) {
@@ -104,17 +113,85 @@ export default function RawMaterialsPage() {
     }
   };
 
+  const handleCreateCategory = () => {
+    if (!newCategoryName.trim()) return;
+    
+    const categoryExists = categories.some(cat => 
+      cat.toLowerCase() === newCategoryName.trim().toLowerCase()
+    );
+    
+    if (categoryExists) {
+      toast({ 
+        title: "Error", 
+        description: "Category already exists", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    const newCategories = [...categories, newCategoryName.trim()];
+    setCategories(newCategories);
+    setFormData({...formData, category: newCategoryName.trim()});
+    setNewCategoryName('');
+    setIsCategoryDialogOpen(false);
+    
+    toast({ 
+      title: "Success", 
+      description: `Category "${newCategoryName.trim()}" created successfully` 
+    });
+  };
+
   const filteredMaterials = (materials || []).filter(m => 
     m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.supplier?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({ title: "Error", description: "Please select an image file", variant: "destructive" });
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Error", description: "Image size must be less than 5MB", variant: "destructive" });
+      return;
+    }
+
+    setIsImageUploading(true);
+    
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target?.result as string;
+        setFormData({...formData, imageUrl: base64String});
+        setImagePreview(base64String);
+        setIsImageUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to upload image", variant: "destructive" });
+      setIsImageUploading(false);
+    }
+  };
+
+  const removeImage = () => {
+    setFormData({...formData, imageUrl: ''});
+    setImagePreview(null);
+  };
+
   const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'Fabric': return <Layers className="h-4 w-4" />;
-      case 'Trims': return <Scissors className="h-4 w-4" />;
-      case 'Accessories': return <Beaker className="h-4 w-4" />;
+    switch (category.toLowerCase()) {
+      case 'fabric': return <Layers className="h-4 w-4" />;
+      case 'trims': return <Scissors className="h-4 w-4" />;
+      case 'accessories': return <Beaker className="h-4 w-4" />;
+      case 'thread': return <Filter className="h-4 w-4" />;
       default: return <Plus className="h-4 w-4" />;
     }
   };
@@ -149,15 +226,26 @@ export default function RawMaterialsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label>Category</Label>
-                    <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Fabric">Fabric</SelectItem>
-                        <SelectItem value="Trims">Trims</SelectItem>
-                        <SelectItem value="Accessories">Accessories</SelectItem>
-                        <SelectItem value="Thread">Thread</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
+                        <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {categories.map(cat => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        type="button"
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => setIsCategoryDialogOpen(true)}
+                        className="h-10 w-10"
+                        title="Add new category"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid gap-2">
                     <Label>Unit of Measure</Label>
@@ -194,6 +282,60 @@ export default function RawMaterialsPage() {
                     <Input id="supplier" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} placeholder="Supplier name" />
                   </div>
                 </div>
+                
+                {/* Image Upload Section */}
+                <div className="grid gap-2">
+                  <Label>Material Image (Optional)</Label>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-teal-400 transition-colors">
+                        <Input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleImageUpload} 
+                          className="hidden" 
+                          id="image-upload" 
+                          disabled={isImageUploading}
+                        />
+                        <label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                          {isImageUploading ? (
+                            <>
+                              <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+                              <span className="text-sm text-gray-500">Uploading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-6 w-6 text-gray-400" />
+                              <span className="text-sm text-gray-500">Click to upload image</span>
+                              <span className="text-xs text-gray-400">PNG, JPG, GIF up to 5MB</span>
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                    
+                    {imagePreview && (
+                      <div className="relative">
+                        <div className="w-24 h-24 rounded-lg overflow-hidden border border-gray-200">
+                          <img 
+                            src={imagePreview} 
+                            alt="Preview" 
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <Button 
+                          type="button"
+                          size="icon" 
+                          variant="destructive" 
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                          onClick={removeImage}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={isSubmitting} className="w-full">
@@ -202,6 +344,50 @@ export default function RawMaterialsPage() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Category Dialog */}
+        <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Add New Category</DialogTitle>
+              <DialogDescription>
+                Create a new category for organizing raw materials.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="new-category">Category Name</Label>
+                <Input 
+                  id="new-category" 
+                  value={newCategoryName} 
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  placeholder="e.g. Packaging, Buttons, Zippers"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  setIsCategoryDialogOpen(false);
+                  setNewCategoryName('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleCreateCategory}
+                disabled={!newCategoryName.trim()}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Category
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

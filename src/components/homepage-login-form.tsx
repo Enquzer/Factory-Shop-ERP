@@ -46,7 +46,8 @@ export function HomepageLoginForm() {
         setError(result.message || "Invalid credentials");
         setIsAttemptingLogin(false);
       }
-      // If successful, we'll handle redirection in the useEffect below
+      // If successful, redirection will be handled in the useEffect
+      // Keep isAttemptingLogin true until redirect happens
     } catch (err) {
       setError("An error occurred during login");
       setIsAttemptingLogin(false);
@@ -93,9 +94,11 @@ export function HomepageLoginForm() {
   
   // Effect to handle redirect after successful login
   useEffect(() => {
-    if (isAttemptingLogin && currentUser) {
-      // Redirect based on user role
-      redirectToDashboard(currentUser.role);
+    if (currentUser && isAttemptingLogin) {
+      // Small delay to ensure state is properly set
+      setTimeout(() => {
+        redirectToDashboard(currentUser.role);
+      }, 100);
     }
   }, [currentUser, isAttemptingLogin]);
   

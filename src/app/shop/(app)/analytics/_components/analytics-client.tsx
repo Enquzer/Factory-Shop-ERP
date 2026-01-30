@@ -234,8 +234,8 @@ export function ShopAnalyticsClientPage({ shop, orders }: ShopAnalyticsClientPag
                         </TableHeader>
                         <TableBody>
                         {analytics.topProducts.length > 0 ? (
-                            analytics.topProducts.map((product) => (
-                                <TableRow key={product.name}>
+                            analytics.topProducts.map((product, index) => (
+                                <TableRow key={`${product.name}-${index}`}>
                                     <TableCell className="font-medium">{product.name}</TableCell>
                                     <TableCell className="text-right">{product.count}</TableCell>
                                 </TableRow>

@@ -4,7 +4,7 @@ import { getUserById } from './auth-sqlite';
 import { User } from './auth-sqlite'; // Import from auth-sqlite instead of auth
 
 // Define the expanded role type
-export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer';
+export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'admin' | 'customer';
 
 // Extend the User type to include a method for checking roles
 export interface AuthenticatedUser extends Omit<User, 'role'> {
@@ -127,6 +127,8 @@ export async function authenticateRequest(request: NextRequest): Promise<Authent
         normalizedRole = 'quality_inspection';
       } else if (roleStr.includes('designer')) {
         normalizedRole = 'designer';
+      } else if (roleStr.includes('customer')) {
+        normalizedRole = 'customer';
       } else {
         // If no pattern matches, convert to lowercase and use as is
         normalizedRole = roleStr as UserRole;

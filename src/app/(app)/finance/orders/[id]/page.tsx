@@ -122,8 +122,9 @@ export default function OrderDetailsPage() {
                          <Image 
                            src={item.imageUrl || item.variant?.imageUrl || ''} 
                            alt={item.name}
-                           fill
-                           className="object-cover"
+                           width={80}
+                           height={80}
+                           className="object-cover w-full h-full"
                          />
                       ) : (
                         <div className="flex items-center justify-center h-full text-gray-400">
@@ -183,8 +184,9 @@ export default function OrderDetailsPage() {
                        <Image 
                           src={order.paymentSlipUrl} 
                           alt="Payment Receipt" 
-                          fill
-                          className="object-contain"
+                          width={400}
+                          height={400}
+                          className="object-contain w-full h-full"
                        />
                     )}
                  </div>

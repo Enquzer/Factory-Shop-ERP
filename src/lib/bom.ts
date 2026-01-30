@@ -2,6 +2,7 @@
 import { getDb, resetDbCache } from './db';
 import { RawMaterial } from './raw-materials';
 import { getMarketingOrderByIdFromDB } from './marketing-orders';
+import { padNumberGenerator } from './pad-number-generator';
 
 export type ProductBOMItem = {
   id: number;
@@ -24,6 +25,14 @@ export type MaterialRequisition = {
   requestedDate: Date;
   issuedDate?: Date;
   materialName?: string;
+  purchaseStatus?: string;
+  purchaseId?: string;
+  purchaseQuantity?: number;
+  // Pad number fields
+  padNumber?: string;
+  padSequence?: number;
+  padPrefix?: string;
+  padFormat?: string;
 };
 
 // --- BOM Management ---
@@ -141,9 +150,10 @@ export async function getMaterialRequisitionsForOrder(orderId: string): Promise<
   try {
     const db = await getDb();
     const reqs = await db.all(`
-      SELECT r.*, rm.name as materialName
+      SELECT r.*, rm.name as materialName, pr.status as purchaseStatus, pr.id as purchaseId, pr.quantity as purchaseQuantity
       FROM material_requisitions r
       JOIN raw_materials rm ON r.materialId = rm.id
+      LEFT JOIN purchase_requests pr ON r.id = pr.requisitionId
       WHERE r.orderId = ?
     `, [orderId]);
     
@@ -167,6 +177,16 @@ export async function issueMaterial(requisitionId: string, quantityToIssue: numb
     const req = await db.get('SELECT * FROM material_requisitions WHERE id = ?', [requisitionId]);
     if (!req) throw new Error('Requisition not found');
     
+    // Generate pad number if this is the first issue
+    let padNumber = req.padNumber;
+    let padSequence = req.padSequence;
+    
+    if (!padNumber) {
+      const padResult = await padNumberGenerator.generateNext('material');
+      padNumber = padResult.number;
+      padSequence = padResult.sequence;
+    }
+    
     // Deduct from Stock
     await db.run(`
       UPDATE raw_materials 
@@ -183,13 +203,119 @@ export async function issueMaterial(requisitionId: string, quantityToIssue: numb
     
     await db.run(`
       UPDATE material_requisitions
-      SET quantityIssued = ?, status = ?, issuedDate = CURRENT_TIMESTAMP
+      SET quantityIssued = ?, status = ?, issuedDate = CURRENT_TIMESTAMP, 
+          padNumber = ?, padSequence = ?, padPrefix = 'RM', padFormat = 'PREFIX-SEQUENCE'
       WHERE id = ?
-    `, [newIssued, status, requisitionId]);
+    `, [newIssued, status, padNumber, padSequence, requisitionId]);
     
     resetDbCache();
   } catch (error) {
     console.error('Error issuing material:', error);
     throw error;
+  }
+}
+
+// --- Consumption Analysis ---
+
+export type ProductConsumption = {
+  productId: string;
+  productName: string;
+  productCode: string;
+  materials: {
+    materialId: string;
+    materialName: string;
+    quantityPerUnit: number;
+    unitOfMeasure: string;
+  }[];
+};
+
+export async function getConsumptionDatabase(): Promise<ProductConsumption[]> {
+  try {
+    const db = await getDb();
+    const products = await db.all(`
+      SELECT p.id as productId, p.productName, p.productCode
+      FROM products p
+    `);
+    
+    const results: ProductConsumption[] = [];
+    
+    for (const p of products) {
+      const materials = await db.all(`
+        SELECT b.materialId, rm.name as materialName, b.quantityPerUnit, rm.unitOfMeasure
+        FROM product_bom b
+        JOIN raw_materials rm ON b.materialId = rm.id
+        WHERE b.productId = ?
+      `, [p.productId]);
+      
+      results.push({
+        ...p,
+        materials
+      });
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('Error fetching consumption database:', error);
+    return [];
+  }
+}
+
+export type VariantConsumption = {
+  orderId: string;
+  orderNumber: string;
+  productName: string;
+  productCode: string;
+  variantId: string;
+  size: string;
+  color: string;
+  quantity: number;
+  materials: {
+    materialName: string;
+    consumption: number;
+    unitOfMeasure: string;
+  }[];
+};
+
+export async function getOrderConsumptionHistory(): Promise<VariantConsumption[]> {
+  try {
+    const db = await getDb();
+    
+    // Get all orders and their items
+    const orders = await db.all(`
+      SELECT o.id as orderId, o.orderNumber, o.productName, o.productCode,
+             oi.id as variantId, oi.size, oi.color, oi.quantity
+      FROM marketing_orders o
+      JOIN marketing_order_items oi ON o.id = oi.orderId
+      ORDER BY o.createdAt DESC
+    `);
+    
+    const results: VariantConsumption[] = [];
+    
+    for (const o of orders) {
+      // Get the BOM for this product to calculate historical consumption
+      const bom = await db.all(`
+        SELECT rm.name, b.quantityPerUnit, rm.unitOfMeasure, b.wastagePercentage
+        FROM product_bom b
+        JOIN raw_materials rm ON b.materialId = rm.id
+        JOIN products p ON b.productId = p.id
+        WHERE p.productCode = ?
+      `, [o.productCode]);
+      
+      const materials = bom.map((b: any) => ({
+        materialName: b.name,
+        consumption: b.quantityPerUnit * o.quantity * (1 + (b.wastagePercentage / 100)),
+        unitOfMeasure: b.unitOfMeasure
+      }));
+      
+      results.push({
+        ...o,
+        materials
+      });
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('Error fetching order consumption history:', error);
+    return [];
   }
 }

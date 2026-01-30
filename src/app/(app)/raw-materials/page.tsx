@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -8,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, Loader2, Save, X, Search, Filter, Layers, Beaker, Scissors, ShoppingCart, HelpCircle } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, Save, X, Search, Filter, Layers, Beaker, Scissors, ShoppingCart, HelpCircle, Upload, Image as ImageIcon, CirclePlus } from "lucide-react";
 import { 
   Dialog,
   DialogContent,
@@ -26,14 +25,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
 
 // Actually checking the previous file content for correct imports
 import { MarketingOrder } from '@/lib/marketing-orders';
+import { getRawMaterialSubcategoriesByCategory } from '@/lib/raw-material-subcategories';
 
 interface RawMaterial {
   id: string;
   name: string;
   category: string;
+  subcategory?: string;
   unitOfMeasure: string;
   currentBalance: number;
   minimumStockLevel: number;
@@ -41,6 +43,7 @@ interface RawMaterial {
   supplier?: string;
   source?: 'PURCHASED' | 'MANUAL' | 'OTHER';
   purchaseRequestId?: string;
+  imageUrl?: string;
   updatedAt?: string;
 }
 
@@ -50,34 +53,93 @@ export default function RawMaterialsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isSubcategoryDialogOpen, setIsSubcategoryDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
     category: 'Fabric',
+    subcategory: '',
     unitOfMeasure: 'Meter',
     currentBalance: 0,
     minimumStockLevel: 10,
     costPerUnit: 0,
-    supplier: ''
+    supplier: '',
+    imageUrl: ''
   });
-
+  
+  const [predictedId, setPredictedId] = useState('');
+  
+  const [newSubcategoryData, setNewSubcategoryData] = useState({
+    subcategory: '',
+    code: ''
+  });
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isImageUploading, setIsImageUploading] = useState(false);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [availableSubcategories, setAvailableSubcategories] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMaterials();
+    fetchSubcategories();
   }, []);
+
+  useEffect(() => {
+    // Fetch subcategories when category changes
+    if (formData.category) {
+      fetchSubcategoriesForCategory(formData.category);
+    }
+  }, [formData.category]);
+
+  useEffect(() => {
+    // Predict ID when category/subcategory changes
+    if (formData.category && formData.subcategory) {
+      predictNextId();
+    } else {
+      setPredictedId('');
+    }
+  }, [formData.category, formData.subcategory]);
 
   const fetchMaterials = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/raw-materials');
       const data = await res.json();
-      setMaterials(Array.isArray(data) ? data : []);
+      // Sort by ID to show newest first (assuming IDs have timestamps)
+      const sortedMaterials = Array.isArray(data) ? [...data].sort((a, b) => {
+        // Sort by ID descending (newest first)
+        return b.id.localeCompare(a.id);
+      }) : [];
+      setMaterials(sortedMaterials);
     } catch (error) {
       toast({ title: "Error", description: "Failed to fetch materials", variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSubcategories = async () => {
+    try {
+      const res = await fetch('/api/raw-material-subcategories');
+      const data = await res.json();
+      setSubcategories(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to fetch subcategories:', error);
+    }
+  };
+
+  const fetchSubcategoriesForCategory = async (category: string) => {
+    try {
+      const res = await fetch(`/api/raw-material-subcategories?category=${encodeURIComponent(category)}`);
+      const data = await res.json();
+      setAvailableSubcategories(Array.isArray(data) ? data : []);
+      // Clear subcategory selection if it's not valid for this category
+      if (formData.subcategory && !data.some((s: any) => s.subcategory === formData.subcategory)) {
+        setFormData(prev => ({ ...prev, subcategory: '' }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch subcategories for category:', error);
     }
   };
 
@@ -114,27 +176,39 @@ export default function RawMaterialsPage() {
     setFormData({
       name: '',
       category: 'Fabric',
+      subcategory: '',
       unitOfMeasure: 'Meter',
       currentBalance: 0,
       minimumStockLevel: 10,
       costPerUnit: 0,
-      supplier: ''
+      supplier: '',
+      imageUrl: ''
     });
+    setImagePreview(null);
     setEditingId(null);
+    setAvailableSubcategories([]);
+    resetSubcategoryForm();
+    setPredictedId('');
   };
 
   const handleEdit = (material: RawMaterial) => {
     setFormData({
       name: material.name,
       category: material.category,
+      subcategory: material.subcategory || '',
       unitOfMeasure: material.unitOfMeasure,
       currentBalance: material.currentBalance,
       minimumStockLevel: material.minimumStockLevel,
       costPerUnit: material.costPerUnit,
-      supplier: material.supplier || ''
+      supplier: material.supplier || '',
+      imageUrl: material.imageUrl || ''
     });
+    setImagePreview(material.imageUrl || null);
     setEditingId(material.id);
+    // Load subcategories for this category
+    fetchSubcategoriesForCategory(material.category);
     setIsAddDialogOpen(true);
+    resetSubcategoryForm();
   };
 
   const handleDelete = async (id: string) => {
@@ -150,6 +224,104 @@ export default function RawMaterialsPage() {
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to delete material", variant: "destructive" });
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({ title: "Error", description: "Please select an image file", variant: "destructive" });
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Error", description: "Image size must be less than 5MB", variant: "destructive" });
+      return;
+    }
+
+    setIsImageUploading(true);
+    
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target?.result as string;
+        setFormData({...formData, imageUrl: base64String});
+        setImagePreview(base64String);
+        setIsImageUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to upload image", variant: "destructive" });
+      setIsImageUploading(false);
+    }
+  };
+
+  const removeImage = () => {
+    setFormData({...formData, imageUrl: ''});
+    setImagePreview(null);
+  };
+
+  const handleAddSubcategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newSubcategoryData.subcategory.trim() || !newSubcategoryData.code.trim()) {
+      toast({ title: "Error", description: "Please fill in both subcategory name and code", variant: "destructive" });
+      return;
+    }
+    
+    try {
+      const res = await fetch('/api/raw-material-subcategories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: formData.category,
+          subcategory: newSubcategoryData.subcategory.trim(),
+          code: newSubcategoryData.code.trim().toUpperCase()
+        })
+      });
+      
+      if (res.ok) {
+        toast({ title: "Success", description: "Subcategory added successfully" });
+        // Refresh subcategories
+        fetchSubcategories();
+        fetchSubcategoriesForCategory(formData.category);
+        // Set the newly created subcategory as selected
+        setFormData({...formData, subcategory: newSubcategoryData.subcategory.trim()});
+        setNewSubcategoryData({ subcategory: '', code: '' });
+        setIsSubcategoryDialogOpen(false);
+      } else {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to add subcategory');
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add subcategory", variant: "destructive" });
+    }
+  };
+
+  const resetSubcategoryForm = () => {
+    setNewSubcategoryData({ subcategory: '', code: '' });
+  };
+
+  const predictNextId = async () => {
+    if (!formData.category || !formData.subcategory) return;
+    
+    try {
+      const res = await fetch(`/api/raw-materials/next-id?category=${encodeURIComponent(formData.category)}&subcategory=${encodeURIComponent(formData.subcategory)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPredictedId(data.nextId);
+      }
+    } catch (error) {
+      console.error('Error predicting ID:', error);
+      // Fallback to manual format
+      const catCode = formData.category.substring(0, 2).toUpperCase();
+      const subCode = formData.subcategory.substring(0, 2).toUpperCase();
+      setPredictedId(`RW-${catCode}-${subCode}-XX`);
     }
   };
 
@@ -191,7 +363,28 @@ export default function RawMaterialsPage() {
             <form onSubmit={handleSaveMaterial}>
               <DialogHeader>
                 <DialogTitle>{editingId ? 'Edit Raw Material' : 'Register Raw Material'}</DialogTitle>
-                <DialogDescription>{editingId ? 'Update the details of this raw material.' : 'Add a new item to the factory\'s raw material inventory.'}</DialogDescription>
+                <DialogDescription>
+                  {editingId ? (
+                    <>
+                      Update the details of this raw material.
+                      <span className="mt-2 text-sm text-muted-foreground font-mono block">
+                        Material ID: <span className="font-semibold">{editingId}</span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Add a new item to the factory's raw material inventory.
+                      {predictedId && (
+                        <span className="mt-2 text-sm text-muted-foreground block">
+                          <span className="font-mono">Predicted ID: <span className="font-semibold text-teal-600">{predictedId}</span></span>
+                          <span className="text-xs mt-1 block">
+                            Auto-generated based on category and subcategory selection
+                          </span>
+                        </span>
+                      )}
+                    </>
+                  )}
+                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
@@ -201,7 +394,7 @@ export default function RawMaterialsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label>Category</Label>
-                    <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
+                    <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v, subcategory: ''})}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Fabric">Fabric</SelectItem>
@@ -211,6 +404,36 @@ export default function RawMaterialsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Subcategory (Optional)</Label>
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setIsSubcategoryDialogOpen(true)}
+                      >
+                        <CirclePlus className="h-3 w-3 mr-1" />
+                        Add New
+                      </Button>
+                    </div>
+                    <Select value={formData.subcategory || "__none__"} onValueChange={v => setFormData({...formData, subcategory: v === "__none__" ? "" : v})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select subcategory" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {availableSubcategories.map((sub: any) => (
+                          <SelectItem key={sub.id} value={sub.subcategory}>
+                            {sub.subcategory}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label>Unit of Measure</Label>
                     <Select value={formData.unitOfMeasure} onValueChange={v => setFormData({...formData, unitOfMeasure: v})}>
@@ -225,25 +448,79 @@ export default function RawMaterialsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="balance">Initial Balance</Label>
-                    <Input id="balance" type="number" value={formData.currentBalance} onChange={e => setFormData({...formData, currentBalance: parseFloat(e.target.value)})} required />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="minLevel">Min Stock Level</Label>
-                    <Input id="minLevel" type="number" value={formData.minimumStockLevel} onChange={e => setFormData({...formData, minimumStockLevel: parseFloat(e.target.value)})} required />
+                    <Input id="balance" type="number" value={formData.currentBalance || 0} onChange={e => setFormData({...formData, currentBalance: parseFloat(e.target.value) || 0})} required />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="cost">Cost per Unit (ETB)</Label>
-                    <Input id="cost" type="number" value={formData.costPerUnit} onChange={e => setFormData({...formData, costPerUnit: parseFloat(e.target.value)})} required />
+                    <Label htmlFor="minLevel">Min Stock Level</Label>
+                    <Input id="minLevel" type="number" value={formData.minimumStockLevel || 0} onChange={e => setFormData({...formData, minimumStockLevel: parseFloat(e.target.value) || 0})} required />
                   </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="cost">Cost per Unit (ETB)</Label>
+                    <Input id="cost" type="number" value={formData.costPerUnit || 0} onChange={e => setFormData({...formData, costPerUnit: parseFloat(e.target.value) || 0})} required />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="supplier">Supplier (Optional)</Label>
                     <Input id="supplier" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} placeholder="Supplier name" />
+                  </div>
+                </div>
+                
+                {/* Image Upload Section */}
+                <div className="grid gap-2">
+                  <Label>Material Image (Optional)</Label>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-teal-400 transition-colors">
+                        <Input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleImageUpload} 
+                          className="hidden" 
+                          id="image-upload" 
+                          disabled={isImageUploading}
+                        />
+                        <label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                          {isImageUploading ? (
+                            <>
+                              <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+                              <span className="text-sm text-gray-500">Uploading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-6 w-6 text-gray-400" />
+                              <span className="text-sm text-gray-500">Click to upload image</span>
+                              <span className="text-xs text-gray-400">PNG, JPG, GIF up to 5MB</span>
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                    
+                    {imagePreview && (
+                      <div className="relative">
+                        <div className="w-24 h-24 rounded-lg overflow-hidden border border-gray-200">
+                          <img 
+                            src={imagePreview} 
+                            alt="Preview" 
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <Button 
+                          type="button"
+                          size="icon" 
+                          variant="destructive" 
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                          onClick={removeImage}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -251,6 +528,56 @@ export default function RawMaterialsPage() {
                 <Button type="submit" disabled={isSubmitting} className="w-full">
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                   {editingId ? 'Update Material' : 'Save Material'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+        
+        {/* Add Subcategory Dialog */}
+        <Dialog open={isSubcategoryDialogOpen} onOpenChange={(open) => {
+          setIsSubcategoryDialogOpen(open);
+          if (!open) resetSubcategoryForm();
+        }}>
+          <DialogContent className="sm:max-w-[400px]">
+            <form onSubmit={handleAddSubcategory}>
+              <DialogHeader>
+                <DialogTitle>Add New Subcategory</DialogTitle>
+                <DialogDescription>
+                  Add a new subcategory for {formData.category} category
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="new-subcategory">Subcategory Name</Label>
+                  <Input 
+                    id="new-subcategory" 
+                    value={newSubcategoryData.subcategory} 
+                    onChange={e => setNewSubcategoryData({...newSubcategoryData, subcategory: e.target.value})} 
+                    placeholder="e.g. Buttons, Zippers, etc." 
+                    required 
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="new-code">Code (2 letters)</Label>
+                  <Input 
+                    id="new-code" 
+                    value={newSubcategoryData.code} 
+                    onChange={e => setNewSubcategoryData({...newSubcategoryData, code: e.target.value})} 
+                    placeholder="e.g. BT, ZP" 
+                    maxLength={2}
+                    required 
+                  />
+                  <p className="text-xs text-muted-foreground">This will be used in material ID generation (e.g., RW-Tr-BT-01)</p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsSubcategoryDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Subcategory
                 </Button>
               </DialogFooter>
             </form>
@@ -285,8 +612,10 @@ export default function RawMaterialsPage() {
             <Table>
               <TableHeader className="bg-teal-50/50">
                 <TableRow>
+                  <TableHead>Image</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Subcategory</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Stock Level</TableHead>
                   <TableHead>Cost/Unit</TableHead>
@@ -297,7 +626,7 @@ export default function RawMaterialsPage() {
               <TableBody>
                 {filteredMaterials.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                       No raw materials found.
                     </TableCell>
                   </TableRow>
@@ -305,14 +634,40 @@ export default function RawMaterialsPage() {
                   filteredMaterials.map(material => (
                     <TableRow key={material.id} className="hover:bg-teal-50/20 transition-colors">
                       <TableCell>
+                        {material.imageUrl ? (
+                          <div className="relative w-12 h-12 rounded-md overflow-hidden border">
+                            <Image 
+                              src={material.imageUrl} 
+                              alt={material.name} 
+                              width={48}
+                              height={48}
+                              className="object-cover w-full h-full"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-12 h-12 rounded-md bg-gray-100 flex items-center justify-center border">
+                            <ImageIcon className="h-6 w-6 text-gray-400" />
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <div className="font-bold text-slate-800">{material.name}</div>
-                        <div className="text-xs text-muted-foreground">ID: {material.id}</div>
+                        <div className="text-xs text-muted-foreground font-mono">ID: {material.id}</div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-teal-100 text-teal-800 border-none flex w-fit items-center gap-1.5 px-2 py-1">
                           {getCategoryIcon(material.category)}
                           {material.category}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {material.subcategory ? (
+                          <Badge variant="outline" className="text-xs">
+                            {material.subcategory}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

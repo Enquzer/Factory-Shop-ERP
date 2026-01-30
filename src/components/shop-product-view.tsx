@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { SimplifiedOrderDialog } from "@/components/simplified-order-dialog";
 import { getShopById } from "@/lib/shops";
 import Image from "next/image";
+import { ProductFeedbackSummary } from "@/components/product-feedback-summary";
 
 interface ShopProductViewProps {
   shopId: string;
@@ -197,6 +198,11 @@ export function ShopProductView({ shopId, onAddToOrder }: ShopProductViewProps) 
                   <Badge variant="secondary">{product.category}</Badge>
                   <span className="text-sm font-medium">ETB {product.price.toLocaleString()}</span>
                 </div>
+                <ProductFeedbackSummary 
+                  product={product} 
+                  className="mt-2" 
+                  showButton={false}
+                />
               </CardHeader>
               <CardContent>
                 <div className="relative w-12 h-12 rounded-md overflow-hidden">

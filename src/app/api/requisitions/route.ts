@@ -2,7 +2,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMaterialRequisitionsForOrder } from '@/lib/bom';
 import { getDb } from '@/lib/db';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, UserRole } from '@/lib/auth-middleware';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,10 +13,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Please log in' }, { status: 401 });
     }
     
-    // Check if user has store or factory role
-    if (user.role !== 'store' && user.role !== 'factory') {
+    // Check if user has allowed roles for viewing requisitions
+    const allowedRoles: UserRole[] = ['store', 'factory', 'planning', 'marketing', 'cutting', 'sewing'];
+    if (!user.hasRole(allowedRoles)) {
       return NextResponse.json({ 
-        error: `Unauthorized: Store or Factory access required. Your role: ${user.role}` 
+        error: `Unauthorized: Access required for one of: ${allowedRoles.join(', ')}. Your role: ${user.role}` 
       }, { status: 403 });
     }
     
@@ -27,10 +28,12 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     
     let query = `
-      SELECT r.*, rm.name as materialName, rm.unitOfMeasure, rm.currentBalance, mo.orderNumber, mo.productName
+      SELECT r.*, rm.name as materialName, rm.unitOfMeasure, rm.currentBalance, mo.orderNumber, mo.productName,
+             pr.status as purchaseStatus, pr.id as purchaseId, pr.quantity as purchaseQuantity
       FROM material_requisitions r
       JOIN raw_materials rm ON r.materialId = rm.id
       JOIN marketing_orders mo ON r.orderId = mo.id
+      LEFT JOIN purchase_requests pr ON r.id = pr.requisitionId
     `;
     const params: any[] = [];
 

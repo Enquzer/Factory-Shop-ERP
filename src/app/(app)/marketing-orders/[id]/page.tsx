@@ -7,10 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { getMarketingOrderById, updateMarketingOrder } from "@/lib/marketing-orders";
+import { getReceivingVouchersByOrder } from "@/lib/receiving-vouchers";
 import { MarketingOrder, MarketingOrderStatus } from "@/lib/marketing-orders";
 import { generateOrderPDF, downloadPDF } from "@/lib/pdf-generator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductionTracking } from "@/components/marketing-orders/production-tracking";
+import { Receipt } from "lucide-react";
 
 export default function MarketingOrderDetailPage({ params }: { params: { id: string } }) {
   const [order, setOrder] = useState<MarketingOrder | null>(null);
@@ -147,6 +149,28 @@ export default function MarketingOrderDetailPage({ params }: { params: { id: str
                   {order.description && <div className="mt-4"><h3 className="font-medium">Description</h3><p>{order.description}</p></div>}
                 </CardContent>
               </Card>
+              
+              {order.receivingVoucherPadNumber && (
+                <Card className="mt-6 border-green-200 bg-green-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-green-800">
+                      <Receipt className="h-5 w-5" />
+                      Receiving Voucher
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p className="text-sm text-green-700">Finished goods receiving voucher pad number:</p>
+                      <p className="text-lg font-mono font-bold text-green-900 bg-white p-2 rounded border">
+                        {order.receivingVoucherPadNumber}
+                      </p>
+                      <p className="text-xs text-green-600">
+                        Generated automatically when production was completed and goods were received to store
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
               
               <Card className="mt-6">
                 <CardHeader>

@@ -1,7 +1,7 @@
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -17,7 +17,7 @@ export type AuthResult = {
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin'
 ): Promise<AuthResult> => {
   try {
     const response = await fetch('/api/auth/register', {

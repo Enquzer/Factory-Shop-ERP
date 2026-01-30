@@ -107,7 +107,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
                   variant: "destructive",
                   duration: Infinity,
               });
-              router.push('/shop/login');
+              router.push('/');
             }
           } else {
             toast({
@@ -116,7 +116,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
                 variant: "destructive",
                 duration: Infinity,
             });
-            router.push('/shop/login');
+            router.push('/');
           }
         } else {
           const errorData = await response.json();

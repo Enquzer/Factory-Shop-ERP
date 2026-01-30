@@ -31,19 +31,9 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
         const isShopRoute = window.location.pathname.startsWith('/shop');
         const isStoreRoute = window.location.pathname.startsWith('/store');
         const isFinanceRoute = window.location.pathname.startsWith('/finance');
-        const isUsersRoute = window.location.pathname.startsWith('/users');
         setRedirecting(true);
-        if (isShopRoute) {
-          router.push('/shop/login');
-        } else if (isStoreRoute) {
-          router.push('/store/login');
-        } else if (isFinanceRoute) {
-          router.push('/finance/login');
-        } else if (isUsersRoute) {
-          router.push('/login');
-        } else {
-          router.push('/factory/login');
-        }
+        // Redirect all unauthenticated users to main login page
+        router.push('/');
       } else {
         // If user is authenticated but on the wrong route, redirect them
         const isShopRoute = window.location.pathname.startsWith('/shop');

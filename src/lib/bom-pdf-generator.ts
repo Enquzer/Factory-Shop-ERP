@@ -16,6 +16,7 @@ interface BOMItem {
   calculatedTotal?: number;
   requestedQty?: number;
   calculatedCost?: number;
+  materialImageUrl?: string; // Raw material image URL
 }
 
 interface MarketingOrderItem {
@@ -252,6 +253,22 @@ export async function generateBOMPDF(
           doc.text(val.substring(0, 15), colX + 1, currentY);
           colX += colWidths[i];
         });
+
+        // Add material image if available
+        if (item.materialImageUrl) {
+          try {
+            const imgProps = doc.getImageProperties(item.materialImageUrl);
+            const imgWidth = 15;
+            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+            const imgY = currentY - 4;
+            
+            // Position image at the end of the row
+            const imgX = pageWidth - margin - imgWidth;
+            doc.addImage(item.materialImageUrl, 'JPEG', imgX, imgY, imgWidth, imgHeight);
+          } catch (e) {
+            console.warn('Could not add material image to PDF:', e);
+          }
+        }
 
         currentY += 5;
         doc.setDrawColor(220, 220, 220);

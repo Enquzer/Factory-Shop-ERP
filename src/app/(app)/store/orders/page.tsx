@@ -68,7 +68,7 @@ export default function StoreOrdersPage() {
   };
 
   const headers = [
-    { key: 'id', title: 'Order ID', mobileTitle: 'ID' },
+    { key: 'displayId', title: 'Order ID', mobileTitle: 'ID' },
     { key: 'shop', title: 'Shop', mobileTitle: 'Shop' },
     { key: 'date', title: 'Date', mobileTitle: 'Date' },
     { key: 'amount', title: 'Amount', mobileTitle: 'Amt' },
@@ -77,7 +77,8 @@ export default function StoreOrdersPage() {
   ];
 
   const renderOrderRows = (orderList: Order[]) => orderList.map(order => ({
-    id: <span className="font-mono text-xs">{order.id.slice(0, 8)}...</span>,
+    id: order.id,
+    displayId: <span className="font-mono text-xs">{order.id.slice(0, 8)}...</span>,
     shop: <div className="font-medium">{order.shopName}</div>,
     date: new Date(order.date).toLocaleDateString(),
     amount: `${order.amount.toLocaleString()} ETB`,

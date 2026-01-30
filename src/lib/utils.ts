@@ -108,3 +108,23 @@ export function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
     reader.readAsArrayBuffer(file);
   });
 }
+
+// Utility function for authenticated API requests
+export async function authenticatedFetch(url: string, options: RequestInit = {}) {
+  // Get the auth token from localStorage
+  const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+  
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    ...options.headers,
+  });
+  
+  if (authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
+  }
+  
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+}

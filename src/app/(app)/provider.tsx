@@ -30,28 +30,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 const isFinanceRoute = pathname.startsWith('/finance');
                 
                 setRedirecting(true);
-                if (isShopRoute) {
-                    router.push('/shop/login');
-                } else if (isStoreRoute) {
-                    router.push('/store/login');
-                } else if (isFinanceRoute) {
-                    router.push('/finance/login'); // Assuming finance has a login page or uses factory login?
-                    // If finance uses factory login, we might redirect to /factory/login
-                    // But if it was separated, we should respect that.
-                    // For now, let's redirect to factory login if finance login doesn't exist, 
-                    // BUT previous structure had finance/login.
-                    // Let's assume there is a login page or shared login.
-                    // Actually, if finance login is gone (integrated), we should redirect to factory login.
-                    // But wait, the user instructions implied "do the same for Store".
-                    // Let's stick to /factory/login for internal users if dedicated login pages are missing 
-                    // or /store/login if it exists.
-                    // I verified src/app/store/login exists now.
-                    // I verified src/app/(app)/finance/login exists (protected).
-                    // So finance users accessing /finance unauth -> /factory/login might be safer if finance/login is protected.
-                    // But store/login is now public.
-                } else {
-                    router.push('/factory/login');
-                }
+                // Redirect all unauthenticated users to main login page
+                router.push('/');
             } else {
                 // If user is authenticated but on the wrong route, redirect them
                 const pathname = window.location.pathname;

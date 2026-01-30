@@ -252,7 +252,7 @@ export default function ShopOrderDetailsPage() {
                                 <p className="text-xs text-muted-foreground">PDF Document</p>
                             </div>
                         ) : (
-                            <Image src={paymentSlipPreview} alt="Preview" fill className="object-contain" />
+                            <Image src={paymentSlipPreview} alt="Preview" width={400} height={400} className="object-contain w-full h-full" />
                         )}
                         <Button 
                           variant="destructive" 
@@ -296,7 +296,7 @@ export default function ShopOrderDetailsPage() {
                             <p className="font-medium">PDF Payment Receipt</p>
                         </div>
                     ) : (
-                        <Image src={order.paymentSlipUrl} alt="Payment Slip" fill className="object-contain" />
+                        <Image src={order.paymentSlipUrl} alt="Payment Slip" width={400} height={400} className="object-contain w-full h-full" />
                     )}
                   </div>
                   <Button variant="outline" className="w-full" onClick={() => window.open(order.paymentSlipUrl, '_blank')}>

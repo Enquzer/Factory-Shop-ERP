@@ -38,7 +38,9 @@ export async function POST(request: NextRequest) {
       materialId: data.materialId || 'NEW', // Placeholder for new materials
       quantity: data.quantity || 0,
       reason: data.reason || `Request from ${user.role} user ${user.username}. ${data.materialName ? `Requested Material: ${data.materialName}` : ''}`,
-      requesterId: user.id.toString()
+      requesterId: user.id.toString(),
+      orderId: data.orderId,
+      requisitionId: data.requisitionId
     });
     
     console.log(`Purchase request created with ID: ${id}`);

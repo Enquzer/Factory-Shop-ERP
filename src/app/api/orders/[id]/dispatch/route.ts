@@ -5,6 +5,7 @@ import { getOrderByIdFromDB } from '@/lib/orders';
 import { createNotification } from '@/lib/notifications';
 import { sendShopOrderNotification } from '@/lib/telegram-shop-notifications';
 import { generateOrderDispatchPDF } from '@/lib/shop-order-telegram-pdf';
+import { padNumberGenerator } from '@/lib/pad-number-generator';
 
 export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params }: { params: { id: string } }) => {
   const orderId = params.id;
@@ -30,14 +31,18 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
     return NextResponse.json({ error: 'Order must be Paid or Released before dispatching' }, { status: 400 });
   }
 
+  // Generate pad number for finished goods dispatch
+  const padResult = await padNumberGenerator.generateNext('finished', order.shopId);
+
   const db = await getDb();
   
-  // Update the order status to 'Dispatched'
+  // Update the order status to 'Dispatched' and add pad number
   await db.run(`
     UPDATE orders 
-    SET status = ?, updated_at = CURRENT_TIMESTAMP
+    SET status = ?, updated_at = CURRENT_TIMESTAMP,
+        padNumber = ?, padSequence = ?, padPrefix = 'FG', padFormat = 'PREFIX-SHOPID-SEQUENCE'
     WHERE id = ?
-  `, ['Dispatched', orderId]);
+  `, ['Dispatched', padResult.number, padResult.sequence, orderId]);
 
   // Update actualDispatchDate
   const dispatchDate = new Date().toISOString();

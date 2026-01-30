@@ -1,10 +1,12 @@
 
-import { getDb, resetDbCache } from './db';
+import { getDB, resetDbCache } from './db';
+import { getNextSequenceForSubcategory, generateRawMaterialId } from './raw-material-subcategories';
 
 export type RawMaterial = {
   id: string;
   name: string;
   category: string;
+  subcategory?: string;
   unitOfMeasure: string;
   currentBalance: number;
   minimumStockLevel: number;
@@ -12,6 +14,7 @@ export type RawMaterial = {
   supplier?: string;
   source?: 'PURCHASED' | 'MANUAL' | 'OTHER'; // Origin of the inventory
   purchaseRequestId?: string; // Link to purchase request if applicable
+  imageUrl?: string; // Raw material image URL
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -32,13 +35,15 @@ export type PurchaseRequest = {
   supplier?: string;
   notes?: string;
   rejectionReason?: string;
+  orderId?: string;
+  requisitionId?: string;
 };
 
 // --- Raw Material Registry Functions ---
 
 export async function getRawMaterials(): Promise<RawMaterial[]> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     const materials = await db.all('SELECT *, COALESCE(source, "MANUAL") as source FROM raw_materials ORDER BY name ASC');
     return materials.map((m: any) => ({
       ...m,
@@ -53,7 +58,7 @@ export async function getRawMaterials(): Promise<RawMaterial[]> {
 
 export async function getRawMaterialById(id: string): Promise<RawMaterial | null> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     const material = await db.get('SELECT * FROM raw_materials WHERE id = ?', [id]);
     if (!material) return null;
     return {
@@ -69,12 +74,35 @@ export async function getRawMaterialById(id: string): Promise<RawMaterial | null
 
 export async function createRawMaterial(material: Omit<RawMaterial, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   try {
-    const db = await getDb();
-    const id = `RM-${Date.now()}`;
+    const db = await getDB();
+    
+    let id: string;
+    if (material.subcategory) {
+      // Generate ID with subcategory prefix: RW-Cat-Sub-XX
+      const sequence = await getNextSequenceForSubcategory(material.category, material.subcategory);
+      id = generateRawMaterialId(material.category, material.subcategory, sequence);
+    } else {
+      // Fallback to timestamp-based ID
+      id = `RM-${Date.now()}`;
+    }
+    
     await db.run(`
-      INSERT INTO raw_materials (id, name, category, unitOfMeasure, currentBalance, minimumStockLevel, costPerUnit, supplier, source, purchaseRequestId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, material.name, material.category, material.unitOfMeasure, material.currentBalance, material.minimumStockLevel, material.costPerUnit, material.supplier, material.source || 'MANUAL', material.purchaseRequestId]);
+      INSERT INTO raw_materials (id, name, category, subcategory, unitOfMeasure, currentBalance, minimumStockLevel, costPerUnit, supplier, source, purchaseRequestId, imageUrl)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id, 
+      material.name, 
+      material.category, 
+      material.subcategory || null,
+      material.unitOfMeasure, 
+      material.currentBalance, 
+      material.minimumStockLevel, 
+      material.costPerUnit, 
+      material.supplier, 
+      material.source || 'MANUAL', 
+      material.purchaseRequestId, 
+      material.imageUrl
+    ]);
     
     resetDbCache();
     return id;
@@ -86,7 +114,7 @@ export async function createRawMaterial(material: Omit<RawMaterial, 'id' | 'crea
 
 export async function updateRawMaterial(id: string, updates: Partial<RawMaterial>): Promise<void> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     const fields: string[] = [];
     const values: any[] = [];
 
@@ -100,6 +128,7 @@ export async function updateRawMaterial(id: string, updates: Partial<RawMaterial
 
     addField('name', updates.name);
     addField('category', updates.category);
+    addField('subcategory', updates.subcategory);
     addField('unitOfMeasure', updates.unitOfMeasure);
     addField('currentBalance', updates.currentBalance);
     addField('minimumStockLevel', updates.minimumStockLevel);
@@ -107,6 +136,7 @@ export async function updateRawMaterial(id: string, updates: Partial<RawMaterial
     addField('supplier', updates.supplier);
     addField('source', updates.source);
     addField('purchaseRequestId', updates.purchaseRequestId);
+    addField('imageUrl', updates.imageUrl);
 
     if (fields.length === 0) return;
 
@@ -123,7 +153,7 @@ export async function updateRawMaterial(id: string, updates: Partial<RawMaterial
 
 export async function deleteRawMaterial(id: string): Promise<void> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     await db.run('DELETE FROM raw_materials WHERE id = ?', [id]);
     resetDbCache();
   } catch (error) {
@@ -136,12 +166,12 @@ export async function deleteRawMaterial(id: string): Promise<void> {
 
 export async function createPurchaseRequest(request: Omit<PurchaseRequest, 'id' | 'status' | 'requestedDate'>): Promise<string> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     const id = `PR-${Date.now()}`;
     await db.run(`
-      INSERT INTO purchase_requests (id, materialId, quantity, reason, status, requesterId, costPerUnit, supplier, notes)
-      VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?)
-    `, [id, request.materialId, request.quantity, request.reason, request.requesterId, request.costPerUnit, request.supplier, request.notes]);
+      INSERT INTO purchase_requests (id, materialId, quantity, reason, status, requesterId, costPerUnit, supplier, notes, orderId, requisitionId)
+      VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?)
+    `, [id, request.materialId, request.quantity, request.reason, request.requesterId, request.costPerUnit, request.supplier, request.notes, request.orderId, request.requisitionId]);
     resetDbCache();
     return id;
   } catch (error) {
@@ -152,7 +182,7 @@ export async function createPurchaseRequest(request: Omit<PurchaseRequest, 'id' 
 
 export async function updatePurchaseRequestStatus(id: string, status: PurchaseRequest['status']): Promise<void> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     let dateField = '';
     
     // Set appropriate date field based on status
@@ -188,7 +218,7 @@ export async function updatePurchaseRequestStatus(id: string, status: PurchaseRe
 
 export async function getPurchaseRequests(): Promise<PurchaseRequest[]> {
   try {
-    const db = await getDb();
+    const db = await getDB();
     const requests = await db.all(`
       SELECT pr.*, rm.name as materialName 
       FROM purchase_requests pr
