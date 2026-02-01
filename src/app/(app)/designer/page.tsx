@@ -1,26 +1,9 @@
-
-import { Suspense } from 'react';
-import Link from 'next/link';
-import { Plus, Search, Filter, MoreHorizontal, Shirt, Palette, PenTool } from 'lucide-react';
+import { Plus, Search, Filter, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { getStyles, Style } from '@/lib/styles-sqlite';
+import Link from 'next/link';
+import { getStyles } from '@/lib/styles-sqlite';
+import { StyleCard } from '@/components/designer/StyleCard';
 
 export const metadata = {
   title: 'Designer - Style Management',
@@ -81,77 +64,3 @@ export default async function DesignerPage() {
     </div>
   );
 }
-
-function StyleCard({ style }: { style: Style }) {
-  const statusColors: Record<string, string> = {
-    'Development': 'bg-blue-100 text-blue-700 hover:bg-blue-200',
-    'Quotation': 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200',
-    'Size Set': 'bg-purple-100 text-purple-700 hover:bg-purple-200',
-    'Counter Sample': 'bg-orange-100 text-orange-700 hover:bg-orange-200',
-  };
-
-  return (
-    <Card className="relative group overflow-hidden border-slate-200 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-      <div className="aspect-[4/3] bg-slate-100 relative overflow-hidden">
-        {style.imageUrl ? (
-          <img 
-            src={style.imageUrl} 
-            alt={style.name} 
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50">
-            <Shirt className="h-12 w-12 mb-2 opacity-50" />
-            <span className="text-xs font-medium uppercase tracking-wider">No Preview</span>
-          </div>
-        )}
-        <div className="absolute top-3 right-3 flex flex-col gap-2">
-            <Badge className={cn("shadow-sm border-0 font-medium", statusColors[style.status] || 'bg-slate-100 text-slate-700')}>
-                {style.status}
-            </Badge>
-            {style.sampleApproved && (
-             <Badge className="bg-green-500 text-white shadow-sm border-0">Approved</Badge>
-            )}
-        </div>
-      </div>
-      
-      <CardHeader className="p-4 pb-2">
-        <div className="flex justify-between items-start">
-            <div>
-                <CardTitle className="text-lg font-semibold text-slate-900 line-clamp-1" title={style.name}>
-                    {style.name}
-                </CardTitle>
-                <div className="text-sm font-medium text-slate-500 mt-1 flex items-center gap-2">
-                    <span className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">#{style.number}</span>
-                    {style.season && <span className="text-slate-400">• {style.season}</span>}
-                </div>
-            </div>
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2 text-slate-400 hover:text-slate-700">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Edit Style</DropdownMenuItem>
-                    <DropdownMenuItem>Download Tech Pack</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-      </CardHeader>
-
-      <CardFooter className="p-4 pt-2 border-t border-slate-50 bg-slate-50/50">
-         <div className="w-full flex justify-between items-center text-xs text-slate-500">
-            <span>Ver. {style.version}</span>
-            <span>{style.updatedAt.toLocaleDateString()}</span>
-         </div>
-         <Link href={`/designer/${style.id}`} className="absolute inset-0 z-10" />
-      </CardFooter>
-    </Card>
-  );
-}
-
-// Utility for class merging (assuming the project has one, commonly in lib/utils)
-import { cn } from '@/lib/utils';

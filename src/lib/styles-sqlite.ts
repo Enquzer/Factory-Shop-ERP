@@ -224,6 +224,19 @@ export async function updateStyle(id: string, data: Partial<Style>): Promise<boo
   }
 }
 
+export async function deleteStyle(id: string): Promise<boolean> {
+  try {
+    const db = await getDb();
+    // Use soft delete by setting isActive to 0
+    await db.run(`UPDATE styles SET isActive = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+    resetDbCache();
+    return true;
+  } catch (error) {
+    console.error('Error deleting style:', error);
+    return false;
+  }
+}
+
 // --- BOM CRUD ---
 
 export async function getStyleBOM(styleId: string): Promise<BOMItem[]> {
