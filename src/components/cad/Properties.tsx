@@ -54,14 +54,14 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
   
   let segmentInfo = null;
   if (areTwoNodesSelected) {
-      const idxA = (selectedObjects[0] as any).cmdIndex;
-      const idxB = (selectedObjects[1] as any).cmdIndex;
+      const idxA = (selectedNodes[0] as any).cmdIndex;
+      const idxB = (selectedNodes[1] as any).cmdIndex;
       const startIdx = Math.min(idxA, idxB);
       const endIdx = Math.max(idxA, idxB);
 
       // Check if they are adjacent
       if (endIdx - startIdx === 1) {
-          const editor = (selectedObjects[0] as any).patternEditor;
+          const editor = (selectedNodes[0] as any).patternEditor;
           const pathArr = editor.path.path as any[];
           const cmd = pathArr[endIdx];
           const prevCmd = pathArr[startIdx];
@@ -83,6 +83,27 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
 
           segmentInfo = { endIdx, currentLen, isCurve, editor, label: segmentLabel };
       }
+  }
+
+  const isSegmentHandle = selectedObject && (selectedObject as any).handleType === 'segment';
+  if (isSegmentHandle && !segmentInfo) {
+      const editor = (selectedObject as any).patternEditor;
+      const [startIdx, endIdx] = (selectedObject as any).indices;
+      const pathArr = editor.path.path as any[];
+      const cmd = pathArr[endIdx];
+      const prevCmd = pathArr[startIdx];
+      const p0 = { x: prevCmd[prevCmd.length-2], y: prevCmd[prevCmd.length-1] };
+      const p1 = { x: cmd[cmd.length-2], y: cmd[cmd.length-1] };
+
+      let currentLen = 0;
+      if (cmd[0] === 'L') currentLen = distance(p0, p1);
+      else if (cmd[0] === 'C') currentLen = getCubicBezierLength(p0, {x: cmd[1], y: cmd[2]}, {x: cmd[3], y: cmd[4]}, p1);
+
+      const labelA = editor.pointLabels[startIdx];
+      const labelB = editor.pointLabels[endIdx];
+      const segmentLabel = (labelA && labelB) ? `${labelA} to ${labelB}` : (labelB || labelA || 'Custom Segment');
+
+      segmentInfo = { endIdx, currentLen, isCurve: cmd[0] === 'C', editor, label: segmentLabel };
   }
 
   const isPattern = (selectedObject?.type === 'path') && (selectedObject as any)._editor;
@@ -121,44 +142,49 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
       
       <div className="space-y-5">
         {/* SEGMENT / DISTANCE UI */}
-        {areTwoNodesSelected && (
+        {(areTwoNodesSelected || isSegmentHandle) && segmentInfo && (
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-4">
                 <h3 className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-2">
                     {segmentInfo?.isCurve ? <Activity className="w-3 h-3" /> : <MoveHorizontal className="w-3 h-3" />} 
-                    {segmentInfo ? 'Precision Length' : 'Straight Distance'}
+                    {isSegmentHandle ? 'Segment Info' : 'Precision Length'}
                 </h3>
                 <div className="space-y-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400">
                         <span>CURRENT</span>
-                        <span>{Math.round(segmentInfo ? segmentInfo.currentLen : distance({x: selectedObjects[0].left!, y: selectedObjects[0].top!}, {x: selectedObjects[1].left!, y: selectedObjects[1].top!}))}mm</span>
+                        <span>{Math.round(segmentInfo.currentLen)}mm</span>
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase">{segmentInfo?.isCurve ? 'Arc Length (mm)' : 'Target Length (mm)'}</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="number" 
-                                className="w-full bg-white border border-blue-200 rounded-md px-3 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500"
-                                value={targetDist}
-                                onChange={(e) => setTargetDist(e.target.value)}
-                                placeholder="e.g. 450"
-                            />
-                            <button 
-                                onClick={() => {
-                                    const val = parseFloat(targetDist);
-                                    if (isNaN(val)) return;
-                                    if (segmentInfo) {
+                    
+                    {!isSegmentHandle && (
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">{segmentInfo?.isCurve ? 'Arc Length (mm)' : 'Target Length (mm)'}</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="number" 
+                                    className="w-full bg-white border border-blue-200 rounded-md px-3 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500"
+                                    value={targetDist}
+                                    onChange={(e) => setTargetDist(e.target.value)}
+                                    placeholder="e.g. 450"
+                                />
+                                <button 
+                                    onClick={() => {
+                                        const val = parseFloat(targetDist);
+                                        if (isNaN(val)) return;
                                         segmentInfo.editor.setSegmentLength(segmentInfo.endIdx, val);
-                                    } else {
-                                        const editor = (selectedObjects[0] as any).patternEditor;
-                                        editor.adjustDistance((selectedObjects[0] as any).cmdIndex, (selectedObjects[1] as any).cmdIndex, val);
-                                    }
-                                }}
-                                className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold hover:bg-blue-700 transition-colors"
-                            >
-                                Apply
-                            </button>
+                                    }}
+                                    className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold hover:bg-blue-700 transition-colors"
+                                >
+                                    Apply
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    <button 
+                        onClick={() => segmentInfo.editor.splitSegment(segmentInfo.endIdx)}
+                        className="w-full mt-2 py-2 bg-white hover:bg-blue-600 hover:text-white border border-blue-200 rounded text-[10px] font-black transition-all flex items-center justify-center gap-2"
+                    >
+                        <Scissors className="w-3 h-3" /> Add Vertex (Split)
+                    </button>
                 </div>
             </div>
         )}
@@ -263,7 +289,7 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
         )}
 
         {/* TRANSFORMS */}
-        {!areTwoNodesSelected && selectedObject && (
+        {!areTwoNodesSelected && !isSegmentHandle && selectedObject && (
             <div className="space-y-4">
                 <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Transforms</h3>
                 <div className="grid grid-cols-2 gap-4">

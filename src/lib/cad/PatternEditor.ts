@@ -38,6 +38,7 @@ export class PatternEditor {
     (this.path as any).grainLine = (this.path as any).grainLine || { angle: 0, length: 100 };
     (this.path as any).pointLabels = pointLabels;
     (this.path as any).isEditing = false;
+    (this.path as any)._editor = this;
 
     // Ensure the path is set up for CAD precision
     this.path.set({
@@ -844,6 +845,85 @@ export class PatternEditor {
       pathArr[cmdIdxB][pathArr[cmdIdxB].length-2] = pA.x + dx;
       pathArr[cmdIdxB][pathArr[cmdIdxB].length-1] = pA.y + dy;
       this.path.set({ path: [...pathArr], dirty: true });
+      this.forceCleanRefresh();
+      this.showHandles();
+      this.canvas.requestRenderAll();
+  }
+
+  splitSegment(endIdx: number) {
+      const pathArr = this.path.path as any[];
+      const cmd = pathArr[endIdx];
+      const prevCmd = pathArr[endIdx - 1];
+      if (!prevCmd || !cmd) return;
+
+      const p0 = { x: prevCmd[prevCmd.length - 2], y: prevCmd[prevCmd.length - 1] };
+      const p1 = { x: cmd[cmd.length - 2], y: cmd[cmd.length - 1] };
+
+      if (cmd[0] === 'L') {
+          const midX = (p0.x + p1.x) / 2;
+          const midY = (p0.y + p1.y) / 2;
+          const newCmd = ['L', midX, midY];
+          pathArr.splice(endIdx, 0, newCmd);
+      } else if (cmd[0] === 'C') {
+          // De Casteljau's algorithm to split Cubic Bezier at t=0.5
+          const cp1 = { x: cmd[1], y: cmd[2] };
+          const cp2 = { x: cmd[3], y: cmd[4] };
+          const p3 = p1;
+
+          // Level 1
+          const q0 = { x: (p0.x + cp1.x) / 2, y: (p0.y + cp1.y) / 2 };
+          const q1 = { x: (cp1.x + cp2.x) / 2, y: (cp1.y + cp2.y) / 2 };
+          const q2 = { x: (cp2.x + p3.x) / 2, y: (cp2.y + p3.y) / 2 };
+
+          // Level 2
+          const r0 = { x: (q0.x + q1.x) / 2, y: (q0.y + q1.y) / 2 };
+          const r1 = { x: (q1.x + q2.x) / 2, y: (q1.y + q2.y) / 2 };
+
+          // Level 3 (The split point)
+          const s0 = { x: (r0.x + r1.x) / 2, y: (r0.y + r1.y) / 2 };
+
+          // First half: p0, q0, r0, s0
+          const firstHalf = ['C', q0.x, q0.y, r0.x, r0.y, s0.x, s0.y];
+          // Second half: s0, r1, q2, p3
+          const secondHalf = ['C', r1.x, r1.y, q2.x, q2.y, p3.x, p3.y];
+
+          pathArr[endIdx] = secondHalf;
+          pathArr.splice(endIdx, 0, firstHalf);
+      } else {
+          return;
+      }
+
+      // Shift Metadata
+      const shiftMetadata = (record: Record<number, any>) => {
+          const newRecord: Record<number, any> = {};
+          Object.keys(record).forEach(k => {
+              const idx = parseInt(k);
+              if (idx >= endIdx) newRecord[idx + 1] = record[idx];
+              else newRecord[idx] = record[idx];
+          });
+          return newRecord;
+      };
+
+      this.pointLabels = shiftMetadata(this.pointLabels);
+      (this.path as any).pointLabels = this.pointLabels;
+      
+      const newJoinPoints = new Set<number>();
+      this.joinPoints.forEach(idx => {
+          if (idx >= endIdx) newJoinPoints.add(idx + 1);
+          else newJoinPoints.add(idx);
+      });
+      this.joinPoints = newJoinPoints;
+
+      if ((this.path as any).notches) {
+          (this.path as any).notches.forEach((n: any) => {
+              if (n.cmdIndex >= endIdx) n.cmdIndex++;
+          });
+      }
+
+      this.path.set({ 
+          path: [...pathArr], 
+          dirty: true 
+      });
       this.forceCleanRefresh();
       this.showHandles();
       this.canvas.requestRenderAll();
