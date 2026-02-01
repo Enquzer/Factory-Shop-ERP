@@ -90,6 +90,7 @@ npm run deploy       # Build and backup database
 - **Database**: SQLite (file-based)
 - **Process Manager**: PM2
 - **Web Server**: Nginx (Linux) / IIS (Windows)
+- **CAD Engine**: Fabric.js for high-precision 2D pattern editing
 - **Notifications**: Telegram Bot API
 - **PDF Generation**: jsPDF
 - **Authentication**: bcrypt, JWT
@@ -99,45 +100,41 @@ npm run deploy       # Build and backup database
 
 ## 📱 Features
 
-### Factory Management
+### 📐 CAD & Pattern Engineering (New!)
 
-- Production order tracking
-- Multi-stage workflow (Planning → Cutting → Sewing → Finishing → QC → Packing)
-- Daily production status updates
-- Quality inspection management
-- Raw material inventory
-- BOM (Bill of Materials) management
+- **Interactive Pattern Editor**: Professional 2D CAD tool for garment pattern design and vertex manipulation.
+- **Parametric Input System**: Capture client body measurements to dynamically scale pattern coordinates.
+- **Point Drive Logic**: Intelligent coordinate transformation (scaling width/length while keeping necklines fixed).
+- **Counterpart Sync**: Real-time mirroring of adjustments across symmetrical pattern pieces (e.g., Front/Back Hem).
+- **Perpendicular Notch Logic**: Precision notch placement that remains perpendicular even on curved paths.
+- **Advanced PDF Export**: Tiled export with calibration marks, grain lines, and multi-page support for physical printing.
 
-### Shop Management
+### 🏭 Factory Management
 
-- Shop registration and approval
-- Product catalog with variants (size, color)
-- Order placement and tracking
-- Payment slip upload
-- Inventory management
-- Real-time Telegram notifications
+- **Production Traceability**: Real-time tracking from Order Planning to Packing.
+- **Multi-stage Workflow**: Planning → Cutting → Sewing → Finishing → QC → Packing.
+- **Material Consumption DB**: Standardized consumption tracking per product variant and style history.
+- **Quality Inspection**: Comprehensive inspection matrix with detailed fault logging and automated PDF reporting.
+- **Handover Management**: Digital cutting-to-production handover logs with granular size/color tracking.
 
-### Finance Module
+### 🛍️ Shop Management
 
-- Payment verification
-- Order financial tracking
-- Sales analytics
-- Shop performance metrics
+- **Smart Distribution**: Automated size and color breakdown balancing for shop distribution.
+- **Real-time Inventory**: Sync between factory output and shop stock levels.
+- **Order Tracking**: Complete lifecycle management from placement to payment verification and delivery.
+- **Payment Verification**: Digital payment slip upload with automated admin approval workflow.
 
-### Designer Studio
+### 📊 Finance & Analytics
 
-- Style creation and management
-- Tech pack specifications
-- Factory handover workflow
-- Sample approval process
+- **Sales Performance**: Real-time dashboards for shop-wise and product-wise sales analytics.
+- **Cost Tracking**: Material consumption vs. actual production cost analysis.
+- **Production Metrics**: Daily output tracking and efficiency reporting.
 
-### Telegram Integration
+### 🤖 Telegram Integration
 
-- Real-time order notifications
-- Payment verification alerts
-- Dispatch notifications
-- PDF reports with product images
-- Multi-shop channel support
+- **Real-time Notifications**: Instant alerts for new orders, payment uploads, and dispatch status.
+- **Visual Reports**: Automated PDF report generation with product snapshots sent directly to Telegram groups.
+- **Multi-channel Support**: Dedicated channels for different factory departments and shop groups.
 
 ---
 
@@ -145,7 +142,7 @@ npm run deploy       # Build and backup database
 
 - HTTPS/SSL encryption
 - Secure password hashing (bcrypt)
-- Role-based access control
+- Role-based access control (Admin, Factory Manager, Shop Manager, Designer, Marketing)
 - Environment variable protection
 - SQL injection prevention
 - XSS protection headers
@@ -162,9 +159,10 @@ The application uses SQLite with the following main tables:
 - `product_variants` - Size/color variants
 - `orders` - Shop orders
 - `marketing_orders` - Factory production orders
+- `material_consumption` - Historical consumption data
+- `production_ledger` - Granular production and handover logs
 - `shop_telegram_notifications` - Notification logs
 - `telegram_groups` - Detected Telegram channels
-- And many more for comprehensive tracking...
 
 ---
 
@@ -234,8 +232,9 @@ This project is proprietary software developed for Carement Fashion.
 
 **Latest Updates:**
 
-- ✅ One-click deployment scripts for Linux and Windows
-- ✅ Automated SSL certificate setup
-- ✅ Telegram webhook auto-configuration
-- ✅ Automated backup system
-- ✅ Complete production environment setup
+- ✅ **CAD Tool Integration**: Fully functional 2D pattern editor for custom-fit garments.
+- ✅ **One-click deployment scripts** for Linux and Windows.
+- ✅ **Automated SSL certificate setup** and backup system.
+- ✅ **Granular Production Tracking**: New size/color-level handover and ledger system.
+- ✅ **Material Consumption Database**: Historical tracking for accurate costing.
+- ✅ **Enhanced Quality Inspection Matrix**.
