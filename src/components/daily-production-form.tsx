@@ -163,10 +163,16 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
       return;
     }
     
-    if (newQuantity > (totalQuantity - totalProduced)) {
+    // Only validate against remaining quantity if we have production history
+    const effectiveTotalProduced = (totalUpdate.processStage === 'Sewing' || userRole === 'sewing') && 
+                                  components && components.length > 1 && selectedCompId
+                                  ? totalProducedForComponent
+                                  : totalProduced;
+    
+    if (effectiveTotalProduced > 0 && newQuantity > (totalQuantity - effectiveTotalProduced)) {
       toast({
         title: "Validation Error",
-        description: `Total quantity cannot exceed remaining quantity of ${totalQuantity - totalProduced}`,
+        description: `Total quantity cannot exceed remaining quantity of ${totalQuantity - effectiveTotalProduced}`,
         variant: "destructive",
       });
       return;
@@ -193,7 +199,7 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
   const getHistoryTotal = (stage: string, size: string, color: string, component?: string) => {
     return history
       .filter(entry => 
-        entry.processStage === stage && 
+        (entry.processType || (entry as any).processStage) === stage && 
         entry.size === size && 
         entry.color === color && 
         (!component || entry.componentName === component)
@@ -384,6 +390,18 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     performSubmit();
   };
 
+  // Calculate total produced for the selected component (if applicable)
+  const totalProducedForComponent = useMemo(() => {
+    if ((totalUpdate.processStage === 'Sewing' || userRole === 'sewing') && 
+        components && components.length > 1 && selectedCompId) {
+      // Filter history by component
+      return history
+        .filter(entry => entry.componentName === selectedCompId)
+        .reduce((sum, entry) => sum + entry.quantity, 0);
+    }
+    return totalProduced;
+  }, [totalProduced, history, totalUpdate.processStage, userRole, components, selectedCompId]);
+
   // Calculate Production Summary (Sets + Stray Components)
   const productionSummary = useMemo(() => {
     if (!components || components.length <= 1) {
@@ -409,7 +427,9 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     
     // Process history: Only look at Sewing stage for component completion
     history.forEach(entry => {
-      if (entry.processStage !== 'Sewing' || entry.isTotalUpdate) return;
+      // Use processType for ledger entries. Filter out entries without size/color (Total Updates or Legacy)
+      const pType = entry.processType || (entry as any).processStage;
+      if (pType !== 'Sewing' || !entry.size || !entry.color) return;
       
       const key = `${entry.color}-${entry.size}`;
       if (!grouped[key]) grouped[key] = {};
@@ -522,11 +542,21 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                 <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-blue-600">Balance Units</div>
-                    <div className="text-2xl font-black text-blue-900">{totalQuantity - totalProduced}</div>
+                    <div className="text-2xl font-black text-blue-900">
+                      {totalQuantity - ((totalUpdate.processStage === 'Sewing' || userRole === 'sewing') && 
+                                       components && components.length > 1 && selectedCompId
+                                       ? totalProducedForComponent
+                                       : totalProduced)}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] text-muted-foreground">Total: {totalQuantity}</div>
-                    <div className="text-[10px] text-green-600 font-medium">Recorded: {totalProduced}</div>
+                    <div className="text-[10px] text-green-600 font-medium">
+                      Recorded: {((totalUpdate.processStage === 'Sewing' || userRole === 'sewing') && 
+                                 components && components.length > 1 && selectedCompId
+                                 ? totalProducedForComponent
+                                 : totalProduced)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -731,37 +761,33 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
               ) : history.length > 0 ? (
                 history.map((entry, idx) => (
                   <TableRow key={idx} className="group hover:bg-gray-50/50">
-                    <TableCell className="font-medium text-xs">{entry.date}</TableCell>
+                    <TableCell className="font-medium text-xs">{entry.date || new Date(entry.timestamp).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px] uppercase font-bold bg-white">{entry.processStage || 'Sewing'}</Badge>
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold bg-white">{entry.processType || (entry as any).processStage || 'Production'}</Badge>
                     </TableCell>
                     <TableCell>
-                      {entry.componentName ? (
+                      {entry.componentName && entry.componentName !== 'General' ? (
                         <Badge variant="secondary" className="text-[10px] uppercase font-bold bg-blue-50 text-blue-700 border-blue-100">
                           {entry.componentName}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground text-[10px] italic">
-                          {entry.processStage === 'Sewing' ? 'Main / General' : 'N/A'}
+                          {(entry.processType || (entry as any).processStage) === 'Sewing' ? 'Main / General' : 'N/A'}
                         </span>
                       )}
                     </TableCell>
                     <TableCell>
-                      {entry.isTotalUpdate ? (
-                        <span className="text-muted-foreground italic text-xs">Total Update</span>
+                      {(!entry.size || !entry.color) ? (
+                        <span className="text-muted-foreground italic text-xs">Total / Legacy Update</span>
                       ) : (
                         <span className="font-mono text-[10px]">{entry.color} / {entry.size}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-blue-600 text-xs">{entry.quantity}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <div className={`w-1.5 h-1.5 rounded-full ${
-                          entry.status === 'Completed' ? 'bg-green-500' : 
-                          entry.status === 'In Progress' ? 'bg-blue-500' : 'bg-gray-400'
-                        }`} />
-                        <span className="text-[10px]">{entry.status}</span>
-                      </div>
+                      <span className="text-[10px] text-muted-foreground truncate max-w-[100px] inline-block" title={entry.notes}>
+                        {entry.notes || '-'}
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))

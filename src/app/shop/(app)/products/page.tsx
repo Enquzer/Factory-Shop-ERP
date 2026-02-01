@@ -38,8 +38,13 @@ export default function ShopProductsPage() {
   // Fetch shop settings
   useEffect(() => {
     if (user && user.role === 'shop') {
-        fetch(`/api/shops?username=${user.username}`)
-        .then(res => res.json())
+        fetch(`/api/shops/${user.username}`)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`);
+            }
+            return res.json();
+        })
         .then(data => {
             if (data && typeof data.showVariantDetails !== 'undefined') {
                 setShopSettings({ showVariantDetails: !!data.showVariantDetails });

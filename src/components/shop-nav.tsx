@@ -37,55 +37,122 @@ export function ShopNav() {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [shopId, setShopId] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Get shopId for the current user
   useEffect(() => {
-    if (!user || user.role !== 'shop') return;
+    if (!user || user.role !== 'shop' || !user.username) {
+      setIsInitialLoad(false);
+      return;
+    }
 
-    const fetchShopId = async () => {
-      try {
-        // Use the API endpoint instead of calling the database function directly
-        const response = await fetch(`/api/shops/${user.username}`);
-        if (response.ok) {
-          const shop = await response.json();
-          if (shop) {
-            setShopId(shop.id);
+    // Validate username format
+    if (typeof user.username !== 'string' || user.username.trim().length === 0) {
+      console.error('Invalid username:', user.username);
+      setIsInitialLoad(false);
+      return;
+    }
+
+    // Add a small delay to ensure auth context is fully initialized
+    const timer = setTimeout(() => {
+      const fetchShopId = async () => {
+        try {
+          // Encode the username to handle special characters
+          const encodedUsername = encodeURIComponent(user.username);
+          
+          // Use the API endpoint instead of calling the database function directly
+          const response = await fetch(`/api/shops/${encodedUsername}`);
+          
+          if (response.ok) {
+            const shop = await response.json();
+            if (shop && shop.id) {
+              setShopId(shop.id);
+            }
+          } else {
+            const errorText = await response.text();
+            console.error(`Failed to fetch shop '${user.username}' (status ${response.status}):`, errorText);
+            
+            // Retry once after a short delay if it's a server error
+            if (response.status >= 500) {
+              console.log('Retrying shop fetch in 1 second...');
+              setTimeout(async () => {
+                try {
+                  const retryResponse = await fetch(`/api/shops/${encodedUsername}`);
+                  if (retryResponse.ok) {
+                    const retryShop = await retryResponse.json();
+                    if (retryShop && retryShop.id) {
+                      setShopId(retryShop.id);
+                      console.log('Shop fetch retry successful');
+                    }
+                  } else {
+                    console.error('Retry also failed with status:', retryResponse.status);
+                  }
+                } catch (retryError) {
+                  console.error("Retry failed:", retryError);
+                }
+              }, 1000);
+            }
           }
+        } catch (error) {
+          console.error(`Error fetching shop '${user.username}':`, error);
+        } finally {
+          setIsInitialLoad(false);
         }
-      } catch (error) {
-        console.error("Error fetching shop:", error);
-      }
-    };
+      };
 
-    fetchShopId();
-  }, [user?.username]); // Use user.username instead of the entire user object
+      fetchShopId();
+    }, 150); // Increased to 150ms delay
+
+    return () => clearTimeout(timer);
+  }, [user?.username, user?.role]); // Add user.role dependency
 
   // Fetch notifications for the shop user
   useEffect(() => {
-    if (!shopId) return;
+    // Don't fetch during initial load or if we don't have a valid shopId
+    if (isInitialLoad || !shopId || shopId === 'null' || shopId === 'undefined') return;
 
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
     const fetchNotifications = async () => {
+      // Double-check all conditions
+      if (!isMounted || isInitialLoad || !shopId || shopId === 'null' || shopId === 'undefined') return;
+      
       try {
         const response = await fetch(`/api/notifications?userType=shop&shopId=${shopId}`);
+        if (!isMounted) return;
+        
         if (response.ok) {
           const notifications = await response.json();
-          const unread = notifications.filter((n: any) => !n.isRead).length;
-          setUnreadCount(unread);
+          if (isMounted && Array.isArray(notifications)) {
+            const unread = notifications.filter((n: any) => !n.isRead).length;
+            setUnreadCount(unread);
+          }
+        } else {
+          console.warn(`Notification API returned status ${response.status}`);
         }
       } catch (error) {
-        console.error("Error fetching notifications:", error);
+        if (isMounted) {
+          console.error("Error fetching notifications:", error);
+        }
       }
     };
 
     // Fetch notifications immediately
-    fetchNotifications();
+    const timeoutId = setTimeout(fetchNotifications, 100); // Small delay to ensure component is mounted
 
     // Set up polling interval (every 30 seconds)
-    const intervalId = setInterval(fetchNotifications, 30000);
+    intervalId = setInterval(fetchNotifications, 30000);
 
     // Cleanup subscription on component unmount
-    return () => clearInterval(intervalId);
-  }, [shopId]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [shopId, isInitialLoad]);
 
   return (
     <SidebarMenu>
@@ -102,7 +169,7 @@ export function ShopNav() {
               <span>
                 {link.label}
               </span>
-              {link.href === '/shop/orders' && unreadCount > 0 && (
+              {link.href === '/shop/orders' && unreadCount > 0 && !isInitialLoad && (
                 <Badge className="ml-auto flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs">
                   {unreadCount}
                 </Badge>
@@ -162,7 +229,7 @@ export function ShopNav() {
             <span>
               Notifications
             </span>
-            {unreadCount > 0 && (
+            {unreadCount > 0 && !isInitialLoad && (
               <Badge className="ml-auto flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs">
                 {unreadCount}
               </Badge>

@@ -12,34 +12,80 @@ export default function VisitorCounter() {
   const [visitorCount, setVisitorCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [shopId, setShopId] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Get shopId for the current user
   useEffect(() => {
-    if (!user || user.role !== 'shop') return;
+    if (!user || user.role !== 'shop' || !user.username) {
+      setIsInitialLoad(false);
+      return;
+    }
 
-    const fetchShopId = async () => {
-      try {
-        const response = await fetch(`/api/shops/${user.username}`);
-        if (response.ok) {
-          const shop = await response.json();
-          if (shop) {
-            setShopId(shop.id);
+    // Validate username format
+    if (typeof user.username !== 'string' || user.username.trim().length === 0) {
+      console.error('Invalid username:', user.username);
+      setIsInitialLoad(false);
+      return;
+    }
+
+    // Add a small delay to ensure auth context is fully initialized
+    const timer = setTimeout(() => {
+      const fetchShopId = async () => {
+        try {
+          // Encode the username to handle special characters
+          const encodedUsername = encodeURIComponent(user.username);
+          
+          const response = await fetch(`/api/shops/${encodedUsername}`);
+          
+          if (response.ok) {
+            const shop = await response.json();
+            if (shop && shop.id) {
+              setShopId(shop.id);
+            }
+          } else {
+            const errorText = await response.text();
+            console.error(`Failed to fetch shop '${user.username}' (status ${response.status}):`, errorText);
+            
+            // Retry once after a short delay if it's a server error
+            if (response.status >= 500) {
+              console.log('Retrying shop fetch in 1 second...');
+              setTimeout(async () => {
+                try {
+                  const retryResponse = await fetch(`/api/shops/${encodedUsername}`);
+                  if (retryResponse.ok) {
+                    const retryShop = await retryResponse.json();
+                    if (retryShop && retryShop.id) {
+                      setShopId(retryShop.id);
+                      console.log('Shop fetch retry successful');
+                    }
+                  } else {
+                    console.error('Retry also failed with status:', retryResponse.status);
+                  }
+                } catch (retryError) {
+                  console.error("Retry failed:", retryError);
+                }
+              }, 1000);
+            }
           }
+        } catch (error) {
+          console.error(`Error fetching shop '${user.username}':`, error);
+        } finally {
+          setIsInitialLoad(false);
         }
-      } catch (error) {
-        console.error('Error fetching shop ID:', error);
-      }
-    };
+      };
 
-    fetchShopId();
-  }, [user?.username]);
+      fetchShopId();
+    }, 150); // 150ms delay
+
+    return () => clearTimeout(timer);
+  }, [user?.username, user?.role]);
 
   // Fetch visitor count
   useEffect(() => {
-    if (shopId) {
+    if (shopId && !isInitialLoad) {
       fetchVisitorCount();
     }
-  }, [shopId]);
+  }, [shopId, isInitialLoad]);
 
   const fetchVisitorCount = async () => {
     try {

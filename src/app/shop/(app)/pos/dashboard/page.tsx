@@ -180,6 +180,17 @@ export default function POSDashboard() {
                     Average Transaction Value (ATV)
                   </CardTitle>
                 </CardHeader>
+                <div className="px-6 pt-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-xs font-bold text-blue-800 mb-1">Calculation Formula:</h4>
+                    <p className="text-xs text-blue-700">
+                      ATV = Total Sales Revenue ÷ Number of Transactions
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1 italic">
+                      Example: ETB 50,000 ÷ 100 transactions = ETB 500.00 per transaction
+                    </p>
+                  </div>
+                </div>
                 <CardContent className="p-6">
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={stats.atv}>
@@ -228,6 +239,17 @@ export default function POSDashboard() {
                     Units Per Transaction (UPT)
                   </CardTitle>
                 </CardHeader>
+                <div className="px-6 pt-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-xs font-bold text-green-800 mb-1">Calculation Formula:</h4>
+                    <p className="text-xs text-green-700">
+                      UPT = Total Units Sold ÷ Number of Transactions
+                    </p>
+                    <p className="text-xs text-green-600 mt-1 italic">
+                      Example: 250 units ÷ 100 transactions = 2.50 units per transaction
+                    </p>
+                  </div>
+                </div>
                 <CardContent className="p-6">
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={stats.upt}>
@@ -276,6 +298,17 @@ export default function POSDashboard() {
                     Conversion Rate
                   </CardTitle>
                 </CardHeader>
+                <div className="px-6 pt-4">
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-xs font-bold text-purple-800 mb-1">Calculation Formula:</h4>
+                    <p className="text-xs text-purple-700">
+                      Conversion Rate = (Number of Purchasing Visitors ÷ Total Visitors) × 100%
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1 italic">
+                      Example: 45 purchasing visitors ÷ 150 total visitors = 30.0%
+                    </p>
+                  </div>
+                </div>
                 <CardContent className="p-6">
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={stats.conversionRate}>
@@ -324,6 +357,17 @@ export default function POSDashboard() {
                     Daily Visitors
                   </CardTitle>
                 </CardHeader>
+                <div className="px-6 pt-4">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-xs font-bold text-yellow-800 mb-1">Calculation Formula:</h4>
+                    <p className="text-xs text-yellow-700">
+                      Daily Visitors = Count of unique foot traffic entries per day
+                    </p>
+                    <p className="text-xs text-yellow-600 mt-1 italic">
+                      Each visitor entry represents one person entering the store
+                    </p>
+                  </div>
+                </div>
                 <CardContent className="p-6">
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={stats.visitors}>
@@ -373,6 +417,17 @@ export default function POSDashboard() {
                   Best Selling Products
                 </CardTitle>
               </CardHeader>
+              <div className="px-6 pt-4">
+                <div className="bg-pink-50 border border-pink-200 rounded-lg p-3 mb-4">
+                  <h4 className="text-xs font-bold text-pink-800 mb-1">Calculation Formula:</h4>
+                  <p className="text-xs text-pink-700">
+                    Quantity Sold = Sum of all units sold for each product during the selected period
+                  </p>
+                  <p className="text-xs text-pink-600 mt-1 italic">
+                    Ranked from highest to lowest sales volume
+                  </p>
+                </div>
+              </div>
               <CardContent className="p-6">
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={stats.bestSellingProducts} layout="vertical">

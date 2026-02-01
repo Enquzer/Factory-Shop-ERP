@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket } from 'lucide-react';
+import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -38,6 +38,7 @@ const factoryLinks = [
 
   { href: '/finance', label: 'Finance Management', icon: FileText },
   { href: '/designer', label: 'Designer', icon: Palette },
+  { href: '/help-center', label: 'Help Center', icon: HelpCircle },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
@@ -170,6 +171,7 @@ export function Nav() {
     case 'designer':
       currentLinks = [
         { href: '/designer', label: 'Designer Studio', icon: Palette },
+        { href: '/designer/cad', label: 'CAD Studio', icon: PenTool },
         { href: '/sample-management', label: 'Sample Management', icon: FlaskConical },
         { href: '/marketing-orders', label: 'Marketing Orders', icon: Factory },
         { href: '/products', label: 'Product List', icon: Package },

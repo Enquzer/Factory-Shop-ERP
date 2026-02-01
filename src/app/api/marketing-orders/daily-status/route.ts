@@ -39,6 +39,8 @@ export async function POST(request: Request) {
               processType: statusData.processStage,
               quantity: statusData.quantity,
               componentName: statusData.componentName || 'General',
+              size: statusData.isTotalUpdate ? undefined : statusData.size,
+              color: statusData.isTotalUpdate ? undefined : statusData.color,
               userId: null,
               notes: statusData.isTotalUpdate ? 'Total Update' : `${statusData.size}-${statusData.color} - ${statusData.status}`
           });

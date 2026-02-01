@@ -16,6 +16,7 @@ import Image from 'next/image';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -345,15 +346,12 @@ export default function PackingDashboardPage() {
       {/* Production Update Dialog */}
       <Dialog open={isProductionDialogOpen} onOpenChange={setIsProductionDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
-          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b p-6 flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl font-bold">Register Production Output</DialogTitle>
-              <p className="text-sm text-muted-foreground">Update packing/finishing counts for Order {selectedOrder?.orderNumber}</p>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setIsProductionDialogOpen(false)}>
-               <X className="h-5 w-5" />
-            </Button>
-          </div>
+          <DialogHeader className="p-6 bg-white/95 backdrop-blur-sm border-b sticky top-0 z-10">
+            <DialogTitle className="text-2xl font-bold">Register Production Output</DialogTitle>
+            <DialogDescription>
+              Update packing/finishing counts for Order {selectedOrder?.orderNumber}
+            </DialogDescription>
+          </DialogHeader>
           <div className="p-6">
             {selectedOrder && (
               <DailyProductionForm 

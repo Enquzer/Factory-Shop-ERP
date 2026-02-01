@@ -64,6 +64,48 @@ export const helpCategories: HelpCategory[] = [
 export const helpDocuments: HelpDocument[] = [
   // Factory User Documentation
   {
+    id: 'factory-implementation-plan',
+    title: 'Factory Implementation Plan',
+    category: 'getting-started',
+    content: `
+## Factory Implementation Plan
+
+A step-by-step guide to successfully integrating the Factory-Shop ERP into your manufacturing workflow.
+
+### Phase 1: Preparation & Setup
+Before entering data, we need to set up the people who will run the system.
+1. **Define User Roles**: Identify who will manage key areas: Store (Inventory), Production (Cutting/Sewing), Finance, Design, and Shop Management.
+2. **Create Accounts**: Admin creates user accounts for all staff members with appropriate permissions.
+3. **Department Configuration**: Set up your factory departments (Cutting, Sewing, Finishing, Packing) in the system settings.
+
+### Phase 2: Master Data Management
+The system needs data to work. This is the most crucial step.
+1. **Raw Materials Library**: Enter all fabrics, buttons, zippers, and threads into the 'Raw Materials' module. Include suppliers and unit costs.
+2. **Product Catalog & BOM**: Use the 'Designer' module to create your styles. **CRITICAL**: Define the Bill of Materials (BOM) for each style.
+3. **Shop Registration**: Register all your retail outlets or client locations in the 'Shops' module.
+
+### Phase 3: Inventory & Orders
+Get a grip on what you have and what you need to make.
+1. **Initial Stock Take**: Count your physical inventory of fabrics and products. Update the 'Inventory' module to match reality.
+2. **Marketing Orders**: For bulk clients, use 'Marketing Orders' to log requirements and generate production plans.
+3. **Shop Replenishment**: For your own retail shops, teach managers to use 'Shop Orders' to request stock from the factory.
+
+### Phase 4: Production Lifecycle
+Digitize your factory floor operations.
+1. **Cutting Handover**: Log cut pieces in the 'Cutting' module. This deducts fabric inventory automatically.
+2. **Production Tracking**: Supervisors log daily output in 'Sewing'. This updates the status of orders in real-time.
+3. **Quality Control (QC)**: Inspectors record defects in the 'Quality Inspection' module.
+4. **Packing & Dispatch**: Scan finished goods into boxes in the 'Packing' module.
+
+### Phase 5: Financials & Reporting
+Keep a close eye on the bottom line.
+1. **Cost Analysis**: Use 'Reports' to analyze actual vs. estimated costs based on material usage and labor.
+2. **Payment Tracking**: Finance team records payments for orders and manages supplier invoices.
+    `,
+    roles: ['factory'],
+    tags: ['implementation', 'setup', 'guide', 'roadmap']
+  },
+  {
     id: 'factory-dashboard',
     title: 'Factory Dashboard Overview',
     category: 'getting-started',

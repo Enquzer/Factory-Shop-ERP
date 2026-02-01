@@ -59,10 +59,21 @@ export async function GET(request: Request) {
 
     // If username is provided, return that specific shop
     if (username) {
-      const shop = await getShopByUsername(username);
+      let shop;
+      console.log(`Fetching shop by username: ${username}`);
+      try {
+        shop = await getShopByUsername(username);
+        console.log(`Shop fetch result:`, shop ? 'FOUND' : 'NOT FOUND');
 
-      if (!shop) {
-        return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+        if (!shop) {
+          return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+        }
+      } catch (error) {
+        console.error(`Error fetching shop by username '${username}':`, error);
+        return NextResponse.json({ 
+          error: 'Failed to fetch shop', 
+          details: error instanceof Error ? error.message : 'Unknown error' 
+        }, { status: 500 });
       }
 
       // Return the shop data including new fields for variant visibility control
@@ -384,7 +395,7 @@ export async function PUT(request: NextRequest) {
     }
   }, ['factory', 'shop']);
 
-  return handler(request);
+  return handler(request, {});
 }
 
 // DELETE /api/shops - Delete a shop (protected - factory only)
@@ -438,5 +449,5 @@ export async function DELETE(request: NextRequest) {
     }
   }, 'factory');
 
-  return handler(request);
+  return handler(request, {});
 }

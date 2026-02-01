@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
     
     // Check roles allowed to modify orders (including status updates and planning)
-    const allowedRoles = ['factory', 'marketing', 'planning', 'sample_maker', 'sewing', 'packing', 'store'];
+    const allowedRoles = ['factory', 'marketing', 'planning', 'sample_maker', 'sewing', 'packing', 'store', 'quality_inspection'];
     if (!allowedRoles.includes(user.role)) {
       return NextResponse.json({ error: `Forbidden: ${user.role} role cannot modify marketing orders` }, { status: 403 });
     }

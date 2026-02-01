@@ -1,6 +1,7 @@
 import { 
   Dialog, 
   DialogContent, 
+  DialogDescription,
   DialogHeader, 
   DialogTitle 
 } from "@/components/ui/dialog";
@@ -44,6 +45,9 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>No Order Selected</DialogTitle>
+            <DialogDescription>
+              No order data is available to display.
+            </DialogDescription>
           </DialogHeader>
           <div className="py-8 text-center text-muted-foreground">
             No order data available.
@@ -58,6 +62,9 @@ export function OrderDetailDialog({ order, open, onOpenChange }: OrderDetailDial
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Order Details - {order.id}</DialogTitle>
+          <DialogDescription>
+            View detailed information about this order.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="flex justify-end pr-6">

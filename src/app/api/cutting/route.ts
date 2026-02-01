@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withRoleAuth, authenticateRequest } from '@/lib/auth-middleware';
-import { getCuttingRecordsFromDB, createCuttingRecordFromDB } from '@/lib/cutting';
+import { getCuttingRecordsFromDB, createCuttingRecordFromDB, getCuttingOrderSummaryFromDB } from '@/lib/cutting';
 import { getMarketingOrderByIdFromDB } from '@/lib/marketing-orders';
 
 // GET /api/cutting - Get all cutting records
@@ -41,6 +41,15 @@ async function handlePost(req: NextRequest, user: any) {
       );
     }
 
+    // Check if order has available quantity for cutting
+    const cuttingSummary = await getCuttingOrderSummaryFromDB(orderId);
+    if (cuttingSummary.balanceQuantity <= 0) {
+      return NextResponse.json(
+        { error: `Order ${order.orderNumber} has no remaining quantity to cut. Already cut: ${cuttingSummary.totalCutQuantity}/${cuttingSummary.totalOrderQuantity}` },
+        { status: 400 }
+      );
+    }
+
     // Create cutting record with order items
     const recordId = await createCuttingRecordFromDB(
       orderId,
@@ -52,7 +61,11 @@ async function handlePost(req: NextRequest, user: any) {
       user.username
     );
 
-    return NextResponse.json({ id: recordId, success: true });
+    return NextResponse.json({ 
+      id: recordId, 
+      success: true,
+      orderSummary: cuttingSummary
+    });
   } catch (error) {
     console.error('Error creating cutting record:', error);
     return NextResponse.json(

@@ -1,6 +1,7 @@
 import { 
   Dialog, 
   DialogContent, 
+  DialogDescription,
   DialogHeader, 
   DialogTitle 
 } from "@/components/ui/dialog";
@@ -166,6 +167,9 @@ export function EditMarketingOrderDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Marketing Order - {order.orderNumber}</DialogTitle>
+          <DialogDescription>
+            Modify the details of this marketing order.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Dialog, 
   DialogContent, 
+  DialogDescription,
   DialogHeader, 
   DialogTitle, 
   DialogFooter,
@@ -1142,6 +1143,9 @@ export default function OrderPlanningPage() {
                  {selectedOrder?.orderNumber && <span>Order: {selectedOrder.orderNumber}</span>}
               </div>
             </DialogTitle>
+            <DialogDescription>
+              Operation bulletin for {selectedOrder?.productName} - {selectedComponent || 'All Components'}
+            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <Table>

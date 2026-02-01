@@ -21,6 +21,33 @@ export async function POST(request: Request) {
 
     const db = await getDb();
     
+    // Check if pos_sales table exists, create if not
+    const tableExists = await db.get(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_sales'"
+    );
+    
+    if (!tableExists) {
+      console.log('Creating pos_sales table...');
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS pos_sales (
+          id TEXT PRIMARY KEY,
+          shopId TEXT NOT NULL,
+          transactionId TEXT UNIQUE NOT NULL,
+          customerName TEXT,
+          items TEXT NOT NULL,
+          totalAmount REAL NOT NULL,
+          discountAmount REAL DEFAULT 0,
+          taxAmount REAL DEFAULT 0,
+          finalAmount REAL NOT NULL,
+          paymentMethod TEXT DEFAULT 'cash',
+          isSameCustomer INTEGER DEFAULT 0,
+          createdAt TEXT NOT NULL,
+          FOREIGN KEY (shopId) REFERENCES shops(id)
+        )
+      `);
+      console.log('pos_sales table created successfully');
+    }
+    
     // Generate unique transaction ID
     const transactionId = `TXN-${Date.now()}`;
     const saleId = generateUUID();
@@ -72,7 +99,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Error creating POS sale:', error);
-    return NextResponse.json({ error: 'Failed to create sale' }, { status: 500 });
+    console.error('Error details:', error instanceof Error ? error.message : String(error));
+    return NextResponse.json({ 
+      error: 'Failed to create sale', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
+    }, { status: 500 });
   }
 }
 

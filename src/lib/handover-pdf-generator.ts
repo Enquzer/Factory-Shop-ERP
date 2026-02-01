@@ -13,6 +13,12 @@ export async function generateHandoverPDF(
   factoryAddress: string = 'Addis Ababa, Ethiopia',
   factoryEmail: string = 'info@carementfashion.com'
 ): Promise<Blob> {
+  // Validate input data
+  if (!order) throw new Error('Order data is required');
+  if (!handover) throw new Error('Handover data is required');
+  if (!items || items.length === 0) throw new Error('Handover items are required');
+  
+  console.log('PDF Generator Input:', { order, handover, items, latestQualityInspection });
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
 
@@ -64,11 +70,19 @@ export async function generateHandoverPDF(
   doc.setFont('helvetica', 'bold');
   doc.text('HANDOVER QUANTITIES', 15, currentY);
 
-  const itemsTable = items.map(item => [
+  // Validate items data
+  const validItems = items.filter(item => item.quantity > 0);
+  if (validItems.length === 0) {
+    throw new Error('No valid items with quantity > 0 found');
+  }
+
+  const itemsTable = validItems.map(item => [
     item.size || 'N/A',
     item.color || 'N/A',
     item.quantity.toString()
   ]);
+  
+  console.log('Items table data:', itemsTable);
 
   (doc as any).autoTable({
     startY: currentY + 5,

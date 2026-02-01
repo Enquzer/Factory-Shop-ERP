@@ -46,6 +46,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -59,6 +60,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { QualityInspectionMatrix } from '@/components/production/quality-inspection-matrix';
 
 export default function QualityInspectionDashboardPage() {
   const { user, isLoading } = useAuth();
@@ -75,6 +77,7 @@ export default function QualityInspectionDashboardPage() {
   const [isInspectionDialogOpen, setIsInspectionDialogOpen] = useState(false);
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [factoryProfile, setFactoryProfile] = useState<any>(null);
   const [cuttingRecords, setCuttingRecords] = useState<CuttingRecord[]>([]);
   const [selectedCuttingRecord, setSelectedCuttingRecord] = useState<CuttingRecord | null>(null);
@@ -88,6 +91,11 @@ export default function QualityInspectionDashboardPage() {
     stage: 'Inline-Sewing',
     status: 'Passed',
     quantityInspected: 0,
+    sampleSize: 0,
+    totalCritical: 0,
+    totalMajor: 0,
+    totalMinor: 0,
+    defectJson: '',
     quantityPassed: 0,
     quantityRejected: 0,
     size: '',
@@ -95,6 +103,33 @@ export default function QualityInspectionDashboardPage() {
     remarks: '',
     reportUrl: ''
   });
+
+  const handleMatrixUpdate = useCallback((data: any) => {
+    setFormData(prev => {
+      const hasChanges = 
+        prev.sampleSize !== data.sampleSize ||
+        prev.totalCritical !== data.totalCritical ||
+        prev.totalMajor !== data.totalMajor ||
+        prev.totalMinor !== data.totalMinor ||
+        prev.defectJson !== data.defectJson ||
+        prev.status !== data.status;
+
+      if (!hasChanges) return prev;
+
+      return {
+        ...prev,
+        sampleSize: data.sampleSize,
+        totalCritical: data.totalCritical,
+        totalMajor: data.totalMajor,
+        totalMinor: data.totalMinor,
+        defectJson: data.defectJson,
+        status: data.status as any,
+        quantityInspected: data.sampleSize,
+        quantityPassed: data.sampleSize - data.totalMajor - data.totalMinor - data.totalCritical,
+        quantityRejected: data.totalMajor + data.totalMinor + data.totalCritical
+      };
+    });
+  }, []);
 
   // Check if user has quality inspection role, otherwise redirect
   useEffect(() => {
@@ -209,6 +244,95 @@ export default function QualityInspectionDashboardPage() {
     setSelectedOrder(order);
     await fetchInspections(order.id);
     setIsHistoryDialogOpen(true);
+  };
+
+  const handleGeneratePdfForInspection = async (order: MarketingOrder) => {
+    if (!order.id) return;
+    
+    setGeneratingPdfId(order.id);
+    try {
+      // Fetch the latest inspection for this order
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const response = await fetch(`/api/quality-inspection?orderId=${order.id}`, {
+        headers
+      });
+      if (!response.ok) throw new Error('Failed to fetch inspection data');
+      
+      const inspections = await response.json();
+      const latestInspection = inspections[0]; // Assuming latest is first
+      
+      if (!latestInspection) {
+        toast({ title: "Error", description: "No inspection found for this order", variant: "destructive" });
+        return;
+      }
+      
+      // Generate PDF
+      const pdfBlob = await generateQCPDF(
+        order, 
+        latestInspection,
+        factoryProfile?.name,
+        factoryProfile?.address,
+        factoryProfile?.email
+      );
+      
+      const reportFile = new File([pdfBlob], `QC_Report_${order.orderNumber}_${latestInspection.stage}.pdf`, { type: 'application/pdf' });
+      
+      // Upload to server
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', reportFile);
+      uploadFormData.append('filename', reportFile.name);
+      
+      const uploadHeaders: Record<string, string> = {};
+      if (token) uploadHeaders['Authorization'] = `Bearer ${token}`;
+      
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: uploadHeaders,
+        body: uploadFormData
+      });
+      
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        
+        // Update the order with the new report URL and set quality inspection status
+        const updateResponse = await fetch(`/api/marketing-orders/${order.id}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ 
+            qualityInspectionReportUrl: uploadData.url,
+            qualityInspectionStatus: 'Completed'
+          })
+        });
+        
+        if (updateResponse.ok) {
+          toast({ title: "Success", description: "PDF generated and saved successfully" });
+          // Update the order in the local state immediately
+          setOrders(prevOrders => 
+            prevOrders.map(ord => 
+              ord.id === order.id 
+                ? { ...ord, qualityInspectionReportUrl: uploadData.url, qualityInspectionStatus: 'Approved' as 'Approved' }
+                : ord
+            )
+          );
+          fetchOrders(); // Refresh the list
+        } else {
+          throw new Error('Failed to update order with PDF URL');
+        }
+      } else {
+        throw new Error('Failed to upload PDF');
+      }
+    } catch (error) {
+      console.error("PDF Generation Error:", error);
+      toast({ title: "Error", description: "Failed to generate PDF", variant: "destructive" });
+    } finally {
+      setGeneratingPdfId(null);
+    }
   };
 
   const handleSubmitInspection = async () => {
@@ -603,17 +727,27 @@ export default function QualityInspectionDashboardPage() {
                              >
                                <Plus className="h-4 w-4" />
                              </Button>
-                             {order.qualityInspectionReportUrl && (
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                                 onClick={() => window.open(order.qualityInspectionReportUrl, '_blank')}
-                                 title="Export PDF"
-                               >
-                                 <FileDown className="h-4 w-4" />
-                               </Button>
-                             )}
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                               onClick={() => {
+                                 if (order.qualityInspectionReportUrl && order.qualityInspectionReportUrl.startsWith('/uploads/')) {
+                                   // If it's a local file, use the direct download
+                                   downloadPdf(order.qualityInspectionReportUrl, `QC_Report_${order.orderNumber}.pdf`);
+                                 } else {
+                                   // If we have an order ID, use the API endpoint
+                                   if (order.id) {
+                                     downloadQcPdf(order.id, order.qualityInspectionStage || '', order.orderNumber);
+                                   }
+                                 }
+                               }}
+                               title="Download PDF"
+                               disabled={!order.id}
+                             >
+                               <FileDown className="h-4 w-4" />
+                             </Button>
+
                          </div>
                       </TableCell>
                     </TableRow>
@@ -633,163 +767,159 @@ export default function QualityInspectionDashboardPage() {
 
       {/* Inspection Dialog */}
       <Dialog open={isInspectionDialogOpen} onOpenChange={setIsInspectionDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-               <ClipboardCheck className="h-5 w-5 text-emerald-600" />
-               New Inspection Record - {selectedOrder?.orderNumber}
+        <DialogContent className="max-w-6xl h-[95vh] flex flex-col p-0 overflow-hidden bg-white border-none shadow-2xl">
+          <DialogHeader className="p-6 border-b bg-white shrink-0">
+            <DialogTitle className="flex items-center gap-3 text-2xl font-black text-slate-800">
+               <div className="p-2 bg-emerald-100 rounded-lg">
+                  <ClipboardCheck className="h-6 w-6 text-emerald-600" />
+               </div>
+               New Quality Inspection Record
+               <Badge variant="outline" className="ml-2 bg-slate-50 text-slate-500 font-mono">{selectedOrder?.orderNumber}</Badge>
             </DialogTitle>
+            <DialogDescription className="text-slate-500 font-medium">
+              Perform a professional AQL-based inspection. All defects and status are auto-calculated.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-             <div className="space-y-4">
-                <div>
-                   <label className="text-sm font-bold mb-1.5 block">Inspection Stage *</label>
-                   <Select 
-                      value={formData.stage} 
-                      onValueChange={(v: any) => setFormData({...formData, stage: v})}
-                   >
-                      <SelectTrigger className="bg-white border-emerald-100">
-                         <SelectValue placeholder="Select Stage" />
-                      </SelectTrigger>
-                      <SelectContent>
-                         <SelectItem value="Sample">Sample Approval Inspection</SelectItem>
-                         <SelectItem value="Order">Order Pre-start Inspection</SelectItem>
-                         <SelectItem value="Inline-Cutting">Inline Cutting Inspection</SelectItem>
-                         <SelectItem value="Inline-Sewing">Inline Sewing Inspection</SelectItem>
-                         <SelectItem value="Final">Final Inspection Report</SelectItem>
-                      </SelectContent>
-                   </Select>
-                </div>
-                <div>
-                   <label className="text-sm font-bold mb-1.5 block">Date *</label>
-                   <Input 
-                      type="date" 
-                      value={formData.date}
-                      onChange={(e) => setFormData({...formData, date: e.target.value})}
-                   />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+
+          <div className="flex-1 overflow-y-auto bg-slate-50/30">
+             {/* Top Info Section */}
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 border-b bg-white shadow-sm">
+                <div className="space-y-4">
                    <div>
-                      <label className="text-sm font-bold mb-1.5 block">Size (Optional)</label>
-                      <Input 
-                         placeholder="e.g. M"
-                         value={formData.size}
-                         onChange={(e) => setFormData({...formData, size: e.target.value})}
-                      />
+                      <label className="text-xs font-black mb-1.5 block text-slate-500 uppercase tracking-widest">Inspection Stage *</label>
+                      <Select 
+                         value={formData.stage} 
+                         onValueChange={(v: any) => setFormData({...formData, stage: v})}
+                      >
+                         <SelectTrigger className="bg-slate-50 border-slate-200 h-11 focus:ring-emerald-500">
+                            <SelectValue placeholder="Select Stage" />
+                         </SelectTrigger>
+                         <SelectContent>
+                            <SelectItem value="Sample" className="font-bold">Sample Approval</SelectItem>
+                            <SelectItem value="Order" className="font-bold">Order Pre-start</SelectItem>
+                            <SelectItem value="Inline-Cutting" className="font-bold text-amber-600">Inline Cutting</SelectItem>
+                            <SelectItem value="Inline-Sewing" className="font-bold text-blue-600">Inline Sewing</SelectItem>
+                            <SelectItem value="Final" className="font-bold text-red-600">Final Audit</SelectItem>
+                         </SelectContent>
+                      </Select>
                    </div>
                    <div>
-                      <label className="text-sm font-bold mb-1.5 block">Color (Optional)</label>
+                      <label className="text-xs font-black mb-1.5 block text-slate-500 uppercase tracking-widest">Inspection Date *</label>
                       <Input 
-                         placeholder="e.g. Blue"
-                         value={formData.color}
-                         onChange={(e) => setFormData({...formData, color: e.target.value})}
+                         type="date" 
+                         className="h-11 border-slate-200 bg-slate-50"
+                         value={formData.date}
+                         onChange={(e) => setFormData({...formData, date: e.target.value})}
                       />
+                   </div>
+                </div>
+                
+                <div className="space-y-4">
+                   <div className="grid grid-cols-2 gap-3">
+                      <div>
+                         <label className="text-xs font-black mb-1.5 block text-slate-500 uppercase tracking-widest">Size Specification</label>
+                         <Input 
+                            placeholder="e.g. XL"
+                            className="h-11 border-slate-200 bg-slate-50"
+                            value={formData.size}
+                            onChange={(e) => setFormData({...formData, size: e.target.value})}
+                         />
+                      </div>
+                      <div>
+                         <label className="text-xs font-black mb-1.5 block text-slate-500 uppercase tracking-widest">Color / Shade</label>
+                         <Input 
+                            placeholder="e.g. Navy Blue"
+                            className="h-11 border-slate-200 bg-slate-50"
+                            value={formData.color}
+                            onChange={(e) => setFormData({...formData, color: e.target.value})}
+                         />
+                      </div>
+                   </div>
+                   <div>
+                      <label className="text-xs font-black mb-1.5 block text-slate-500 uppercase tracking-widest">External Report (Optional)</label>
+                      <Input 
+                         placeholder="Paste link to external photos/docs"
+                         className="h-11 border-slate-200 bg-slate-50"
+                         value={formData.reportUrl}
+                         onChange={(e) => setFormData({...formData, reportUrl: e.target.value})}
+                      />
+                   </div>
+                </div>
+
+                <div className="space-y-4">
+                   <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-100 shadow-sm h-full flex flex-col justify-center">
+                      <label className="text-[10px] font-black mb-3 block text-emerald-600 uppercase tracking-[0.2em] text-center">Current Inspection Verdict</label>
+                      <div className="flex flex-wrap gap-2 justify-center">
+                          {['Passed', 'Failed', 'Approved', 'Rejected', 'Rework'].map((stat) => (
+                              <Button 
+                                 key={stat}
+                                 size="sm" 
+                                 variant={formData.status === stat ? 'default' : 'outline'}
+                                 className={cn(
+                                   "h-9 px-4 text-xs font-black transition-all rounded-full",
+                                   formData.status === stat ? (
+                                     (stat === 'Passed' || stat === 'Approved') ? "bg-emerald-600 hover:bg-emerald-700 shadow-md scale-110" :
+                                     (stat === 'Failed' || stat === 'Rejected') ? "bg-red-600 hover:bg-red-700 shadow-md scale-110" :
+                                     "bg-amber-500 hover:bg-amber-600 shadow-md scale-110"
+                                   ) : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                                 )}
+                                 onClick={() => setFormData({...formData, status: stat as any})}
+                              >
+                                 {stat}
+                              </Button>
+                          ))}
+                      </div>
                    </div>
                 </div>
              </div>
-             <div className="space-y-4">
-                <div className="p-3 bg-emerald-50/50 rounded-lg border border-emerald-100">
-                   <label className="text-sm font-bold mb-2 block text-emerald-800 tracking-tight">Final Inspection Verdict</label>
-                   <div className="flex flex-wrap gap-2">
-                       {['Passed', 'Failed', 'Approved', 'Rejected', 'Rework'].map((stat) => (
-                           <Button 
-                              key={stat}
-                              size="sm" 
-                              variant={formData.status === stat ? 'default' : 'outline'}
-                              className={cn(
-                                "h-8 px-3 text-xs font-bold",
-                                formData.status === stat ? (
-                                  (stat === 'Passed' || stat === 'Approved') ? "bg-emerald-600 hover:bg-emerald-700 shadow-sm" :
-                                  (stat === 'Failed' || stat === 'Rejected') ? "bg-red-600 hover:bg-red-700 shadow-sm" :
-                                  "bg-amber-500 hover:bg-amber-600 shadow-sm"
-                                ) : "bg-white border-emerald-100 text-emerald-800 hover:bg-emerald-50"
-                              )}
-                              onClick={() => setFormData({...formData, status: stat as any})}
-                           >
-                              {stat}
-                           </Button>
-                       ))}
-                   </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                   <div>
-                      <label className="text-sm font-bold mb-1.5 block">Inspected</label>
-                      <Input 
-                         type="number"
-                         className="bg-white"
-                         value={formData.quantityInspected}
-                         onChange={(e) => {
-                           const val = parseInt(e.target.value) || 0;
-                           setFormData({...formData, quantityInspected: val, quantityPassed: val, quantityRejected: 0});
-                         }}
-                      />
-                   </div>
-                   <div>
-                      <label className="text-sm font-bold mb-1.5 block text-emerald-600 underline decoration-emerald-200">Approved</label>
-                      <Input 
-                         type="number"
-                         className="bg-white border-emerald-100"
-                         value={formData.quantityPassed}
-                         onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setFormData({...formData, quantityPassed: val, quantityRejected: (formData.quantityInspected || 0) - val});
-                         }}
-                      />
-                   </div>
-                   <div>
-                      <label className="text-sm font-bold mb-1.5 block text-red-600 underline decoration-red-200">Rejected</label>
-                      <Input 
-                         type="number"
-                         className="bg-white border-red-100"
-                         value={formData.quantityRejected}
-                         onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setFormData({...formData, quantityRejected: val, quantityPassed: (formData.quantityInspected || 0) - val});
-                         }}
-                      />
-                   </div>
-                </div>
-                 <div>
-                    <label className="text-sm font-bold mb-1.5 flex items-center gap-2">
-                       Report Link (Attachment URL)
-                       <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">Auto-Generated if Blank</span>
-                    </label>
-                    <Input 
-                       placeholder="External URL or leave blank for Auto-PDF"
-                       value={formData.reportUrl}
-                       onChange={(e) => setFormData({...formData, reportUrl: e.target.value})}
+
+             <div className="p-8">
+                <div className="space-y-10">
+                    <QualityInspectionMatrix 
+                       orderQuantity={selectedOrder?.quantity || 1}
+                       initialData={formData.defectJson}
+                       onUpdate={handleMatrixUpdate}
                     />
-                 </div>
-             </div>
-             <div className="md:col-span-2">
-                <label className="text-sm font-bold mb-1.5 block">Detailed Remarks / Findings</label>
-                <Textarea 
-                   placeholder="Enter any issues found, rework needed, or positive findings..."
-                   rows={3}
-                   value={formData.remarks}
-                   onChange={(e) => setFormData({...formData, remarks: e.target.value})}
-                />
+
+                    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-4">
+                       <label className="text-sm font-black block text-slate-800 uppercase tracking-tight">Inspector Remarks & Quality Findings</label>
+                       <Textarea 
+                          placeholder="Document any quality issues, needle breakage, shading problems, or general observations here..."
+                          className="min-h-[120px] bg-slate-50 border-slate-200 focus:bg-white transition-all text-base"
+                          value={formData.remarks}
+                          onChange={(e) => setFormData({...formData, remarks: e.target.value})}
+                       />
+                       <p className="text-[10px] text-slate-400 italic">These remarks will be included in the auto-generated PDF report.</p>
+                    </div>
+                </div>
              </div>
           </div>
-          <DialogFooter className="flex gap-2 sm:justify-end">
-             <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setIsInspectionDialogOpen(false)}>Cancel</Button>
-             <Button 
-                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 h-10 shadow-lg min-w-[220px]" 
-                onClick={handleSubmitInspection}
-                disabled={isGeneratingReport}
-              >
-                {isGeneratingReport ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Generating QC Report...
-                  </>
-                ) : (
-                  <>
-                    <FileCheck className="mr-2 h-4 w-4" />
-                    Complete & Save Report
-                  </>
-                )}
-              </Button>
+
+          <DialogFooter className="p-6 bg-slate-50 border-t shrink-0 flex items-center justify-between sm:justify-between gap-4">
+             <div className="hidden md:flex items-center gap-2 text-slate-500">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-tighter">Live AQL Monitoring Active</span>
+             </div>
+             <div className="flex gap-3 w-full md:w-auto">
+                <Button variant="outline" className="flex-1 md:flex-none h-11 px-8 font-bold border-slate-300" onClick={() => setIsInspectionDialogOpen(false)}>Discard</Button>
+                <Button 
+                   className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 h-11 shadow-xl min-w-[280px] font-black text-lg rounded-xl transition-all hover:scale-105 active:scale-95" 
+                   onClick={handleSubmitInspection}
+                   disabled={isGeneratingReport}
+                 >
+                   {isGeneratingReport ? (
+                     <>
+                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                       Finalizing Report...
+                     </>
+                   ) : (
+                     <>
+                       <FileCheck className="mr-3 h-6 w-6" />
+                       COMPLETE & SAVE INSPECTION
+                     </>
+                   )}
+                 </Button>
+             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -802,6 +932,9 @@ export default function QualityInspectionDashboardPage() {
                 <History className="h-5 w-5 text-emerald-600" />
                 Inspection History - {selectedOrder?.orderNumber}
              </DialogTitle>
+             <DialogDescription>
+               View all inspection records for this order.
+             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
              {inspections.length > 0 ? (
@@ -818,9 +951,9 @@ export default function QualityInspectionDashboardPage() {
                                   )}>
                                      {ins.status}
                                   </Badge>
-                                  {ins.reportUrl && (
+                                  {ins.reportUrl ? (
                                     <a 
-                                      href={ins.reportUrl} 
+                                      href={ins.reportUrl}
                                       target="_blank" 
                                       rel="noopener noreferrer"
                                       className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-bold hover:bg-emerald-50 w-fit p-1 px-2 rounded-md border border-emerald-100 transition-colors shadow-sm"
@@ -829,6 +962,14 @@ export default function QualityInspectionDashboardPage() {
                                       QC_REPORT.PDF
                                       <ExternalLink className="h-2 w-2" />
                                     </a>
+                                  ) : (
+                                    <button 
+                                      onClick={() => selectedOrder && downloadQcPdf(selectedOrder.id, ins.stage, selectedOrder.orderNumber)}
+                                      className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold hover:bg-gray-50 w-fit p-1 px-2 rounded-md border border-gray-200 transition-colors shadow-sm"
+                                    >
+                                      <FileText className="h-3 w-3" />
+                                      Generate Report
+                                    </button>
                                   )}
                                </div>
                                <span className="font-bold text-gray-700">{ins.stage}</span>
@@ -865,12 +1006,43 @@ export default function QualityInspectionDashboardPage() {
                                "{ins.remarks}"
                             </div>
                          )}
-                         {ins.reportUrl && (
-                            <Button size="sm" variant="link" className="p-0 h-auto text-emerald-600 font-bold" onClick={() => window.open(ins.reportUrl, '_blank')}>
-                               <FileText className="mr-1 h-3.5 w-3.5" />
-                               View Attached Report
-                            </Button>
-                         )}
+                         <div className="flex gap-2">
+                           <Button 
+                             size="sm" 
+                             variant="link" 
+                             className="p-0 h-auto text-emerald-600 font-bold" 
+                             onClick={() => {
+                               if (ins.reportUrl) {
+                                 window.open(ins.reportUrl, '_blank');
+                               } else if (selectedOrder?.id) {
+                                 downloadQcPdf(selectedOrder.id, ins.stage, selectedOrder.orderNumber);
+                               }
+                             }}
+                           >
+                             <FileText className="mr-1 h-3.5 w-3.5" />
+                             {ins.reportUrl ? 'View Report' : 'Preview Report'}
+                           </Button>
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             className="h-7 text-xs text-red-600 hover:text-red-700 border-red-200"
+                             onClick={() => {
+                               if (ins.reportUrl && ins.reportUrl.startsWith('/uploads/')) {
+                                 // If it's a local file, use the direct download
+                                 downloadPdf(ins.reportUrl, `QC_Report_${selectedOrder?.orderNumber}_${ins.stage}.pdf`);
+                               } else {
+                                 // If we have an order ID, use the API endpoint
+                                 if (selectedOrder?.id) {
+                                   downloadQcPdf(selectedOrder.id, ins.stage, selectedOrder.orderNumber);
+                                 }
+                               }
+                             }}
+                           >
+                             <FileDown className="mr-1 h-3 w-3" />
+                             Download
+                           </Button>
+                         </div>
+
                       </div>
                    ))}
                 </div>
@@ -895,6 +1067,9 @@ export default function QualityInspectionDashboardPage() {
               <Scissors className="h-5 w-5 text-amber-600" />
               Cutting Batch QC Check
             </DialogTitle>
+            <DialogDescription>
+              Perform quality check on the cutting batch before moving to production.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="p-4 bg-muted/30 rounded-lg">
@@ -951,3 +1126,90 @@ export default function QualityInspectionDashboardPage() {
     </div>
   );
 }
+
+const downloadPdf = (url: string | undefined, filename: string) => {
+  if (!url) return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+const downloadQcPdf = async (orderId: string, stage: string, orderNumber: string) => {
+  try {
+    console.log('Starting PDF download for order:', orderId, 'stage:', stage);
+    
+    // Get auth token from localStorage
+    const token = localStorage.getItem('authToken');
+    
+    // Fetch the PDF with proper authentication
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const url = `/api/quality-inspection/pdf?orderId=${orderId}&stage=${encodeURIComponent(stage)}`;
+    console.log('Fetching PDF from:', url);
+    
+    const response = await fetch(url, {
+      headers
+    });
+    
+    console.log('Response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      let errorMessage = `Failed to download PDF: ${response.statusText}`;
+      
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.details) {
+          errorMessage += ` - ${errorJson.details}`;
+        }
+      } catch (e) {
+        // Not JSON, use raw text
+        if (errorText) {
+          errorMessage += ` - ${errorText}`;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Get the blob data
+    const blob = await response.blob();
+    console.log('Received blob, size:', blob.size, 'type:', blob.type);
+    
+    if (blob.size === 0) {
+      throw new Error('Received empty PDF file');
+    }
+    
+    // Create a download link
+    const objectUrl = window.URL.createObjectURL(blob);
+    const fileName = `QC_Report_${orderNumber}_${stage}.pdf`;
+    
+    console.log('Creating download link for:', fileName);
+    
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = fileName;
+    link.style.display = 'none'; // Hide the link
+    
+    document.body.appendChild(link);
+    link.click();
+    
+    // Clean up
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(objectUrl);
+    
+    console.log('PDF download initiated successfully');
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    alert(`Failed to download PDF. ${errorMessage}`);
+  }
+};

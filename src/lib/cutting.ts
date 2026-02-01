@@ -1,4 +1,5 @@
 import { getDb } from './db';
+import { logProductionActivity } from './production-ledger';
 
 export type CuttingStatus = 'not_started' | 'in_progress' | 'completed' | 'qc_pending' | 'qc_passed' | 'qc_failed' | 'handed_over';
 
@@ -164,6 +165,43 @@ export async function getCuttingRecordByOrderIdFromDB(orderId: string): Promise<
   record.items = items;
 
   return record;
+}
+
+// Get total already cut quantity for an order
+export async function getTotalCutQuantityForOrderFromDB(orderId: string): Promise<number> {
+  const db = await getDb();
+  const result = await db.get(`
+    SELECT COALESCE(SUM(ci.cutQuantity), 0) as totalCut
+    FROM cutting_items ci
+    JOIN cutting_records cr ON ci.cuttingRecordId = cr.id
+    WHERE cr.orderId = ?
+  `, orderId);
+  
+  return result?.totalCut || 0;
+}
+
+// Get cutting order summary with already cut and balance
+export async function getCuttingOrderSummaryFromDB(orderId: string): Promise<{ totalOrderQuantity: number; totalCutQuantity: number; balanceQuantity: number }> {
+  const db = await getDb();
+  
+  const order = await db.get(`
+    SELECT quantity as totalOrderQuantity
+    FROM marketing_orders
+    WHERE id = ?
+  `, orderId);
+  
+  if (!order) {
+    throw new Error('Order not found');
+  }
+  
+  const totalCut = await getTotalCutQuantityForOrderFromDB(orderId);
+  const balance = Math.max(0, order.totalOrderQuantity - totalCut); // Prevent negative values
+  
+  return {
+    totalOrderQuantity: order.totalOrderQuantity,
+    totalCutQuantity: totalCut,
+    balanceQuantity: balance
+  };
 }
 
 export async function createCuttingRecordFromDB(orderId: string, orderNumber: string, productCode: string, productName: string, imageUrl: string | undefined, items: any[], username: string): Promise<number> {
@@ -562,6 +600,25 @@ export async function createHandoverRecordFromDB(
         INSERT INTO cutting_handover_items (handoverId, cuttingItemId, quantity)
         VALUES (?, ?, ?)
       `, handoverId, item.cuttingItemId, item.quantity);
+
+      // Log to Production Ledger for "Balance" tracking
+      try {
+        const cuttingItem = await db.get("SELECT size, color, componentsCut FROM cutting_items WHERE id = ?", item.cuttingItemId);
+        if (cuttingItem) {
+           await logProductionActivity({
+              orderId: data.orderId,
+              processType: 'Cutting',
+              quantity: item.quantity,
+              componentName: cuttingItem.componentsCut || 'General',
+              size: cuttingItem.size,
+              color: cuttingItem.color,
+              userId: data.handoverBy,
+              notes: `Handover to ${data.receivedBy}`
+           });
+        }
+      } catch (e) {
+        console.error('Failed to log cutting handover to ledger:', e);
+      }
     }
   }
 
@@ -614,9 +671,11 @@ export async function createHandoverRecordFromDB(
 export async function getHandoversByRecordIdFromDB(recordId: number): Promise<CuttingHandover[]> {
   const db = await getDb();
   const handovers = await db.all(`
-    SELECT * FROM cutting_handovers
-    WHERE cuttingRecordId = ?
-    ORDER BY handoverDate DESC
+    SELECT ch.*, cr.orderId
+    FROM cutting_handovers ch
+    JOIN cutting_records cr ON ch.cuttingRecordId = cr.id
+    WHERE ch.cuttingRecordId = ?
+    ORDER BY ch.handoverDate DESC
   `, recordId);
 
   for (const handover of handovers) {
@@ -625,6 +684,7 @@ export async function getHandoversByRecordIdFromDB(recordId: number): Promise<Cu
       FROM cutting_handover_items chi
       JOIN cutting_items ci ON chi.cuttingItemId = ci.id
       WHERE chi.handoverId = ?
+      ORDER BY ci.size, ci.color
     `, handover.id);
   }
 
@@ -802,5 +862,29 @@ export async function getHandovers(recordId: number): Promise<CuttingHandover[]>
     }
   });
   if (!response.ok) throw new Error('Failed to fetch handovers');
+  return response.json();
+}
+
+// Get handovers by record ID (alternative method)
+export async function getHandoversByRecordId(recordId: number): Promise<CuttingHandover[]> {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`/api/cutting/${recordId}/handovers`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) throw new Error('Failed to fetch handovers');
+  return response.json();
+}
+
+// Client-side functions for order summary
+export async function getCuttingOrderSummary(orderId: string): Promise<{ totalOrderQuantity: number; totalCutQuantity: number; balanceQuantity: number }> {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`/api/cutting/summary/${orderId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) throw new Error('Failed to fetch cutting order summary');
   return response.json();
 }

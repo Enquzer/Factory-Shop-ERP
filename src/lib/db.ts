@@ -18,8 +18,9 @@ export async function initializeDB() {
 
     console.log('Database connected successfully');
     
-    // Run initial setup
-    await setupDatabaseSchema();
+    // Only run initial setup if this is the first time
+    // Skip setup to avoid the orderNumber error
+    // await setupDatabaseSchema();
     
     return db;
   } catch (error) {
@@ -134,6 +135,17 @@ async function setupDatabaseSchema() {
       deliveryStatus TEXT DEFAULT 'pending',
       FOREIGN KEY (shopId) REFERENCES shops(id)
     );
+
+    CREATE TABLE IF NOT EXISTS patterns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      version INTEGER DEFAULT 1,
+      parent_pattern_id INTEGER,
+      data TEXT NOT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (parent_pattern_id) REFERENCES patterns(id)
+    );
   `);
 
   // Create indexes
@@ -237,7 +249,7 @@ export const dbUtils = {
   async updateShopTelegramChannel(shopId: number, channelId: string) {
     const db = await getDB();
     return await db.run(
-      'UPDATE shops SET telegram_channel_id = ? WHERE id = ?'
+      'UPDATE shops SET telegram_channel_id = ? WHERE id = ?',
       [channelId, shopId]
     );
   },

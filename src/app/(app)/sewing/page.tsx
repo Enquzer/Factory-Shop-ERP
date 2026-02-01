@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -487,7 +488,9 @@ export default function SewingDashboardPage() {
               <ClipboardList className="h-6 w-6 text-primary" />
               Operation Breakdown - {selectedOrder?.productCode}
             </DialogTitle>
-            <CardDescription>{selectedOrder?.productName} | Total Qty: {selectedOrder?.quantity}</CardDescription>
+            <DialogDescription>
+              {selectedOrder?.productName} | Total Qty: {selectedOrder?.quantity}
+            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-hidden p-6 pt-0">
             {/* Group items by component */}
@@ -531,15 +534,12 @@ export default function SewingDashboardPage() {
       {/* Daily Production Status Dialog */}
       <Dialog open={isProductionDialogOpen} onOpenChange={setIsProductionDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
-          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b p-6 flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl font-bold">Daily Production Updates</DialogTitle>
-              <p className="text-sm text-muted-foreground">Record output for Order {selectedOrder?.orderNumber} ({selectedOrder?.productCode})</p>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setIsProductionDialogOpen(false)}>
-               <X className="h-5 w-5" />
-            </Button>
-          </div>
+          <DialogHeader className="p-6 bg-white/95 backdrop-blur-sm border-b sticky top-0 z-10">
+            <DialogTitle className="text-2xl font-bold">Daily Production Updates</DialogTitle>
+            <DialogDescription>
+              Record output for Order {selectedOrder?.orderNumber} ({selectedOrder?.productCode})
+            </DialogDescription>
+          </DialogHeader>
           <div className="p-6">
             {selectedOrder && (
               <DailyProductionForm 

@@ -91,8 +91,11 @@ export async function GET(req: Request) {
         SUM(oi.quantity) as total_volume
       FROM order_items oi
       JOIN orders o ON oi.orderId = o.id
+      JOIN product_variants pv ON oi.variantId = pv.id
+      JOIN products p ON pv.productId = p.id
+      ${category ? `WHERE p.category = ?` : ''}
       GROUP BY o.shopId
-    `);
+    `, category ? [category] : []);
 
     const shopScores: Record<string, number> = {};
     let totalShopVolume = 0;

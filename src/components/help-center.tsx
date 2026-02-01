@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -102,6 +103,9 @@ export function HelpCenter() {
               <X className="h-4 w-4" />
             </Button>
           </DialogTitle>
+          <DialogDescription>
+            Find answers to common questions and learn how to use the system effectively.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="flex flex-1 overflow-hidden">

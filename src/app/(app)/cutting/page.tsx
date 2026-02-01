@@ -7,6 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { 
   Table, 
   TableBody, 
@@ -18,6 +24,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -51,7 +58,8 @@ import {
   ProductComponent,
   createPartialHandover,
   getHandovers,
-  CuttingHandover
+  CuttingHandover,
+  getCuttingOrderSummary
 } from '@/lib/cutting';
 import { getMarketingOrders, MarketingOrder, getQualityInspections, QualityInspection } from '@/lib/marketing-orders';
 import { format } from 'date-fns';
@@ -80,6 +88,10 @@ export default function CuttingPage() {
   const [latestQualityInspection, setLatestQualityInspection] = useState<QualityInspection | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [lastHandoverId, setLastHandoverId] = useState<number | null>(null);
+  const [orderSummary, setOrderSummary] = useState<{ totalOrderQuantity: number; totalCutQuantity: number; balanceQuantity: number } | null>(null);
+  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [selectedOrderForSummary, setSelectedOrderForSummary] = useState<MarketingOrder | null>(null);
+  const [orderSummaries, setOrderSummaries] = useState<Record<string, { totalOrderQuantity: number; totalCutQuantity: number; balanceQuantity: number }>>({});
 
   useEffect(() => {
     fetchData();
@@ -119,17 +131,29 @@ export default function CuttingPage() {
         getMarketingOrders()
       ]);
       setRecords(cuttingData);
-      // Filter orders that are ready for cutting (planning approved)
-      // Only show orders where total cut quantity is less than planned quantity
-      setOrders(ordersData.filter(o => {
-        const totalCut = cuttingData
-          .filter(r => r.orderId === o.id)
-          .reduce((sum, r) => sum + (r.items?.reduce((s, i) => s + i.cutQuantity, 0) || 0), 0);
+      
+      // Filter orders that are ready for cutting (planning approved and have remaining quantity)
+      const filteredOrders = [];
+      const summaries: Record<string, { totalOrderQuantity: number; totalCutQuantity: number; balanceQuantity: number }> = {};
+      for (const order of ordersData) {
+        if (!order.isPlanningApproved || order.status !== 'Cutting') {
+          continue;
+        }
         
-        return o.isPlanningApproved && 
-               o.status === 'Cutting' && 
-               totalCut < o.quantity;
-      }));
+        // Check if order has remaining quantity to cut
+        try {
+          const summary = await getCuttingOrderSummary(order.id);
+          if (summary.balanceQuantity > 0) {
+            filteredOrders.push(order);
+            summaries[order.id] = summary;
+          }
+        } catch (error) {
+          console.error(`Error checking availability for order ${order.id}:`, error);
+        }
+      }
+            
+      setOrders(filteredOrders);
+      setOrderSummaries(summaries);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -144,11 +168,43 @@ export default function CuttingPage() {
 
   const handleStartCutting = async (orderId: string) => {
     try {
-      const recordId = await createCuttingRecord(orderId);
+      // First, get the order summary to show to user
+      const order = orders.find(o => o.id === orderId);
+      if (!order) {
+        toast({
+          title: "Error",
+          description: "Order not found",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      const summary = await getCuttingOrderSummary(orderId);
+      setOrderSummary(summary);
+      setSelectedOrderForSummary(order);
+      setIsSummaryDialogOpen(true);
+    } catch (error: any) {
+      console.error('Error fetching order summary:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch order summary",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const confirmStartCutting = async () => {
+    if (!selectedOrderForSummary) return;
+    
+    try {
+      const recordId = await createCuttingRecord(selectedOrderForSummary.id);
       toast({
         title: "Success",
-        description: "Cutting record created successfully"
+        description: `Cutting record created successfully. Available quantity: ${orderSummary?.balanceQuantity}`
       });
+      setIsSummaryDialogOpen(false);
+      setOrderSummary(null);
+      setSelectedOrderForSummary(null);
       fetchData();
     } catch (error) {
       console.error('Error creating cutting record:', error);
@@ -159,6 +215,13 @@ export default function CuttingPage() {
       });
     }
   };
+
+  const cancelStartCutting = () => {
+    setIsSummaryDialogOpen(false);
+    setOrderSummary(null);
+    setSelectedOrderForSummary(null);
+  };
+
 
   const handleUpdateItem = async (itemId: number, updates: Partial<CuttingItem>) => {
     // Optimistic Update for UI responsiveness
@@ -313,17 +376,37 @@ export default function CuttingPage() {
     if (!selectedRecord) return;
     setIsGeneratingPDF(true);
     try {
+      console.log('Fetching handovers for record:', selectedRecord.id);
       const handovers = await getHandovers(selectedRecord.id);
+      console.log('Handovers received:', handovers);
+      
       const handover = handovers.find(h => h.id === handoverId);
       if (!handover) throw new Error('Handover record not found');
+      console.log('Selected handover:', handover);
 
       const order = orders.find(o => o.id === selectedRecord.orderId);
       if (!order) throw new Error('Order details not found');
+      console.log('Order details:', order);
+
+      console.log('Handover items:', handover.items);
+      
+      // Validate that we have items with size and color
+      if (!handover.items || handover.items.length === 0) {
+        throw new Error('No items found in handover record');
+      }
+      
+      const itemsWithDetails = handover.items.map(item => ({
+        ...item,
+        size: item.size || 'Unknown',
+        color: item.color || 'Unknown'
+      }));
+      
+      console.log('Items with details:', itemsWithDetails);
 
       const blob = await generateHandoverPDF(
         order,
         handover,
-        handover.items || [],
+        itemsWithDetails,
         latestQualityInspection || undefined
       );
 
@@ -334,11 +417,16 @@ export default function CuttingPage() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (error) {
+      
+      toast({
+        title: "Success",
+        description: "PDF downloaded successfully"
+      });
+    } catch (error: any) {
       console.error('Error generating PDF:', error);
       toast({
         title: "Error",
-        description: "Failed to generate PDF",
+        description: error.message || "Failed to generate PDF",
         variant: "destructive"
       });
     } finally {
@@ -428,6 +516,7 @@ export default function CuttingPage() {
                   <TableHead>Product</TableHead>
                   <TableHead className="text-right">Order Qty</TableHead>
                   <TableHead className="text-right">Already Cut</TableHead>
+                  <TableHead className="text-right">Available</TableHead>
                   <TableHead>Planning Date</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -459,18 +548,44 @@ export default function CuttingPage() {
                         .filter(r => r.orderId === order.id)
                         .reduce((sum, r) => sum + (r.items?.reduce((s, i) => s + i.cutQuantity, 0) || 0), 0)}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Badge 
+                        variant={orderSummaries[order.id]?.balanceQuantity > 0 ? "default" : "destructive"}
+                        className={orderSummaries[order.id]?.balanceQuantity > 0 ? "bg-green-100 text-green-800 hover:bg-green-100" : ""}
+                      >
+                        {orderSummaries[order.id]?.balanceQuantity || 0}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-sm">
                       {order.sewingStartDate ? format(new Date(order.sewingStartDate), 'PP') : '--'}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button 
-                        size="sm" 
-                        onClick={() => handleStartCutting(order.id)}
-                        className="shadow-md"
-                      >
-                        <Scissors className="mr-2 h-4 w-4" />
-                        Start New Batch
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div>
+                              <Button 
+                                size="sm" 
+                                onClick={() => handleStartCutting(order.id)}
+                                disabled={!orderSummaries[order.id] || orderSummaries[order.id]?.balanceQuantity <= 0}
+                                className="shadow-md"
+                              >
+                                <Scissors className="mr-2 h-4 w-4" />
+                                Start New Batch
+                              </Button>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {!orderSummaries[order.id] 
+                                ? "Loading availability..." 
+                                : orderSummaries[order.id]?.balanceQuantity <= 0 
+                                  ? "No quantity available for cutting" 
+                                  : `Available for cutting: ${orderSummaries[order.id]?.balanceQuantity} units`}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -479,6 +594,86 @@ export default function CuttingPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Order Summary Dialog */}
+      <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5 text-amber-600" />
+              Batch Cutting Confirmation
+            </DialogTitle>
+            <DialogDescription>
+              Confirm the batch cutting quantities for this order.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {orderSummary && selectedOrderForSummary && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-muted/30 rounded-lg">
+                <div className="text-sm font-medium mb-2">Order Details:</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>Order Number:</div>
+                  <div className="font-bold">{selectedOrderForSummary.orderNumber}</div>
+                  <div>Product:</div>
+                  <div className="font-bold">{selectedOrderForSummary.productName}</div>
+                  <div>Style:</div>
+                  <div className="font-bold">{selectedOrderForSummary.productCode}</div>
+                </div>
+              </div>
+              
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4 text-amber-600" />
+                  Quantity Summary
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Order Quantity:</span>
+                    <span className="font-bold">{orderSummary.totalOrderQuantity}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Already Cut:</span>
+                    <span className="font-bold text-blue-600">{orderSummary.totalCutQuantity}</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t">
+                    <span className="text-muted-foreground">Available for Cutting:</span>
+                    <span className={`font-bold text-lg ${orderSummary.balanceQuantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {orderSummary.balanceQuantity}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {orderSummary.balanceQuantity <= 0 ? (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                  <div className="text-red-700 font-medium">No quantity available for cutting</div>
+                  <div className="text-sm text-red-600 mt-1">All units have already been cut</div>
+                </div>
+              ) : (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <div className="text-green-700 font-medium">Ready to start new batch</div>
+                  <div className="text-sm text-green-600 mt-1">You can cut up to {orderSummary.balanceQuantity} units</div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelStartCutting}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={confirmStartCutting}
+              disabled={!orderSummary || orderSummary.balanceQuantity <= 0}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              <Scissors className="mr-2 h-4 w-4" />
+              Start Cutting Batch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Cutting Records */}
       <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
@@ -651,6 +846,9 @@ export default function CuttingPage() {
               Cutting Details - {selectedRecord?.orderNumber}
               {selectedRecord && getStatusBadge(selectedRecord.status)}
             </DialogTitle>
+            <DialogDescription>
+              View detailed cutting information and handover records.
+            </DialogDescription>
           </DialogHeader>
           
           {selectedRecord && (
@@ -1006,6 +1204,9 @@ export default function CuttingPage() {
               <AlertCircle className="h-5 w-5 text-primary" />
               Quality Control Check
             </DialogTitle>
+            <DialogDescription>
+              Perform quality control check before moving to production.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="flex gap-4">
@@ -1068,6 +1269,9 @@ export default function CuttingPage() {
                 </Badge>
               )}
             </DialogTitle>
+            <DialogDescription>
+              Handover cut materials to production for further processing.
+            </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-6 py-4">
@@ -1232,6 +1436,9 @@ export default function CuttingPage() {
               <CheckCircle2 className="h-5 w-5 text-primary" />
               Accept Cut Panels
             </DialogTitle>
+            <DialogDescription>
+              Confirm that you have received the cut panels and are ready to start the sewing process.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
@@ -1278,6 +1485,9 @@ export default function CuttingPage() {
               <History className="h-5 w-5 text-primary" />
               Cutting History - {records.find(r => r.orderId === selectedOrderIdForHistory)?.orderNumber}
             </DialogTitle>
+            <DialogDescription>
+              View the complete cutting history for this order.
+            </DialogDescription>
           </DialogHeader>
 
           {selectedOrderIdForHistory && (

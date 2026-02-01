@@ -153,6 +153,11 @@ export interface QualityInspection {
   size?: string;
   color?: string;
   quantityInspected: number;
+  sampleSize?: number;
+  totalCritical?: number;
+  totalMajor?: number;
+  totalMinor?: number;
+  defectJson?: string; // Detailed breakdown of defects as JSON
   quantityPassed: number; // Also used as Approved
   quantityRejected: number;
   status: 'Passed' | 'Failed' | 'Approved' | 'Rejected' | 'Rework';
@@ -1434,8 +1439,8 @@ export async function saveQualityInspectionInDB(inspection: Omit<QualityInspecti
     
     await db.run(`
       INSERT INTO quality_inspections (
-        orderId, date, stage, size, color, quantityInspected, quantityPassed, quantityRejected, status, reportUrl, remarks, inspectorId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        orderId, date, stage, size, color, quantityInspected, sampleSize, totalCritical, totalMajor, totalMinor, defectJson, quantityPassed, quantityRejected, status, reportUrl, remarks, inspectorId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       inspection.orderId,
       inspection.date,
@@ -1443,6 +1448,11 @@ export async function saveQualityInspectionInDB(inspection: Omit<QualityInspecti
       inspection.size || null,
       inspection.color || null,
       inspection.quantityInspected || 0,
+      inspection.sampleSize || 0,
+      inspection.totalCritical || 0,
+      inspection.totalMajor || 0,
+      inspection.totalMinor || 0,
+      inspection.defectJson || null,
       inspection.quantityPassed || 0,
       inspection.quantityRejected || 0,
       inspection.status,

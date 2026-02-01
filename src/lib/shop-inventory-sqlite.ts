@@ -110,10 +110,6 @@ export async function removeItemsFromShopInventory(shopId: string, productVarian
       WHERE shopId = ? AND productVariantId IN (${placeholders})
     `, shopId, ...productVariantIds);
     const deleted = (result.changes || 0) > 0;
-    if (deleted) {
-      // Reset the database cache to ensure subsequent queries get fresh data
-      resetDbCache();
-    }
     return deleted;
   } catch (error) {
     console.error('Error removing items from shop inventory:', error);

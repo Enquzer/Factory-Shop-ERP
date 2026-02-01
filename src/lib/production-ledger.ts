@@ -6,6 +6,8 @@ export type ProductionEntry = {
   orderId: string;
   componentName: string;
   processType: 'Cutting' | 'Sewing' | 'Finishing' | 'Packing' | 'Store In';
+  size?: string;
+  color?: string;
   quantity: number;
   userId?: string;
   notes?: string;
@@ -35,6 +37,8 @@ export async function logProductionActivity(entry: Omit<ProductionEntry, 'id' | 
             
             // 2. Check Finished Quantity for each Component
             for (const comp of components) {
+                // If size/color is provided, we should ideally validate strictly against that variant
+                // But for now, let's stick to global component balance to avoid blocking partial flows
                 const finishedResult = await db.get(`
                     SELECT SUM(quantity) as total 
                     FROM production_ledger 
@@ -75,9 +79,9 @@ export async function logProductionActivity(entry: Omit<ProductionEntry, 'id' | 
 
     // Log daily work into the append-only ledger
     const result = await db.run(`
-      INSERT INTO production_ledger (orderId, componentName, processType, quantity, userId, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, entry.orderId, entry.componentName, entry.processType, entry.quantity, entry.userId, entry.notes);
+      INSERT INTO production_ledger (orderId, componentName, processType, size, color, quantity, userId, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, entry.orderId, entry.componentName, entry.processType, entry.size || null, entry.color || null, entry.quantity, entry.userId, entry.notes);
     
     resetDbCache();
     return result.lastID;
@@ -99,8 +103,10 @@ export async function getProductionHistory(orderId: string): Promise<ProductionE
     return history.map((h: any) => ({
       id: h.id,
       orderId: h.orderId,
-      componentName: h.componentName,
+      componentName: h.componentName || 'General',
       processType: h.processType,
+      size: h.size,
+      color: h.color,
       quantity: h.quantity,
       userId: h.userId,
       notes: h.notes,
@@ -131,8 +137,9 @@ export async function getOrderBalance(orderId: string) {
         const balance: Record<string, Record<string, number>> = {};
         
         summary.forEach((row: any) => {
-            if (!balance[row.componentName]) {
-                balance[row.componentName] = {
+            const comp = row.componentName || 'General';
+            if (!balance[comp]) {
+                balance[comp] = {
                     Cutting: 0,
                     Sewing: 0,
                     Finishing: 0,
@@ -141,7 +148,7 @@ export async function getOrderBalance(orderId: string) {
                 };
             }
             // @ts-ignore
-            balance[row.componentName][row.processType] = row.totalQty;
+            balance[comp][row.processType] = row.totalQty;
         });
         
         return balance;

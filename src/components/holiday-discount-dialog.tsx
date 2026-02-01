@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { HolidayDiscountForm } from './holiday-discount-form';
 import { HolidayDiscount, CreateHolidayDiscountInput, UpdateHolidayDiscountInput } from '@/lib/holiday-discounts';
 
@@ -37,6 +37,9 @@ export function HolidayDiscountDialog({
           <DialogTitle>
             {discount ? 'Edit Holiday Discount' : 'Create Holiday Discount'}
           </DialogTitle>
+          <DialogDescription>
+            {discount ? 'Modify the details of this holiday discount.' : 'Create a new holiday discount for customers.'}
+          </DialogDescription>
         </DialogHeader>
         
         <HolidayDiscountForm
