@@ -169,11 +169,33 @@ export default function CADToolPage() {
              return;
         }
 
+        if (draftCommands.current.length === 0) return;
+
+        // --- Manual Normalization Strategy ---
+        // 1. Find the top-left bounds of the user's drawing (Scene Coordinates)
+        let minX = Infinity, minY = Infinity;
+        draftCommands.current.forEach(pt => {
+             if (pt.x < minX) minX = pt.x;
+             if (pt.y < minY) minY = pt.y;
+             if (pt.type === 'Q' && pt.cx !== undefined && pt.cy !== undefined) {
+                 if (pt.cx < minX) minX = pt.cx;
+                 if (pt.cy < minY) minY = pt.cy;
+             }
+        });
+
+        // 2. Generate Path Data relative to this Top-Left (Local Coordinates)
         let pathString = '';
         draftCommands.current.forEach(cmd => {
             if (cmd.type === 'M') pathString += `M ${cmd.x} ${cmd.y} `;
-            else if (cmd.type === 'L') pathString += `L ${cmd.x} ${cmd.y} `;
-            else if (cmd.type === 'Q') pathString += `Q ${cmd.cx} ${cmd.cy} ${cmd.x} ${cmd.y} `;
+            if (cmd.type === 'M') {
+                pathString += `M ${cmd.x - minX} ${cmd.y - minY} `;
+            } else if (cmd.type === 'L') {
+                pathString += `L ${cmd.x - minX} ${cmd.y - minY} `;
+            } else if (cmd.type === 'Q') {
+                pathString += `Q ${cmd.cx! - minX} ${cmd.cy! - minY} ${cmd.x - minX} ${cmd.y - minY} `;
+            } else if (cmd.type === 'Z') {
+                pathString += 'Z ';
+            }
         });
 
         // Close path - add line back to start if close to starting point
@@ -183,49 +205,26 @@ export default function CADToolPage() {
         
         if (distanceToStart < 15 && distanceToStart > 0.1) {
             // Add explicit line back to start point for proper closure
-            pathString += `L ${first.x} ${first.y} `;
+            pathString += `L ${first.x - minX} ${first.y - minY} `;
         }
         
         // Add Z command to close the path
         if (draftCommands.current.length > 2) {
-            pathString += 'Z';
+             pathString += 'Z';
         }
 
+        // 3. Create Path explicitely at that position
         const path = new fabric.Path(pathString, {
+            left: minX,
+            top: minY,
             fill: 'transparent',
             stroke: '#2563eb',
             strokeWidth: 2,
-            objectCaching: false
+            objectCaching: false,
+            // Force origin to match our logic
+            originX: 'left',
+            originY: 'top'
         });
-
-        // Snap Correction: Ensure the path stays exactly where drawn
-        // Fabric.js normalizes the path which can cause a shift. We calculate the offset
-        // of the first point and shift the whole object back to match the original click.
-        if (draftCommands.current.length > 0) {
-            const startPoint = draftCommands.current[0]; // Original absolute coordinate
-            
-            // Get the normalized start point from the new path
-            // path.path[0] is ['M', x, y]
-            const m = (path.path as any[])[0];
-            if (m && m[0] === 'M') {
-                const normalizedX = m[1];
-                const normalizedY = m[2];
-                
-                // Calculate where that point currently is in scene space
-                // Scene = Left + Normalized - PathOffset (assuming origin left/top)
-                const currentSceneX = path.left! + normalizedX - (path.pathOffset.x || 0);
-                const currentSceneY = path.top! + normalizedY - (path.pathOffset.y || 0);
-                
-                const diffX = startPoint.x - currentSceneX;
-                const diffY = startPoint.y - currentSceneY;
-                
-                path.set({
-                    left: path.left! + diffX,
-                    top: path.top! + diffY
-                });
-                path.setCoords();
-            }
-        }
 
         const id = Math.random().toString(36).substr(2, 9);
         (path as any).id = id;
