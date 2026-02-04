@@ -221,39 +221,50 @@ export type ProductConsumption = {
   productId: string;
   productName: string;
   productCode: string;
-  materials: {
-    materialId: string;
-    materialName: string;
-    quantityPerUnit: number;
-    unitOfMeasure: string;
-  }[];
+  productImage?: string;
+  materialId: string;
+  materialCode: string;
+  materialName: string;
+  materialImage?: string;
+  color: string;
+  quantityPerUnit: number;
+  unitOfMeasure: string;
+  totalHistoricalConsumption: number;
 };
 
 export async function getConsumptionDatabase(): Promise<ProductConsumption[]> {
   try {
     const db = await getDb();
-    const products = await db.all(`
-      SELECT p.id as productId, p.productName, p.productCode
+    
+    // Perform a comprehensive join to get product, material, color and aggregated consumption
+    // Grouping by product, material, and color to show the breakdown requested
+    const results = await db.all(`
+      SELECT 
+        p.id as productId, 
+        p.name as productName, 
+        p.productCode, 
+        p.imageUrl as productImage,
+        rm.id as materialId,
+        rm.id as materialCode,
+        rm.name as materialName, 
+        rm.imageUrl as materialImage,
+        oi.color,
+        b.quantityPerUnit, 
+        rm.unitOfMeasure,
+        SUM(COALESCE(oi.quantity, 0) * b.quantityPerUnit * (1 + (b.wastagePercentage / 100))) as totalHistoricalConsumption
       FROM products p
+      JOIN product_bom b ON p.id = b.productId
+      JOIN raw_materials rm ON b.materialId = rm.id
+      LEFT JOIN marketing_orders o ON p.productCode = o.productCode
+      LEFT JOIN marketing_order_items oi ON o.id = oi.orderId
+      GROUP BY p.id, rm.id, oi.color
+      ORDER BY p.productCode ASC, rm.name ASC
     `);
     
-    const results: ProductConsumption[] = [];
-    
-    for (const p of products) {
-      const materials = await db.all(`
-        SELECT b.materialId, rm.name as materialName, b.quantityPerUnit, rm.unitOfMeasure
-        FROM product_bom b
-        JOIN raw_materials rm ON b.materialId = rm.id
-        WHERE b.productId = ?
-      `, [p.productId]);
-      
-      results.push({
-        ...p,
-        materials
-      });
-    }
-    
-    return results;
+    return results.map((r: any) => ({
+      ...r,
+      totalHistoricalConsumption: r.totalHistoricalConsumption || 0
+    }));
   } catch (error) {
     console.error('Error fetching consumption database:', error);
     return [];

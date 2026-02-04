@@ -722,6 +722,14 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
       doc.text(decodeHTMLEntities(`  Contact Person: ${order.dispatchInfo.contactPerson}`), 20, currentY);
       currentY += 7;
       doc.text(decodeHTMLEntities(`  Dispatch Date: ${order.dispatchInfo.dispatchDate}`), 20, currentY);
+      if (order.dispatchInfo.padNumber) {
+        currentY += 7;
+        doc.text(decodeHTMLEntities(`  PAD Number: ${order.dispatchInfo.padNumber}`), 20, currentY);
+      }
+      if (order.dispatchInfo.receiptNumber) {
+        currentY += 7;
+        doc.text(decodeHTMLEntities(`  Receipt Number: ${order.dispatchInfo.receiptNumber}`), 20, currentY);
+      }
       if (order.dispatchInfo.driverName) {
         currentY += 7;
         doc.text(decodeHTMLEntities(`  Driver Name: ${order.dispatchInfo.driverName}`), 20, currentY);

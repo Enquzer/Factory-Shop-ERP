@@ -1,7 +1,18 @@
 
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Style, BOMItem, Measurement, Attachment, Canvas } from './styles-sqlite';
+
+async function getBase64Image(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 export async function generateTechPackPDF(style: Style) {
   const doc = new jsPDF();
@@ -16,11 +27,8 @@ export async function generateTechPackPDF(style: Style) {
 
   if (style.imageUrl) {
       try {
-        const imgProps = doc.getImageProperties(style.imageUrl);
-        const ratio = imgProps.height / imgProps.width;
-        const width = 100;
-        const height = width * ratio;
-        doc.addImage(style.imageUrl, 'JPEG', 55, 80, width, height);
+        const base64Img = await getBase64Image(style.imageUrl);
+        doc.addImage(base64Img, 'JPEG', 55, 80, 100, 100 * (1.2)); // Fallback ratio if needed
       } catch (e) {
           console.error("Failed to load image for PDF", e);
           doc.rect(55, 80, 100, 100);
@@ -55,7 +63,7 @@ export async function generateTechPackPDF(style: Style) {
           item.comments || ''
       ]);
 
-      (doc as any).autoTable({
+      autoTable(doc, {
           head: [['Type', 'Item', 'Supplier', 'Cons.', 'Cost', 'Comments']],
           body: bomData,
           startY: 30,
@@ -112,20 +120,11 @@ export async function generateTechPackPDF(style: Style) {
       // 1. Draw Visual Guide if exists
       if (style.canvas && style.canvas.canvasImageUrl) {
           try {
-              const imgProps = doc.getImageProperties(style.canvas.canvasImageUrl);
-              const pdfImgWidth = 100; // fit half page width or so? let's do centered
-              const ratio = imgProps.height / imgProps.width;
-              const pdfImgHeight = pdfImgWidth * ratio;
-              
-              // Check if image allows drawing or needs new page?
-              // Standard A4 height ~297mm. Header 25mm.
-              if (currentY + pdfImgHeight > 280) {
-                   doc.addPage();
-                   currentY = 40;
-              }
-
-              const imgX = (210 - pdfImgWidth) / 2; // Center
-              doc.addImage(style.canvas.canvasImageUrl, 'JPEG', imgX, currentY, pdfImgWidth, pdfImgHeight);
+              const base64Img = await getBase64Image(style.canvas.canvasImageUrl);
+              const imgX = (210 - 100) / 2; // Center
+              doc.addImage(base64Img, 'JPEG', imgX, currentY, 100, 100);
+              const pdfImgWidth = 100;
+              const pdfImgHeight = 100;
               
               // Draw Annotations
               if (style.canvas.annotationsJson) {
@@ -177,12 +176,12 @@ export async function generateTechPackPDF(style: Style) {
           const sizes = Object.keys(style.measurements[0].sizeValues).sort();
           const head = ['POM', 'Tol', ...sizes];
           const body = style.measurements.map(m => [
-              m.pom,
-              m.tolerance,
-              ...sizes.map(s => m.sizeValues[s] || 0)
+              m.pom || '',
+              m.tolerance ?? 0,
+              ...sizes.map(s => m.sizeValues[s] ?? 0)
           ]);
 
-          (doc as any).autoTable({
+          autoTable(doc, {
               head: [head],
               body: body,
               startY: currentY,
@@ -244,18 +243,9 @@ export async function generateTechPackPDF(style: Style) {
 
           if (spec.imageUrl) {
               try {
-                  const props = doc.getImageProperties(spec.imageUrl);
-                  const ratio = props.height / props.width;
-                  const w = 70;
-                  const h = w * ratio;
-                  
-                  if (currentY + h > 280) {
-                      doc.addPage();
-                      currentY = 40;
-                  }
-                  
-                  doc.addImage(spec.imageUrl, 'JPEG', 120, currentY - 10, w, h);
-                  currentY = Math.max(currentY, (currentY - 10) + h) + 10;
+                  const base64Img = await getBase64Image(spec.imageUrl);
+                  doc.addImage(base64Img, 'JPEG', 120, currentY - 10, 70, 70);
+                  currentY = Math.max(currentY, (currentY - 10) + 70) + 10;
               } catch(e) {
                   currentY += 10;
               }
@@ -304,18 +294,9 @@ export async function generateTechPackPDF(style: Style) {
 
           if (spec.imageUrl) {
               try {
-                  const props = doc.getImageProperties(spec.imageUrl);
-                  const ratio = props.height / props.width;
-                  const w = 50;
-                  const h = w * ratio;
-                  
-                  if (currentY + h > 280) {
-                      doc.addPage();
-                      currentY = 40;
-                  }
-                  
-                  doc.addImage(spec.imageUrl, 'JPEG', 14, currentY, w, h);
-                  currentY += h + 10;
+                  const base64Img = await getBase64Image(spec.imageUrl);
+                  doc.addImage(base64Img, 'JPEG', 14, currentY, 50, 50);
+                  currentY += 60;
               } catch(e) {
                   currentY += 10;
               }

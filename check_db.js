@@ -1,21 +1,18 @@
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('database.db');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+const path = require('path');
 
-db.serialize(() => {
-  db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
-    if (err) {
-      console.error('Error:', err);
-    } else {
-      console.log('Tables:', rows);
-    }
+async function check() {
+  const db = await open({
+    filename: path.join(process.cwd(), 'db', 'carement.db'),
+    driver: sqlite3.Database
   });
   
-  db.all("SELECT * FROM users LIMIT 3", (err, rows) => {
-    if (err) {
-      console.error('Users table error:', err.message);
-    } else {
-      console.log('Users:', rows);
-    }
-    db.close();
-  });
-});
+  const schema = await db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='sample_inspections'");
+  console.log(schema.sql);
+  
+  const inspections = await db.all("SELECT id, productId, styleId FROM sample_inspections ORDER BY requestDate DESC LIMIT 5");
+  console.log(JSON.stringify(inspections, null, 2));
+}
+
+check();

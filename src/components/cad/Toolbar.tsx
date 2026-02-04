@@ -8,7 +8,11 @@ import { MousePointer2, Pen, Scissors, Trash2,
   Square,
   ZoomIn,
   ZoomOut,
-  Maximize
+  Maximize,
+  Eraser,
+  Spline,
+  Scaling,
+  Tag
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -20,9 +24,11 @@ export default function Toolbar({ activeTool, onToolSelect }: ToolbarProps) {
   const tools = [
     { id: 'select', icon: MousePointer2, label: 'Select (V)' },
     { id: 'direct', icon: MousePointer, label: 'Direct Selection (A)' },
-    { id: 'pen', icon: Pen, label: 'Pen Tool (P)' },
-    { id: 'rect', icon: Square, label: 'Rectangle' },
+    { id: 'pen', icon: Pen, label: 'Vector Pen (P)' },
+    { id: 'curve', icon: Spline, label: 'Bezier Curve' },
+    { id: 'grade', icon: Scaling, label: 'Grade Pattern (Offsets)' },
     { id: 'mirror', icon: Scissors, label: 'Mirror Pattern', action: true },
+    { id: 'designate', icon: Tag, label: 'Designate Pattern / Size' },
     { id: 'notch', icon: Network, label: 'Add Notch' },
     { id: 'union', icon: Combine, label: 'Merge / Union', action: true },
     { id: 'subtract', icon: MinusSquare, label: 'Subtract', action: true },
@@ -30,6 +36,7 @@ export default function Toolbar({ activeTool, onToolSelect }: ToolbarProps) {
     { id: 'zoom-out', icon: ZoomOut, label: 'Zoom Out', action: true },
     { id: 'fit-all', icon: Maximize, label: 'Fit to Screen', action: true },
     { id: 'delete', icon: Trash2, label: 'Delete Selected', action: true },
+    { id: 'clear', icon: Eraser, label: 'Clear Canvas', action: true },
   ];
 
   return (

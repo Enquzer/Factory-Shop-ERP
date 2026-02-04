@@ -80,7 +80,7 @@ export async function createRawMaterial(material: Omit<RawMaterial, 'id' | 'crea
     if (material.subcategory) {
       // Generate ID with subcategory prefix: RW-Cat-Sub-XX
       const sequence = await getNextSequenceForSubcategory(material.category, material.subcategory);
-      id = generateRawMaterialId(material.category, material.subcategory, sequence);
+      id = await generateRawMaterialId(material.category, material.subcategory, sequence);
     } else {
       // Fallback to timestamp-based ID
       id = `RM-${Date.now()}`;

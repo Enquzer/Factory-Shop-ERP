@@ -36,6 +36,8 @@ export type Order = {
         dispatchDate: string;
         driverName?: string; // Added driver name field
         attachments?: string[]; // Added attachments field
+        padNumber?: string; // Added PAD number
+        receiptNumber?: string; // Added Receipt number
     };
     deliveryDate?: string;
     isClosed?: boolean;

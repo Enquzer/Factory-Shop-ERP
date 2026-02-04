@@ -171,6 +171,47 @@ export default function SewingDashboardPage() {
     setIsProductionDialogOpen(true);
   };
 
+  const handleNotifyQC = async (orderId: string, status: string) => {
+    try {
+      // Determine the inspection stage based on current order status
+      let inspectionStage = 'Inline-Sewing';
+      if (status === 'Sample Making') inspectionStage = 'Sample';
+      else if (status === 'Cutting') inspectionStage = 'Inline-Cutting';
+      else if (status === 'Sewing') inspectionStage = 'Inline-Sewing';
+      else if (['Finishing', 'Quality Inspection', 'Packing'].includes(status || '')) inspectionStage = 'Final';
+
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`/api/marketing-orders/${orderId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ 
+          qualityInspectionStatus: 'Pending',
+          qualityInspectionStage: inspectionStage
+        })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "QC Notified",
+          description: `Quality Control department has been notified for ${inspectionStage} inspection.`,
+        });
+        fetchOrders();
+      } else {
+        throw new Error('Failed to notify QC');
+      }
+    } catch (error) {
+      console.error('Error notifying QC:', error);
+      toast({
+        title: "Error",
+        description: "Failed to notify QC. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50/30">
@@ -420,6 +461,16 @@ export default function SewingDashboardPage() {
                                  OB Breakdown
                               </Button>
                               
+                              <Button 
+                                 size="sm"
+                                 variant="outline"
+                                 className="h-8 text-xs bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+                                 onClick={() => handleNotifyQC(order.id, order.status)}
+                                 disabled={order.qualityInspectionStatus === 'Pending'}
+                              >
+                                 {order.qualityInspectionStatus === 'Pending' ? 'QC Notified' : 'Notify QC'}
+                              </Button>
+
                               {order.status === 'Cutting' ? (
                                 <Button 
                                   size="sm" 

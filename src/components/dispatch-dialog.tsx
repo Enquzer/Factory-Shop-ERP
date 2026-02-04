@@ -26,6 +26,8 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
   const [transportLicensePlate, setTransportLicensePlate] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().split('T')[0]);
+  const [padNumber, setPadNumber] = useState("");
+  const [receiptNumber, setReceiptNumber] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -43,6 +45,8 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
         contactPerson,
         dispatchDate,
         driverName,
+        padNumber,
+        receiptNumber,
         // In a real implementation, you would handle file uploads here
         // For now, we'll just pass the attachments array
         attachments: attachments.map(file => file.name)
@@ -55,6 +59,8 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
       setTransportLicensePlate("");
       setContactPerson("");
       setDispatchDate(new Date().toISOString().split('T')[0]);
+      setPadNumber("");
+      setReceiptNumber("");
       setAttachments([]);
       
       toast({
@@ -155,6 +161,28 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
                 type="date"
                 value={dispatchDate}
                 onChange={(e) => setDispatchDate(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="padNumber">PAD Number</Label>
+              <Input 
+                id="padNumber" 
+                value={padNumber}
+                onChange={(e) => setPadNumber(e.target.value)}
+                placeholder="Enter PAD number"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="receiptNumber">Receipt Number</Label>
+              <Input 
+                id="receiptNumber" 
+                value={receiptNumber}
+                onChange={(e) => setReceiptNumber(e.target.value)}
+                placeholder="Enter Receipt number"
                 required
               />
             </div>

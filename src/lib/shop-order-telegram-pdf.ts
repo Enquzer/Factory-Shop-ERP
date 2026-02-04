@@ -281,10 +281,12 @@ export async function generateOrderTelegramPDF(orderId: string, stage: 'order_pl
     doc.text('Dispatch Details:', 20, currentY);
     doc.setFont('helvetica', 'normal');
     doc.text(`Dispatch Date: ${order.actualDispatchDate ? new Date(order.actualDispatchDate).toLocaleString() : 'N/A'}`, 25, currentY + 8);
-    doc.text(`Driver Name: ${dispatchInfo?.driverName || 'N/A'}`, 25, currentY + 16);
-    doc.text(`License Plate: ${dispatchInfo?.transportLicensePlate || 'N/A'}`, 25, currentY + 24);
-    doc.text(`Contact Person: ${dispatchInfo?.contactPerson || shop.contactPerson}`, 25, currentY + 32);
-    currentY += 45;
+    doc.text(`PAD Number: ${dispatchInfo?.padNumber || order.padNumber || 'N/A'}`, 25, currentY + 16);
+    doc.text(`Receipt Number: ${dispatchInfo?.receiptNumber || 'N/A'}`, 25, currentY + 24);
+    doc.text(`Driver Name: ${dispatchInfo?.driverName || 'N/A'}`, 25, currentY + 32);
+    doc.text(`License Plate: ${dispatchInfo?.transportLicensePlate || 'N/A'}`, 25, currentY + 40);
+    doc.text(`Contact Person: ${dispatchInfo?.contactPerson || shop.contactPerson}`, 25, currentY + 48);
+    currentY += 60;
   }
 
   // Footer

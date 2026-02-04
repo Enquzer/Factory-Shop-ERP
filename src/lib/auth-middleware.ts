@@ -66,14 +66,22 @@ function verifyToken(token: string): Promise<{ userId: number } | null> {
 export async function authenticateRequest(request: NextRequest): Promise<AuthenticatedUser | null> {
   try {
     // Get the authorization header
+    let token = null;
     const authHeader = request.headers.get('authorization');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    } else {
+      // Check cookies
+      const tokenCookie = request.cookies.get('token');
+      if (tokenCookie) {
+        token = tokenCookie.value;
+      }
+    }
+
+    if (!token) {
       return null;
     }
-    
-    // Extract the token
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     
     // Verify the token
     console.log('Verifying token...');

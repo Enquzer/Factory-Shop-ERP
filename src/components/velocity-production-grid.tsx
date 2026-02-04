@@ -159,13 +159,13 @@ export function VelocityProductionGrid({
     switch(userRole) {
       case 'sewing':
         // Sewing user can only enter up to what was cut
-        return item.previousDepartmentTotal ?? item.plannedQuantity;
+        return item.previousDepartmentTotal || item.plannedQuantity;
       case 'packing':
         // Packing user can only enter up to what was sewn
-        return item.previousDepartmentTotal ?? item.plannedQuantity;
+        return item.previousDepartmentTotal || item.plannedQuantity;
       case 'quality_inspection':
         // Quality inspection user can only enter up to what was sewn
-        return item.previousDepartmentTotal ?? item.plannedQuantity;
+        return item.previousDepartmentTotal || item.plannedQuantity;
       default:
         // Cutting user can enter up to planned quantity
         return item.plannedQuantity;

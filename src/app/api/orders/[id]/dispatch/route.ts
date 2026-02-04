@@ -14,7 +14,7 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
     return NextResponse.json({ error: 'Order ID is required' }, { status: 400 });
   }
 
-  const { status } = await request.json();
+  const { status, dispatchInfo } = await request.json();
 
   if (status !== 'Dispatched') {
     return NextResponse.json({ error: 'Invalid status for dispatch' }, { status: 400 });
@@ -31,26 +31,38 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
     return NextResponse.json({ error: 'Order must be Paid or Released before dispatching' }, { status: 400 });
   }
 
-  // Generate pad number for finished goods dispatch
-  const padResult = await padNumberGenerator.generateNext('finished', order.shopId);
+  // Use provided pad number or generate one if not provided
+  let finalPadNumber = dispatchInfo?.padNumber;
+  let finalPadSequence = null;
+
+  if (!finalPadNumber) {
+    // Generate pad number for finished goods dispatch if not provided by user
+    const padResult = await padNumberGenerator.generateNext('finished', order.shopId);
+    finalPadNumber = padResult.number;
+    finalPadSequence = padResult.sequence;
+  }
 
   const db = await getDb();
   
-  // Update the order status to 'Dispatched' and add pad number
+  // Update the order status to 'Dispatched' and add dispatch info
   await db.run(`
     UPDATE orders 
-    SET status = ?, updated_at = CURRENT_TIMESTAMP,
-        padNumber = ?, padSequence = ?, padPrefix = 'FG', padFormat = 'PREFIX-SHOPID-SEQUENCE'
+    SET status = ?, 
+        updated_at = CURRENT_TIMESTAMP,
+        padNumber = ?, 
+        padSequence = ?, 
+        padPrefix = 'FG', 
+        padFormat = 'PREFIX-SHOPID-SEQUENCE',
+        dispatchInfo = ?,
+        actualDispatchDate = CURRENT_TIMESTAMP
     WHERE id = ?
-  `, ['Dispatched', padResult.number, padResult.sequence, orderId]);
-
-  // Update actualDispatchDate
-  const dispatchDate = new Date().toISOString();
-  await db.run(`
-     UPDATE orders
-     SET actualDispatchDate = ?
-     WHERE id = ?
-  `, [dispatchDate, orderId]);
+  `, [
+    'Dispatched', 
+    finalPadNumber, 
+    finalPadSequence, 
+    JSON.stringify(dispatchInfo || {}),
+    orderId
+  ]);
 
   // NEW: Update Inventory - Reduce from Factory, Add to Shop
   try {

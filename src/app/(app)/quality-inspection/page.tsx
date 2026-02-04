@@ -70,6 +70,7 @@ export default function QualityInspectionDashboardPage() {
   const stageFilter = searchParams.get('stage');
   
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
+  const [sampleInspections, setSampleInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<MarketingOrder | null>(null);
@@ -141,15 +142,17 @@ export default function QualityInspectionDashboardPage() {
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const [fetchedOrders, cuttingData] = await Promise.all([
+      const [fetchedOrders, cuttingData, sampleDataResponse] = await Promise.all([
         getMarketingOrders(),
-        getCuttingRecords()
+        getCuttingRecords(),
+        fetch('/api/sample-management/inspections').then(res => res.json())
       ]);
       // Show orders currently in production or finishing
       const activeProductionStatuses = ['Sample Making', 'Cutting', 'Sewing', 'Finishing', 'Quality Inspection'];
       const filtered = fetchedOrders.filter(o => activeProductionStatuses.includes(o.status) && !o.isCompleted);
       setOrders(filtered);
       setCuttingRecords(cuttingData);
+      setSampleInspections(sampleDataResponse || []);
     } catch (error) {
       console.error("Error fetching orders:", error);
       toast({ title: "Error", description: "Failed to load orders.", variant: "destructive" });
@@ -218,6 +221,10 @@ export default function QualityInspectionDashboardPage() {
   const inspectedOrders = filteredOrders.filter(order => {
     return order.qualityInspectionStatus && order.qualityInspectionStatus !== 'Pending';
   });
+  
+  // Filter Sample Inspections
+  const pendingSampleInspections = sampleInspections.filter(i => i.status === 'Pending' || i.status === 'Draft');
+  const completedSampleInspections = sampleInspections.filter(i => i.status === 'Passed' || i.status === 'Failed');
 
   const handleOpenInspection = (order: MarketingOrder) => {
     setSelectedOrder(order);
@@ -577,47 +584,87 @@ export default function QualityInspectionDashboardPage() {
                         Loading production queue...
                      </TableCell>
                   </TableRow>
-                ) : pendingOrders.length > 0 ? (
-                  pendingOrders.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-emerald-50/30 transition-colors">
-                      <TableCell>
-                        <div className="font-bold text-base">{order.orderNumber}</div>
-                        <div className="text-xs text-muted-foreground font-medium">{order.productName} ({order.productCode})</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn(
-                          "capitalize",
-                          order.status === 'Sewing' && "bg-purple-50 text-purple-700 border-purple-200",
-                          order.status === 'Cutting' && "bg-yellow-50 text-yellow-700 border-yellow-200",
-                          order.status === 'Finishing' && "bg-blue-50 text-blue-700 border-blue-200"
-                        )}>
-                          {order.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-bold">{order.quantity}</div>
-                        <div className="text-[10px] text-muted-foreground">Units to process</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center text-xs text-muted-foreground">
-                          <Clock className="mr-1 h-3 w-3" />
-                          {order.dueDate ? format(new Date(order.dueDate), 'MMM dd, yyyy') : 'TBD'}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                         <div className="flex justify-end gap-2">
-                           <Button 
-                              size="sm" 
-                              className="bg-emerald-600 hover:bg-emerald-700 h-8 text-xs shadow-md"
-                              onClick={() => handleOpenInspection(order)}
-                           >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" />
-                              Inspect
-                           </Button>
-                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                ) : (pendingOrders.length > 0 || pendingSampleInspections.length > 0) ? (
+                  <>
+                    {/* Render Pending Sample Inspections */}
+                    {pendingSampleInspections.map((insp) => (
+                      <TableRow key={insp.id} className="hover:bg-blue-50/30 transition-colors border-l-4 border-l-blue-400">
+                        <TableCell>
+                          <div className="font-bold text-base text-blue-700">{insp.sampleType} QC Request</div>
+                          <div className="text-xs text-muted-foreground font-medium">{insp.productName} ({insp.productCode})</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 capitalize">
+                            Sample Lab
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-bold">1</div>
+                          <div className="text-[10px] text-muted-foreground">Set</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center text-xs text-muted-foreground">
+                            <Clock className="mr-1 h-3 w-3" />
+                            {insp.requestDate ? format(new Date(insp.requestDate), 'MMM dd, yyyy') : 'Recently'}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                           <div className="flex justify-end gap-2">
+                             <Button 
+                                size="sm" 
+                                className="bg-blue-600 hover:bg-blue-700 h-8 text-xs shadow-md"
+                                onClick={() => router.push(`/quality/sample-inspection/${insp.id}`)}
+                             >
+                                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                                Inspect Sample
+                             </Button>
+                           </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    
+                    {/* Render Pending Production Orders */}
+                    {pendingOrders.map((order) => (
+                      <TableRow key={order.id} className="hover:bg-emerald-50/30 transition-colors">
+                        <TableCell>
+                          <div className="font-bold text-base">{order.orderNumber}</div>
+                          <div className="text-xs text-muted-foreground font-medium">{order.productName} ({order.productCode})</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn(
+                            "capitalize",
+                            order.status === 'Sewing' && "bg-purple-50 text-purple-700 border-purple-200",
+                            order.status === 'Cutting' && "bg-yellow-50 text-yellow-700 border-yellow-200",
+                            order.status === 'Finishing' && "bg-blue-50 text-blue-700 border-blue-200"
+                          )}>
+                            {order.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-bold">{order.quantity}</div>
+                          <div className="text-[10px] text-muted-foreground">Units to process</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center text-xs text-muted-foreground">
+                            <Clock className="mr-1 h-3 w-3" />
+                            {order.dueDate ? format(new Date(order.dueDate), 'MMM dd, yyyy') : 'TBD'}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                           <div className="flex justify-end gap-2">
+                             <Button 
+                                size="sm" 
+                                className="bg-emerald-600 hover:bg-emerald-700 h-8 text-xs shadow-md"
+                                onClick={() => handleOpenInspection(order)}
+                             >
+                                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                                Inspect
+                             </Button>
+                           </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </>
                 ) : (
                   <TableRow>
                     <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
@@ -656,102 +703,159 @@ export default function QualityInspectionDashboardPage() {
                          Loading history...
                       </TableCell>
                    </TableRow>
-                ) : inspectedOrders.length > 0 ? (
-                  inspectedOrders.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                      <TableCell>
-                        <div className="relative h-12 w-12 rounded overflow-hidden border bg-gray-100">
-                          {order.imageUrl ? (
-                             <Image 
-                               src={order.imageUrl} 
-                               alt={order.productName} 
-                               width={64} 
-                               height={64} 
-                               className="object-cover w-full h-full"
-                             />
-                          ) : (
-                             <div className="flex items-center justify-center h-full w-full text-gray-400">
+                ) : (inspectedOrders.length > 0 || completedSampleInspections.length > 0) ? (
+                  <>
+                    {/* Render Completed Sample Inspections */}
+                    {completedSampleInspections.map((insp) => (
+                      <TableRow key={insp.id} className="hover:bg-gray-50/50 transition-colors">
+                        <TableCell>
+                          <div className="relative h-12 w-12 rounded overflow-hidden border bg-gray-100">
+                             <div className="flex items-center justify-center h-full w-full text-blue-400 bg-blue-50">
                                 <ImageIcon className="h-5 w-5" />
                              </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-bold text-base">{order.orderNumber}</div>
-                        <div className="text-xs text-muted-foreground font-medium">{order.productName}</div>
-                        <div className="text-[10px] text-gray-400">{format(new Date(order.updatedAt || new Date()), 'MMM dd, yyyy')}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn(
-                          "text-[10px] font-bold uppercase w-fit",
-                          (order.qualityInspectionStatus === 'Passed' || order.qualityInspectionStatus === 'Approved') ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                          (order.qualityInspectionStatus === 'Failed' || order.qualityInspectionStatus === 'Rejected') ? "bg-red-50 text-red-700 border-red-200" :
-                          order.qualityInspectionStatus === 'Rework' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                          "bg-gray-50 text-gray-500 border-gray-200"
-                        )}>
-                           {order.qualityInspectionStatus}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                         {order.qualityInspectionReportUrl ? (
-                             <a 
-                               href={order.qualityInspectionReportUrl} 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               className="flex items-center gap-1.5 text-xs text-blue-600 font-bold hover:underline"
-                             >
-                               <Paperclip className="h-3.5 w-3.5" />
-                               View PDF
-                             </a>
-                         ) : (
-                           <span className="text-xs text-muted-foreground italic">No Attachment</span>
-                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                         <div className="flex justify-end gap-2">
-                             <Button 
-                               size="sm" 
-                               variant="outline"
-                               className="h-8 w-8 p-0"
-                               onClick={() => handleOpenHistory(order)}
-                               title="View Details"
-                             >
-                               <Eye className="h-4 w-4" />
-                             </Button>
-                             <Button 
-                               size="sm" 
-                               variant="outline"
-                               className="h-8 w-8 p-0"
-                               onClick={() => handleOpenInspection(order)}
-                               title="Edit / New Inspection"
-                             >
-                               <Plus className="h-4 w-4" />
-                             </Button>
-                             <Button
-                               size="sm"
-                               variant="outline"
-                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                               onClick={() => {
-                                 if (order.qualityInspectionReportUrl && order.qualityInspectionReportUrl.startsWith('/uploads/')) {
-                                   // If it's a local file, use the direct download
-                                   downloadPdf(order.qualityInspectionReportUrl, `QC_Report_${order.orderNumber}.pdf`);
-                                 } else {
-                                   // If we have an order ID, use the API endpoint
-                                   if (order.id) {
-                                     downloadQcPdf(order.id, order.qualityInspectionStage || '', order.orderNumber);
-                                   }
-                                 }
-                               }}
-                               title="Download PDF"
-                               disabled={!order.id}
-                             >
-                               <FileDown className="h-4 w-4" />
-                             </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-bold text-base">{insp.sampleType} QC</div>
+                          <div className="text-xs text-muted-foreground font-medium">{insp.productName}</div>
+                          <div className="text-[10px] text-gray-400">
+                              {insp.inspectionDate ? format(new Date(insp.inspectionDate), 'MMM dd, yyyy') : '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn(
+                            "text-[10px] font-bold uppercase w-fit",
+                            insp.status === 'Passed' ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
+                          )}>
+                             {insp.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                           <a 
+                             href={`/api/sample-management/inspections/${insp.id}/report?download=true`} 
+                             target="_blank" 
+                             rel="noopener noreferrer"
+                             className="flex items-center gap-1.5 text-xs text-blue-600 font-bold hover:underline"
+                           >
+                             <Paperclip className="h-3.5 w-3.5" />
+                             View PDF
+                           </a>
+                        </TableCell>
+                        <TableCell className="text-right">
+                           <div className="flex justify-end gap-2">
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 className="h-8 w-8 p-0"
+                                 onClick={() => router.push(`/quality/sample-inspection/${insp.id}`)}
+                                 title="View Details"
+                               >
+                                 <Eye className="h-4 w-4" />
+                               </Button>
+                           </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
 
-                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                    {/* Render Completed Production Orders */}
+                    {inspectedOrders.map((order) => (
+                      <TableRow key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                        <TableCell>
+                          <div className="relative h-12 w-12 rounded overflow-hidden border bg-gray-100">
+                            {order.imageUrl ? (
+                               <Image 
+                                 src={order.imageUrl} 
+                                 alt={order.productName} 
+                                 width={64} 
+                                 height={64} 
+                                 className="object-cover w-full h-full"
+                               />
+                            ) : (
+                               <div className="flex items-center justify-center h-full w-full text-gray-400">
+                                  <ImageIcon className="h-5 w-5" />
+                               </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-bold text-base">{order.orderNumber}</div>
+                          <div className="text-xs text-muted-foreground font-medium">{order.productName}</div>
+                          <div className="text-[10px] text-gray-400">{format(new Date(order.updatedAt || new Date()), 'MMM dd, yyyy')}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn(
+                            "text-[10px] font-bold uppercase w-fit",
+                            (order.qualityInspectionStatus === 'Passed' || order.qualityInspectionStatus === 'Approved') ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                            (order.qualityInspectionStatus === 'Failed' || order.qualityInspectionStatus === 'Rejected') ? "bg-red-50 text-red-700 border-red-200" :
+                            order.qualityInspectionStatus === 'Rework' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                            "bg-gray-50 text-gray-500 border-gray-200"
+                          )}>
+                             {order.qualityInspectionStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                           {order.qualityInspectionReportUrl ? (
+                               <a 
+                                 href={order.qualityInspectionReportUrl} 
+                                 target="_blank" 
+                                 rel="noopener noreferrer"
+                                 className="flex items-center gap-1.5 text-xs text-blue-600 font-bold hover:underline"
+                               >
+                                 <Paperclip className="h-3.5 w-3.5" />
+                                 View PDF
+                               </a>
+                           ) : (
+                             <span className="text-xs text-muted-foreground italic">No Attachment</span>
+                           )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                           <div className="flex justify-end gap-2">
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 className="h-8 w-8 p-0"
+                                 onClick={() => handleOpenHistory(order)}
+                                 title="View Details"
+                               >
+                                 <Eye className="h-4 w-4" />
+                               </Button>
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 className="h-8 w-8 p-0"
+                                 onClick={() => handleOpenInspection(order)}
+                                 title="Edit / New Inspection"
+                               >
+                                 <Plus className="h-4 w-4" />
+                               </Button>
+                               <Button
+                                 size="sm"
+                                 variant="outline"
+                                 className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                 onClick={() => {
+                                   if (order.qualityInspectionReportUrl && order.qualityInspectionReportUrl.startsWith('/uploads/')) {
+                                     // If it's a local file, use the direct download
+                                      // @ts-ignore
+                                     downloadPdf(order.qualityInspectionReportUrl, `QC_Report_${order.orderNumber}.pdf`);
+                                   } else {
+                                     // If we have an order ID, use the API endpoint
+                                     if (order.id) {
+                                       // @ts-ignore
+                                       downloadQcPdf(order.id, order.qualityInspectionStage || '', order.orderNumber);
+                                     }
+                                   }
+                                 }}
+                                 title="Download PDF"
+                                 disabled={!order.id}
+                               >
+                                 <FileDown className="h-4 w-4" />
+                               </Button>
+
+                           </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </>
                 ) : (
                   <TableRow>
                     <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">

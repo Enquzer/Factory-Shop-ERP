@@ -29,7 +29,12 @@ import {
   Filter,
   BarChart4,
   Download,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Palette,
+  Scale,
+  Box,
+  Layers,
+  Image as ImageIcon
 } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -69,7 +74,10 @@ export default function MaterialConsumptionPage() {
 
   const filteredDbData = dbData.filter(p => 
     p.productName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.productCode.toLowerCase().includes(searchTerm.toLowerCase())
+    p.productCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.materialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.materialCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.color && p.color.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const filteredHistoryData = historyData.filter(h => 
@@ -142,43 +150,77 @@ export default function MaterialConsumptionPage() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="font-bold">Product Information</TableHead>
-                  <TableHead className="font-bold">Materials & Standard Consumption</TableHead>
-                  <TableHead className="text-right font-bold pr-8">Status</TableHead>
+                  <TableHead className="font-bold">Product</TableHead>
+                  <TableHead className="font-bold">Material / Fabric</TableHead>
+                  <TableHead className="font-bold">Color Variation</TableHead>
+                  <TableHead className="font-bold">Unit Consumption</TableHead>
+                  <TableHead className="text-right font-bold pr-8">Total Historical Consumption</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDbData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="h-64 text-center text-muted-foreground font-bold uppercase tracking-widest opacity-30">No products found</TableCell>
+                    <TableCell colSpan={5} className="h-64 text-center text-muted-foreground font-bold uppercase tracking-widest opacity-30">No records found</TableCell>
                   </TableRow>
-                ) : filteredDbData.map((product) => (
-                  <TableRow key={product.productId} className="hover:bg-slate-50/80 transition-all">
-                    <TableCell className="align-top py-6">
+                ) : filteredDbData.map((record, idx) => (
+                  <TableRow key={`${record.productId}-${record.materialId}-${record.color || idx}`} className="hover:bg-slate-50/80 transition-all">
+                    <TableCell className="py-4">
+                       <div className="flex items-center gap-3">
+                          <div className="h-12 w-12 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                             {record.productImage ? (
+                                <img src={record.productImage} alt={record.productName} className="h-full w-full object-cover" />
+                             ) : (
+                                <Box className="h-6 w-6 text-slate-300" />
+                             )}
+                          </div>
+                          <div className="flex flex-col">
+                             <span className="font-black text-slate-900 text-sm">{record.productName}</span>
+                             <span className="text-[10px] font-mono text-primary font-bold">{record.productCode}</span>
+                          </div>
+                       </div>
+                    </TableCell>
+                    <TableCell className="py-4">
+                       <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-50 border border-dotted border-slate-300 flex items-center justify-center shrink-0">
+                             {record.materialImage ? (
+                                <img src={record.materialImage} alt={record.materialName} className="h-full w-full object-cover" />
+                             ) : (
+                                <ImageIcon className="h-5 w-5 text-slate-300" />
+                             )}
+                          </div>
+                          <div className="flex flex-col">
+                             <span className="text-xs font-bold text-slate-700">{record.materialName}</span>
+                             <span className="text-[9px] font-mono text-slate-400">CODE: {record.materialCode}</span>
+                          </div>
+                       </div>
+                    </TableCell>
+                    <TableCell>
+                       <div className="flex items-center gap-2">
+                          <Palette className="h-3 w-3 text-slate-400" />
+                          <Badge variant="outline" className="text-[10px] font-bold bg-slate-50 text-slate-600 border-slate-200 uppercase">
+                             {record.color || 'Standard'}
+                          </Badge>
+                       </div>
+                    </TableCell>
+                    <TableCell>
                        <div className="flex flex-col">
-                          <span className="font-black text-slate-900">{product.productName}</span>
-                          <span className="text-xs font-mono text-primary font-bold">{product.productCode}</span>
+                          <div className="flex items-baseline gap-1">
+                             <span className="text-sm font-black text-slate-800">{record.quantityPerUnit}</span>
+                             <span className="text-[9px] font-bold text-slate-500">{record.unitOfMeasure}</span>
+                          </div>
+                          <span className="text-[8px] text-slate-400 uppercase font-bold tracking-tighter">PER PIECE</span>
                        </div>
                     </TableCell>
-                    <TableCell className="py-6">
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {product.materials.length === 0 ? (
-                            <span className="text-xs italic text-slate-400">No BOM defined for this product</span>
-                          ) : product.materials.map((m, idx) => (
-                            <div key={idx} className="flex flex-col p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                               <span className="text-[10px] uppercase font-black text-slate-500">{m.materialName}</span>
-                               <div className="flex items-baseline gap-1">
-                                  <span className="text-lg font-black text-slate-800">{m.quantityPerUnit}</span>
-                                  <span className="text-[10px] font-bold text-slate-400 capitalize">{m.unitOfMeasure} / Unit</span>
-                               </div>
-                            </div>
-                          ))}
+                    <TableCell className="text-right pr-8">
+                       <div className="flex flex-col items-end">
+                          <div className="flex items-baseline gap-1">
+                             <span className="text-lg font-black text-primary">{record.totalHistoricalConsumption.toFixed(2)}</span>
+                             <span className="text-[10px] font-bold text-slate-400 uppercase">{record.unitOfMeasure}</span>
+                          </div>
+                          <Badge variant="secondary" className="text-[8px] font-bold py-0 h-4 px-1 bg-green-50 text-green-700 border-green-100">
+                             ACCUMULATED
+                          </Badge>
                        </div>
-                    </TableCell>
-                    <TableCell className="text-right pr-8 align-top py-6">
-                       <Badge variant={product.materials.length > 0 ? "default" : "secondary"} className="font-bold uppercase text-[9px]">
-                          {product.materials.length > 0 ? "BOM COMPLETE" : "NO BOM"}
-                       </Badge>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getNextSequenceForSubcategory } from '@/lib/raw-material-subcategories';
+import { getNextSequenceForSubcategory, generateRawMaterialId } from '@/lib/raw-material-subcategories';
 
 export async function GET(request: Request) {
   try {
@@ -12,14 +12,11 @@ export async function GET(request: Request) {
     }
     
     const nextSequence = await getNextSequenceForSubcategory(category, subcategory);
-    const catCode = category.substring(0, 2).toUpperCase();
-    const subCode = subcategory.substring(0, 2).toUpperCase();
-    const predictedId = `RW-${catCode}-${subCode}-${nextSequence.toString().padStart(2, '0')}`;
+    const predictedId = await generateRawMaterialId(category, subcategory, nextSequence);
     
     return NextResponse.json({
       nextId: predictedId,
-      sequence: nextSequence,
-      format: `RW-${catCode}-${subCode}-XX`
+      sequence: nextSequence
     });
   } catch (error) {
     console.error('Error predicting next ID:', error);

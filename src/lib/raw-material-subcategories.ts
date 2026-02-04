@@ -99,9 +99,18 @@ export function getSubcategoryCode(subcategory: string): string {
   return subcategory.substring(0, 2).toUpperCase();
 }
 
-export function generateRawMaterialId(category: string, subcategory: string, sequence: number): string {
+export async function generateRawMaterialId(category: string, subcategory: string, sequence: number): Promise<string> {
+  let subCode = getSubcategoryCode(subcategory);
+  
+  if (subcategory && subcategory !== 'None') {
+    const db = await getDB();
+    const row = await db.get('SELECT code FROM raw_material_subcategories WHERE category = ? AND subcategory = ?', [category, subcategory]);
+    if (row && row.code) {
+      subCode = row.code;
+    }
+  }
+
   const catCode = category.substring(0, 2).toUpperCase();
-  const subCode = getSubcategoryCode(subcategory);
   const sequenceStr = sequence.toString().padStart(2, '0');
   return `RW-${catCode}-${subCode}-${sequenceStr}`;
 }
@@ -111,7 +120,14 @@ export async function getNextSequenceForSubcategory(category: string, subcategor
   try {
     const db = await getDB();
     const catCode = category.substring(0, 2).toUpperCase();
-    const subCode = getSubcategoryCode(subcategory);
+    let subCode = getSubcategoryCode(subcategory);
+
+    if (subcategory && subcategory !== 'None') {
+      const subRow = await db.get('SELECT code FROM raw_material_subcategories WHERE category = ? AND subcategory = ?', [category, subcategory]);
+      if (subRow && subRow.code) {
+        subCode = subRow.code;
+      }
+    }
     
     // Find the highest existing sequence for this category-subcategory combination
     const result = await db.get(`
@@ -121,12 +137,15 @@ export async function getNextSequenceForSubcategory(category: string, subcategor
       LIMIT 1
     `, [`RW-${catCode}-${subCode}-%`]);
     
-    if (result) {
+    if (result && result.id) {
       // Extract sequence number from the ID (last 2 digits)
       const parts = result.id.split('-');
-      if (parts.length === 4) {
-        const sequence = parseInt(parts[3], 10);
-        return sequence + 1;
+      if (parts.length >= 4) {
+        const lastPart = parts[parts.length - 1];
+        const sequence = parseInt(lastPart, 10);
+        if (!isNaN(sequence)) {
+          return sequence + 1;
+        }
       }
     }
     

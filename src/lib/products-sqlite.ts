@@ -41,7 +41,9 @@ export type Product = {
   sampleDevelopmentStatus?: 'Pending' | 'In Progress' | 'Completed';
   sampleQuotationStatus?: 'Pending' | 'In Progress' | 'Completed';
   sampleSizeSetStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleSizeSetQCStatus?: 'Pending' | 'Passed' | 'Failed';
   sampleCounterStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleCounterQCStatus?: 'Pending' | 'Passed' | 'Failed';
   sampleApprovedBy?: string;
   sampleApprovedDate?: string;
 };
@@ -222,9 +224,9 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
     await db.run(`
       INSERT INTO products (
         id, productCode, name, category, price, cost, minimumStockLevel, imageUrl, description, readyToDeliver,
-        piecesPerSet, sampleDevelopmentStatus, sampleQuotationStatus, sampleSizeSetStatus, sampleCounterStatus
+        piecesPerSet, sampleDevelopmentStatus, sampleQuotationStatus, sampleSizeSetStatus, sampleSizeSetQCStatus, sampleCounterStatus, sampleCounterQCStatus
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       productId, 
       product.productCode.toUpperCase(), 
@@ -240,7 +242,9 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
       product.sampleDevelopmentStatus || 'Pending',
       product.sampleQuotationStatus || 'Pending',
       product.sampleSizeSetStatus || 'Pending',
-      product.sampleCounterStatus || 'Pending'
+      product.sampleSizeSetQCStatus || 'Pending',
+      product.sampleCounterStatus || 'Pending',
+      product.sampleCounterQCStatus || 'Pending'
     ]);
 
     // Insert the variants
@@ -407,9 +411,17 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
       fields.push('sampleSizeSetStatus = ?');
       values.push(product.sampleSizeSetStatus);
     }
+    if (product.sampleSizeSetQCStatus !== undefined) {
+      fields.push('sampleSizeSetQCStatus = ?');
+      values.push(product.sampleSizeSetQCStatus);
+    }
     if (product.sampleCounterStatus !== undefined) {
       fields.push('sampleCounterStatus = ?');
       values.push(product.sampleCounterStatus);
+    }
+    if (product.sampleCounterQCStatus !== undefined) {
+      fields.push('sampleCounterQCStatus = ?');
+      values.push(product.sampleCounterQCStatus);
     }
     if (product.sampleApprovedBy !== undefined) {
       fields.push('sampleApprovedBy = ?');
@@ -555,6 +567,29 @@ export async function updateProduct(id: string, product: Partial<Product>): Prom
         console.error('Failed to create update notification:', notificationError);
         // Don't throw here, we want the product update to succeed even if notification fails
       }
+    }
+
+    // Create notifications for QC updates
+    if (product.sampleSizeSetQCStatus && product.sampleSizeSetQCStatus !== currentProduct.sampleSizeSetQCStatus) {
+      try {
+        await createNotification({
+          userType: 'factory',
+          title: 'Size Set QC Updated',
+          description: `Size Set QC for "${currentProduct.name}" is now ${product.sampleSizeSetQCStatus}`,
+          href: '/sample-management',
+        });
+      } catch (e) {}
+    }
+
+    if (product.sampleCounterQCStatus && product.sampleCounterQCStatus !== currentProduct.sampleCounterQCStatus) {
+      try {
+        await createNotification({
+          userType: 'factory',
+          title: 'Counter Sample QC Updated',
+          description: `Counter Sample QC for "${currentProduct.name}" is now ${product.sampleCounterQCStatus}`,
+          href: '/sample-management',
+        });
+      } catch (e) {}
     }
 
     // Create notifications for shops that have any variant of this product in their inventory

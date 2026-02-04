@@ -98,7 +98,9 @@ export const productSchema = z.object({
   sampleDevelopmentStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
   sampleQuotationStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
   sampleSizeSetStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
+  sampleSizeSetQCStatus: z.enum(['Pending', 'Passed', 'Failed']).optional(),
   sampleCounterStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
+  sampleCounterQCStatus: z.enum(['Pending', 'Passed', 'Failed']).optional(),
   sampleApprovedBy: z.string().optional().nullable(),
   sampleApprovedDate: z.string().optional().nullable(),
 });
@@ -132,7 +134,9 @@ export const productCreateSchema = z.object({
   sampleDevelopmentStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
   sampleQuotationStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
   sampleSizeSetStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
+  sampleSizeSetQCStatus: z.enum(['Pending', 'Passed', 'Failed']).optional(),
   sampleCounterStatus: z.enum(['Pending', 'In Progress', 'Completed']).optional(),
+  sampleCounterQCStatus: z.enum(['Pending', 'Passed', 'Failed']).optional(),
   sampleApprovedBy: z.string().optional().nullable(),
   sampleApprovedDate: z.string().optional().nullable(),
 });

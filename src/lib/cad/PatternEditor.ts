@@ -1,5 +1,5 @@
 import * as fabric from 'fabric';
-import { distance, getCubicBezierLength, getAngle, snapToAngle, Point, pointFromAngle, getPolygonArea } from './geometry';
+import { distance, getCubicBezierLength, getAngle, snapToAngle, Point, pointFromAngle, getPolygonArea, getLineMidpoint, getBezierMidpoint, getLineNormal, getNearestPointOnLine, getNearestPointOnCubicBezier } from './geometry';
 import { GRADING_TABLE } from './presets-data';
 
 /**
@@ -21,6 +21,8 @@ export class PatternEditor {
   hudLabel: fabric.Text | null = null;
   joinPoints: Set<number> = new Set();
   selectedSegment: number | null = null;
+  midpointIndicator: fabric.Object | null = null;
+  private lastClickPoint: Point | null = null;
 
   constructor(canvas: fabric.Canvas, path: fabric.Path, pointLabels: Record<number, string> = {}, joinPoints: number[] = []) {
     this.canvas = canvas;
@@ -40,12 +42,13 @@ export class PatternEditor {
     (this.path as any).isEditing = false;
     (this.path as any)._editor = this;
 
-    // Ensure the path is set up for CAD precision
+    // Ensure the path is set up for CAD precision - WIREFRAME MODE
     this.path.set({
-      fill: '#cccccc',
-      opacity: 0.5,
-      stroke: '#666666',
+      fill: 'transparent', // Wireframe - no fill
+      opacity: 1, // Full opacity for stroke
+      stroke: '#2563eb', // Blue stroke for visibility
       strokeWidth: 2,
+      strokeUniform: true, // Keep stroke width constant when scaling
       strokeLineJoin: 'round',
       strokeLineCap: 'round',
       strokeMiterLimit: 2,
@@ -56,8 +59,63 @@ export class PatternEditor {
       hasBorders: true,
       hasControls: true,
       originX: 'left',
-      originY: 'top'
     });
+
+    // this.groundPath(); // DISABLE grounding to allow correct bounding box and selection handles
+  }
+
+  // Convert Scene Coordinate -> Path Data Coordinate
+  // (Inverse of: PathData - pathOffset -> Transform -> Scene)
+  private toPathDataSpace(sceneX: number, sceneY: number): {x: number, y: number} {
+      const matrix = this.path.calcTransformMatrix();
+      const invMatrix = fabric.util.invertTransform(matrix);
+      const local = fabric.util.transformPoint({ x: sceneX, y: sceneY } as any, invMatrix);
+      const offset = this.path.pathOffset || { x: 0, y: 0 };
+      return { 
+          x: local.x + offset.x, 
+          y: local.y + offset.y 
+      };
+  }
+
+  /**
+   * Grounds the path to (0,0) in scene space and makes all internal path data absolute.
+   * This prevents "Fabric Jumps" caused by auto-centering and relative offsets.
+   */
+  private groundPath() {
+    if (!this.path) return;
+    
+    const segments = this.path.path as any[];
+    if (!segments) return;
+
+    const matrix = this.path.calcTransformMatrix();
+    const offset = this.path.pathOffset || { x: 0, y: 0 };
+    
+    const absoluteSegments = segments.map((cmd: any) => {
+        const newCmd = [...cmd];
+        for (let i = 1; i < cmd.length; i += 2) {
+            const pt = fabric.util.transformPoint({ 
+                x: cmd[i] - offset.x, 
+                y: cmd[i+1] - offset.y 
+            } as any, matrix);
+            newCmd[i] = pt.x;
+            newCmd[i+1] = pt.y;
+        }
+        return newCmd;
+    });
+
+    this.path.set({
+        path: absoluteSegments,
+        left: 0,
+        top: 0,
+        scaleX: 1,
+        scaleY: 1,
+        angle: 0,
+        originX: 'left',
+        originY: 'top',
+        pathOffset: { x: 0, y: 0 },
+        dirty: true
+    });
+    this.path.setCoords();
   }
 
   toggleEditMode() {
@@ -66,13 +124,16 @@ export class PatternEditor {
 
     if (this.isEditing) {
         this.path.hasControls = false;
+        this.path.hasBorders = false; // Remove selection border
         this.path.selectable = false;
-        this.path.lockMovementX = true;
-        this.path.lockMovementY = true;
+        this.path.evented = false; // Prevent path from being selected
+        this.canvas.discardActiveObject(); // Deselect the path
         this.showHandles();
     } else {
         this.path.hasControls = true;
+        this.path.hasBorders = true;
         this.path.selectable = true;
+        this.path.evented = true;
         this.path.lockMovementX = false;
         this.path.lockMovementY = false;
         this.selectedSegment = null;
@@ -120,6 +181,9 @@ export class PatternEditor {
             this.createControlHandle(cmd[1], cmd[2], index, 1, 2, index - 1); 
             this.createControlHandle(cmd[3], cmd[4], index, 3, 4, index); 
             this.createAnchorHandle(cmd[5], cmd[6], index, 5, 6);      
+        } else if (type === 'Z' && index > 0) {
+            // Segment back to start point
+            this.createSegmentHandle(index - 1, index);
         }
     });
 
@@ -144,6 +208,9 @@ export class PatternEditor {
 
   private handleSegmentClick(opt: any, seg: fabric.Path) {
     const pointer = opt.scenePoint || opt.pointer;
+    if (pointer) {
+        this.lastClickPoint = { x: pointer.x, y: pointer.y };
+    }
     const [startIdx, endIdx] = (seg as any).indices;
     this.selectedSegment = endIdx;
     this.updateSegmentPaths();
@@ -194,12 +261,15 @@ export class PatternEditor {
         d += `L ${endCmd[1] - (offset.x || 0)} ${endCmd[2] - (offset.y || 0)}`;
     } else if (endCmd[0] === 'C') {
         d += `C ${endCmd[1] - (offset.x || 0)} ${endCmd[2] - (offset.y || 0)} ${endCmd[3] - (offset.x || 0)} ${endCmd[4] - (offset.y || 0)} ${endCmd[5] - (offset.x || 0)} ${endCmd[6] - (offset.y || 0)}`;
+    } else if (endCmd[0] === 'Z') {
+        const firstCmd = pathArr[0];
+        d += `L ${firstCmd[1] - (offset.x || 0)} ${firstCmd[2] - (offset.y || 0)}`;
     }
 
     const seg = new fabric.Path(d, {
-        stroke: 'rgba(59, 130, 246, 0.01)', 
-        strokeWidth: 26, 
-        fill: 'transparent',
+        stroke: 'rgba(0,0,0,0)', // Completely invisible - no stroke at all
+        strokeWidth: 20, 
+        fill: 'rgba(0,0,0,0)', // Completely transparent fill
         selectable: true,
         evented: true,
         hasControls: false,
@@ -212,12 +282,15 @@ export class PatternEditor {
         angle: this.path.angle,
         originX: this.path.originX,
         originY: this.path.originY,
-        perPixelTargetFind: false
+        perPixelTargetFind: false,
+        opacity: 0 // Force complete invisibility
     } as any);
 
-    if (this.selectedSegment === endIdx) {
-        seg.set('stroke', 'rgba(59, 130, 246, 0.8)');
-    }
+    // Keep segments always invisible, even when selected
+    // if (this.selectedSegment === endIdx) {
+    //     seg.set('stroke', 'rgba(59, 130, 246, 0.3)');
+    // }
+
 
     (seg as any).handleType = 'segment';
     (seg as any).indices = [startIdx, endIdx];
@@ -230,11 +303,63 @@ export class PatternEditor {
     });
 
     seg.on('mouseover', () => {
-        seg.set('stroke', 'rgba(59, 130, 246, 0.5)');
+        // Subtle visual feedback on hover to help selection
+        seg.set({ 
+            stroke: this.selectedSegment === endIdx ? 'rgba(59, 130, 246, 0.4)' : 'rgba(59, 130, 246, 0.15)',
+            opacity: 1 
+        });
+        (seg as any).bringToFront?.(); // Use optional chaining/cast for safety
+        
+        // Show Midpoint Indicator
+        const [sIdx, eIdx] = (seg as any).indices;
+        const pArr = this.path.path as any[];
+        const sCmd = pArr[sIdx];
+        const eCmd = pArr[eIdx];
+        const p0 = { x: sCmd[sCmd.length-2], y: sCmd[sCmd.length-1] };
+        
+        let mid: Point;
+        if (eCmd[0] === 'L') {
+            mid = getLineMidpoint(p0, { x: eCmd[1], y: eCmd[2] });
+        } else if (eCmd[0] === 'C') {
+            mid = getBezierMidpoint(p0, { x: eCmd[1], y: eCmd[2] }, { x: eCmd[3], y: eCmd[4] }, { x: eCmd[5], y: eCmd[6] });
+        } else {
+            return;
+        }
+        
+        const canvasPt = fabric.util.transformPoint(
+            new fabric.Point(mid.x - (this.path.pathOffset.x || 0), mid.y - (this.path.pathOffset.y || 0)),
+            this.path.calcTransformMatrix()
+        );
+
+        this.midpointIndicator = new fabric.Circle({
+            left: canvasPt.x,
+            top: canvasPt.y,
+            radius: 5,
+            fill: '#ec4899', // Pinkish center point
+            stroke: 'white',
+            strokeWidth: 2,
+            selectable: false,
+            evented: false,
+            originX: 'center',
+            originY: 'center',
+            shadow: new fabric.Shadow({ blur: 6, color: 'rgba(0,0,0,0.3)', offsetX: 0, offsetY: 0 })
+        });
+        this.canvas.add(this.midpointIndicator);
         this.canvas.requestRenderAll();
     });
+
     seg.on('mouseout', () => {
-        seg.set('stroke', 'rgba(59, 130, 246, 0.01)');
+        // Reset visibility based on selection status
+        const isSelected = this.selectedSegment === endIdx;
+        seg.set({ 
+            stroke: isSelected ? 'rgba(59, 130, 246, 0.4)' : 'rgba(0,0,0,0)',
+            opacity: isSelected ? 1 : 0 
+        });
+
+        if (this.midpointIndicator) {
+            this.canvas.remove(this.midpointIndicator);
+            this.midpointIndicator = null;
+        }
         this.canvas.requestRenderAll();
     });
 
@@ -261,9 +386,14 @@ export class PatternEditor {
         const isSelected = this.selectedSegment === eIdx;
         const colorOverride = this.segmentColors[eIdx];
         const temp = new fabric.Path(d);
+        
+        // Show highlight if selected
         seg.set({ 
             path: temp.path,
-            stroke: colorOverride || (isSelected ? 'rgba(59, 130, 246, 0.8)' : 'rgba(59, 130, 246, 0.01)')
+            stroke: isSelected ? 'rgba(59, 130, 246, 0.4)' : 'rgba(0,0,0,0)', // Subtle highlight when selected
+            strokeWidth: isSelected ? 8 : 20, // Thinner highlight if selected
+            fill: 'rgba(0,0,0,0)',
+            opacity: isSelected ? 1 : 0 // Visible if selected
         });
         
         seg.set({
@@ -271,7 +401,9 @@ export class PatternEditor {
             top: this.path.top,
             scaleX: this.path.scaleX,
             scaleY: this.path.scaleY,
-            angle: this.path.angle
+            angle: this.path.angle,
+            originX: this.path.originX,
+            originY: this.path.originY
         });
         seg.setCoords();
     });
@@ -285,17 +417,32 @@ export class PatternEditor {
 
       let handle: fabric.Object;
       const commonProps = {
-          left: point.x, top: point.y, fill: color, stroke: 'white', strokeWidth: 1.5,
-          hasControls: false, originX: 'center', originY: 'center', hoverCursor: 'pointer', padding: 4,
+          left: point.x, top: point.y, 
+          fill: 'rgba(255,255,255,0.8)', // Semi-transparent hollow look
+          stroke: color, // Red or Blue stroke
+          strokeWidth: 1.5,
+          hasControls: false, 
+          hasBorders: false,
+          selectable: true, // Allow dragging
+          evented: true, // Allow events
+          lockScalingX: true,
+          lockScalingY: true,
+          lockRotation: true,
+          originX: 'center', 
+          originY: 'center', 
+          hoverCursor: 'move', // Show move cursor
+          moveCursor: 'move',
+          padding: 4,
           data: { cmdIndex, xIndex, yIndex, anchorCmdIndex, handleType: color === 'red' ? 'anchor' : 'control' }
       };
       
-      if (shape === 'circle') handle = new fabric.Circle({ ...commonProps, radius: 5.5 } as any);
-      else handle = new fabric.Rect({ ...commonProps, width: 11, height: 11 } as any);
+      if (shape === 'circle') handle = new fabric.Circle({ ...commonProps, radius: 4 } as any); // Slightly smaller
+      else handle = new fabric.Rect({ ...commonProps, width: 8, height: 8 } as any); // Slightly smaller
 
       (handle as any).cmdIndex = cmdIndex;
       (handle as any).handleType = (commonProps.data as any).handleType;
       (handle as any).patternEditor = this;
+      (handle as any).isHandle = true; // Mark as handle for filtering
 
       handle.on('contextmenu', (opt: any) => {
           opt.e.preventDefault();
@@ -304,37 +451,93 @@ export class PatternEditor {
       });
 
       handle.on('moving', (opt: any) => {
-          const pt = opt.pointer;
-          const matrix = this.path.calcTransformMatrix();
-          const invertedMatrix = fabric.util.invertTransform(matrix);
-          let localPt = fabric.util.transformPoint(new fabric.Point(pt.x, pt.y), invertedMatrix);
+          const e = opt.e as MouseEvent;
+          const scenePt = this.canvas.getScenePoint(e);
           
-          let finalX = Math.round((localPt.x + (this.path.pathOffset.x || 0)) * 10) / 10;
-          let finalY = Math.round((localPt.y + (this.path.pathOffset.y || 0)) * 10) / 10;
+          let finalX = Math.round(scenePt.x * 10) / 10;
+          let finalY = Math.round(scenePt.y * 10) / 10;
 
           const pointLabel = this.pointLabels[cmdIndex] || "";
           if (pointLabel.toLowerCase().includes("center")) {
               finalX = 0;
           }
 
-          if (!opt.e.ctrlKey) {
-              const snapRadius = 10;
-              const otherHandles = this.canvas.getObjects().filter(o => 
-                  o !== handle && 
-                  (o as any).handleType === 'anchor' && 
-                  distance({x: pt.x, y: pt.y}, {x: o.left!, y: o.top!}) < snapRadius
-              );
-              
-              if (otherHandles.length > 0) {
-                  const target = otherHandles[0];
-                  const targetInv = fabric.util.invertTransform(matrix);
-                  const snappedLocal = fabric.util.transformPoint(new fabric.Point(target.left!, target.top!), targetInv);
-                  finalX = Math.round((snappedLocal.x + (this.path.pathOffset.x || 0)) * 10) / 10;
-                  finalY = Math.round((snappedLocal.y + (this.path.pathOffset.y || 0)) * 10) / 10;
+          // SNAPPING LOGIC
+          const snapConfig = (this.canvas as any).snappingConfig || { grid: true, points: true, segments: true, gridSize: 20 };
+          const snapRadius = 12 / (this.canvas.getZoom() || 1);
+
+          if (!e.ctrlKey) {
+              let snapped = false;
+
+              // 1. Snap to nearest Anchor Point
+              if (snapConfig.points) {
+                  const otherAnchors = this.canvas.getObjects().filter(o => 
+                      o !== handle && 
+                      (o as any).handleType === 'anchor' && 
+                      distance(scenePt, {x: o.left!, y: o.top!}) < snapRadius
+                  );
+                  
+                  if (otherAnchors.length > 0) {
+                      const target = otherAnchors[0];
+                      finalX = Math.round(target.left! * 10) / 10;
+                      finalY = Math.round(target.top! * 10) / 10;
+                      snapped = true;
+                  }
+              }
+
+              // 2. Snap to Line/Curve (Synchronous)
+              if (!snapped && snapConfig.segments) {
+                  const allPaths = this.canvas.getObjects().filter(o => o instanceof fabric.Path && (o as any).id !== (this.path as any).id) as fabric.Path[];
+                  for (const p of allPaths) {
+                      const pArr = p.path as any[];
+                      // Other paths might NOT be grounded, so we need to account for their position
+                      const pMatrix = p.calcTransformMatrix();
+                      const pOffset = p.pathOffset || { x: 0, y: 0 };
+
+                      for (let i = 1; i < pArr.length; i++) {
+                          const cmd = pArr[i];
+                          const prev = pArr[i-1];
+                          const p0Local = { x: prev[prev.length-2], y: prev[prev.length-1] };
+                          
+                          if (cmd[0] === 'L') {
+                              const p1Local = { x: cmd[1], y: cmd[2] };
+                              const c0 = fabric.util.transformPoint({ x: p0Local.x - pOffset.x, y: p0Local.y - pOffset.y } as any, pMatrix);
+                              const c1 = fabric.util.transformPoint({ x: p1Local.x - pOffset.x, y: p1Local.y - pOffset.y } as any, pMatrix);
+                              
+                              const nearest = getNearestPointOnLine(scenePt, c0, c1);
+                              const dist = distance(scenePt, nearest);
+                              if (dist < snapRadius) {
+                                  finalX = Math.round(nearest.x * 10) / 10;
+                                  finalY = Math.round(nearest.y * 10) / 10;
+                                  snapped = true; break;
+                              }
+                          } else if (cmd[0] === 'C') {
+                              const b1 = { x: cmd[1], y: cmd[2] }, b2 = { x: cmd[3], y: cmd[4] }, b3 = { x: cmd[5], y: cmd[6] };
+                              const c0 = fabric.util.transformPoint({ x: p0Local.x - pOffset.x, y: p0Local.y - pOffset.y } as any, pMatrix);
+                              const c1 = fabric.util.transformPoint({ x: b1.x - pOffset.x, y: b1.y - pOffset.y } as any, pMatrix);
+                              const c2 = fabric.util.transformPoint({ x: b2.x - pOffset.x, y: b2.y - pOffset.y } as any, pMatrix);
+                              const c3 = fabric.util.transformPoint({ x: b3.x - pOffset.x, y: b3.y - pOffset.y } as any, pMatrix);
+                              
+                              const snapResult = getNearestPointOnCubicBezier(scenePt, c0, c1, c2, c3);
+                              if (snapResult.distance < snapRadius) {
+                                  finalX = Math.round(snapResult.point.x * 10) / 10;
+                                  finalY = Math.round(snapResult.point.y * 10) / 10;
+                                  snapped = true; break;
+                              }
+                          }
+                      }
+                      if (snapped) break;
+                  }
+              }
+
+              // 3. Snap to Grid
+              if (!snapped && snapConfig.grid) {
+                  finalX = Math.round(finalX / snapConfig.gridSize) * snapConfig.gridSize;
+                  finalY = Math.round(finalY / snapConfig.gridSize) * snapConfig.gridSize;
               }
           }
 
-          if (opt.e && opt.e.shiftKey && anchorCmdIndex !== undefined) {
+          if (e.shiftKey && anchorCmdIndex !== undefined) {
               const p = this.path.path as any[];
               const anchor = p[anchorCmdIndex];
               const ax = anchor[anchor.length-2];
@@ -347,9 +550,12 @@ export class PatternEditor {
               finalY = Math.round(snappedPt.y * 10) / 10;
           }
 
+          // Convert Final Scene Coordinates back to Path Data Space
+          const localPt = this.toPathDataSpace(finalX, finalY);
+
           const pathArr = this.path.path as any[];
-          pathArr[cmdIndex][xIndex] = finalX;
-          pathArr[cmdIndex][yIndex] = finalY;
+          pathArr[cmdIndex][xIndex] = localPt.x;
+          pathArr[cmdIndex][yIndex] = localPt.y;
 
           if (this.joinPoints.has(cmdIndex) && (handle as any).handleType === 'anchor') {
               this.ensurePerpendicularJoin(cmdIndex);
@@ -377,7 +583,7 @@ export class PatternEditor {
               this.checkSeamSymmetry();
           }
 
-          this.updateHUD(pt.x, pt.y, cmdIndex);
+          this.updateHUD(finalX, finalY, cmdIndex);
       });
 
       handle.on('mouseup', () => {
@@ -662,6 +868,80 @@ export class PatternEditor {
       return results;
   }
 
+  getGradedPath(size: string): any[] {
+      const pathArr = JSON.parse(JSON.stringify(this.path.path)); // Deep clone
+      if (size === 'M') return pathArr; // Base size
+
+      pathArr.forEach((cmd: any[], i: number) => {
+          const label = this.pointLabels[i];
+          if (!label) return;
+
+          // Find Grading Rule
+          const rule = GRADING_TABLE[label]?.[size];
+          if (!rule) return;
+
+          let { dx, dy } = rule;
+
+          // Handle Symmetry/Mirroring (if label indicates Left/Right specific or based on pattern side)
+          // Assumption: dx in grading table is for the "Right" side (positive X).
+          // If the pattern is mirrored (e.g., using "mirror" tool logic, though here we might be grading a base piece).
+          // For now, we apply dx directly. Ideally, we need to know if this point is on the "Reflected" side.
+          // In standard block patterns, "Side Seam" usually moves OUT.
+          
+          // Apply Delta to Anchor Point
+          // Anchor is always the last 2 params of the command
+          const anchorXIdx = cmd.length - 2;
+          const anchorYIdx = cmd.length - 1;
+
+          const oldX = cmd[anchorXIdx];
+          const oldY = cmd[anchorYIdx];
+          
+          cmd[anchorXIdx] += dx;
+          cmd[anchorYIdx] += dy;
+
+          // Proportional Grading for Control Points
+          // If it's a Curve (C or Q), we need to shift control points too.
+          // Simple strategy: Shift them by the SAME delta as the anchor.
+          // This preserves the "shape" of the curve relative to the anchor.
+          if (cmd[0] === 'C') {
+              // cp1 (index 1,2) and cp2 (index 3,4)
+              // Ideally cp1 moves with the *previous* anchor's delta, and cp2 moves with *this* anchor's delta.
+              // But we don't easily have previous delta here without a first pass.
+              // SIMPLIFIED STRATEGY for robust MVP: Move CP1 with 50% of previous delta + 50% of current delta?
+              // OR: Just move them with the current delta.
+              
+              // Better Strategy:
+              // CP2 is attached to THIS anchor -> Move by (dx, dy)
+              cmd[3] += dx;
+              cmd[4] += dy;
+
+              // CP1 is attached to PREVIOUS anchor -> We need the previous point's delta.
+              // Let's do a two-pass approach or look up previous label.
+              const prevLabel = this.pointLabels[i-1];
+              if (prevLabel) {
+                   const prevRule = GRADING_TABLE[prevLabel]?.[size] || { dx: 0, dy: 0 };
+                   cmd[1] += prevRule.dx;
+                   cmd[2] += prevRule.dy;
+              } else {
+                   // If no previous label, maybe it's static? or move with current?
+                   // Default to moving with current to avoid wild distortion if unlabelled.
+                   cmd[1] += dx; 
+                   cmd[2] += dy;
+              }
+          } else if (cmd[0] === 'Q') {
+               // Quad curve: 1 CP. It's usually "between" points.
+               // Move by average of previous delta and current delta (if available)
+               const prevLabel = this.pointLabels[i-1];
+               const prevRule = prevLabel ? (GRADING_TABLE[prevLabel]?.[size] || { dx: 0, dy: 0 }) : { dx, dy };
+               
+               cmd[1] += (dx + prevRule.dx) / 2;
+               cmd[2] += (dy + prevRule.dy) / 2;
+          }
+      });
+
+      return pathArr;
+  }
+
   setSegmentColorOverride(idx: number, color: string) {
       this.segmentColors[idx] = color;
       this.updateSegmentPaths();
@@ -678,7 +958,63 @@ export class PatternEditor {
       const p0 = {x: p0cmd[p0cmd.length-2], y: p0cmd[p0cmd.length-1]};
       if (cmd[0] === 'L') return distance(p0, {x: cmd[1], y: cmd[2]});
       if (cmd[0] === 'C') return getCubicBezierLength(p0, {x: cmd[1], y: cmd[2]}, {x: cmd[3], y: cmd[4]}, {x: cmd[5], y: cmd[6]});
+      if (cmd[0] === 'Q') return distance(p0, {x: cmd[3], y: cmd[4]}); // Approx for Quad: Linear distance for now or integrate?
       return 0;
+  }
+
+  setSegmentLength(cmdIndex: number, newLengthMM: number) {
+      const pathArr = this.path.path as any[];
+      const cmd = pathArr[cmdIndex];
+      const prevCmd = pathArr[cmdIndex-1];
+      if (!cmd || !prevCmd) return;
+
+      const p0 = {x: prevCmd[prevCmd.length-2], y: prevCmd[prevCmd.length-1]};
+      
+      if (cmd[0] === 'L') {
+          // Linear: Extend vector from p0
+          const currentLen = distance(p0, {x: cmd[1], y: cmd[2]});
+          if (currentLen === 0) return;
+          const ratio = newLengthMM / currentLen;
+          const dx = cmd[1] - p0.x;
+          const dy = cmd[2] - p0.y;
+          
+          cmd[1] = p0.x + (dx * ratio);
+          cmd[2] = p0.y + (dy * ratio);
+      } else if (cmd[0] === 'C') {
+          // Bezier: Scale all control points relative to p0? 
+          // Or just move end point and stretch controls?
+          // Simplest reliable way: Scale the whole curve relative to Start Point (p0).
+          // This preserves shape curvature but changes arc length.
+          
+          // Iterative approximation for Arc Length scaling?
+          // Or geometric scaling of hull.
+          // Let's scale the hull points (cp1, cp2, end) from p0.
+          const currentLen = this.getSegmentLength(pathArr, cmdIndex);
+          if (currentLen === 0) return;
+          const ratio = newLengthMM / currentLen;
+          
+          const scalePt = (pt: {x:number, y:number}) => ({
+              x: p0.x + (pt.x - p0.x) * ratio,
+              y: p0.y + (pt.y - p0.y) * ratio
+          });
+
+          // CP1
+          const cp1 = scalePt({x: cmd[1], y: cmd[2]});
+          cmd[1] = cp1.x; cmd[2] = cp1.y;
+
+          // CP2
+          const cp2 = scalePt({x: cmd[3], y: cmd[4]});
+          cmd[3] = cp2.x; cmd[4] = cp2.y;
+
+          // End
+          const end = scalePt({x: cmd[5], y: cmd[6]});
+          cmd[5] = end.x; cmd[6] = end.y;
+      }
+
+      this.path.set({ path: [...pathArr], dirty: true });
+      this.forceCleanRefresh();
+      this.showHandles(); // Refresh handles
+      this.canvas.requestRenderAll();
   }
 
   calculateConsumption(): number {
@@ -799,39 +1135,7 @@ export class PatternEditor {
       this.canvas.requestRenderAll();
   }
 
-  setSegmentLength(endIdx: number, targetMM: number) {
-      const pathArr = this.path.path as any[];
-      const cmd = pathArr[endIdx];
-      const prevCmd = pathArr[endIdx - 1];
-      if (!prevCmd || !cmd) return;
-      const p0 = { x: prevCmd[prevCmd.length - 2], y: prevCmd[prevCmd.length - 1] };
-      const p1 = { x: cmd[cmd.length - 2], y: cmd[cmd.length - 1] };
 
-      if (cmd[0] === 'L') {
-          const currentDist = distance(p0, p1);
-          if (currentDist === 0) return;
-          const ratio = targetMM / currentDist;
-          cmd[1] = p0.x + (p1.x - p0.x) * ratio;
-          cmd[2] = p0.y + (p1.y - p0.y) * ratio;
-      } else if (cmd[0] === 'C') {
-          const currentLen = getCubicBezierLength(p0, {x: cmd[1], y: cmd[2]}, {x: cmd[3], y: cmd[4]}, p1);
-          if (currentLen === 0) return;
-          const ratio = targetMM / currentLen;
-          const chordDist = distance(p0, p1);
-          const chordRatio = (chordDist * ratio) / chordDist;
-          cmd[5] = p0.x + (p1.x - p0.x) * chordRatio;
-          cmd[6] = p0.y + (p1.y - p0.y) * chordRatio;
-          cmd[1] = p0.x + (cmd[1] - p0.x) * ratio;
-          cmd[2] = p0.y + (cmd[2] - p0.y) * ratio;
-          cmd[3] = cmd[5] + (cmd[3] - p1.x) * ratio;
-          cmd[4] = cmd[6] + (cmd[4] - p1.y) * ratio;
-      }
-
-      this.path.set({ path: [...pathArr], dirty: true });
-      this.forceCleanRefresh();
-      this.showHandles();
-      this.canvas.requestRenderAll();
-  }
 
   adjustDistance(cmdIdxA: number, cmdIdxB: number, targetMM: number) {
       const pathArr = this.path.path as any[];
@@ -929,9 +1233,174 @@ export class PatternEditor {
       this.canvas.requestRenderAll();
   }
 
+  makeParallel(initialEndIdx: number, distanceMM: number = 20) {
+      const pathArr = this.path.path as any[];
+      const matrix = this.path.calcTransformMatrix();
+      const offset = this.path.pathOffset;
+      const zoom = this.canvas.getZoom();
+      
+      let endIdx = initialEndIdx;
+
+      // 1. IMPROVED: Find the ACTUAL closest segment to the lastClickPoint
+      // This bypasses any handle mapping issues and respects the user's intent.
+      if (this.lastClickPoint) {
+          const invMatrix = fabric.util.invertTransform(matrix);
+          const localClick = fabric.util.transformPoint(new fabric.Point(this.lastClickPoint.x, this.lastClickPoint.y), invMatrix);
+          
+          let minDistance = Infinity;
+          let bestIdx = endIdx;
+
+          for (let i = 1; i < pathArr.length; i++) {
+              const cmd = pathArr[i];
+              const prev = pathArr[i-1];
+              const pStart = { x: prev[prev.length-2] - offset.x, y: prev[prev.length-1] - offset.y };
+              let dist = Infinity;
+
+              if (cmd[0] === 'L') {
+                  const pEnd = { x: cmd[1] - offset.x, y: cmd[2] - offset.y };
+                  const nearest = getNearestPointOnLine(localClick, pStart, pEnd);
+                  dist = distance(localClick, nearest);
+              } else if (cmd[0] === 'C') {
+                  const pEnd = { x: cmd[5] - offset.x, y: cmd[6] - offset.y };
+                  const result = getNearestPointOnCubicBezier(localClick, pStart, {x: cmd[1]-offset.x, y: cmd[2]-offset.y}, {x: cmd[3]-offset.x, y: cmd[4]-offset.y}, pEnd);
+                  dist = result.distance;
+              } else if (cmd[0] === 'Z') {
+                  const first = pathArr[0];
+                  const pEnd = { x: first[1] - offset.x, y: first[2] - offset.y };
+                  const nearest = getNearestPointOnLine(localClick, pStart, pEnd);
+                  dist = distance(localClick, nearest);
+              }
+
+              if (dist < minDistance) {
+                  minDistance = dist;
+                  bestIdx = i;
+              }
+          }
+          endIdx = bestIdx;
+      }
+
+      const cmd = pathArr[endIdx];
+      const prevCmd = pathArr[endIdx - 1];
+      if (!cmd || !prevCmd) return;
+
+      // 2. Get local points for the targeted segment
+      const lp0 = { x: prevCmd[prevCmd.length - 2] - (offset.x || 0), y: prevCmd[prevCmd.length - 1] - (offset.y || 0) };
+      let lp1: Point;
+      if (cmd[0] === 'Z') {
+          const first = pathArr[0];
+          lp1 = { x: first[1] - (offset.x || 0), y: first[2] - (offset.y || 0) };
+      } else {
+          lp1 = { x: cmd[cmd.length - 2] - (offset.x || 0), y: cmd[cmd.length - 1] - (offset.y || 0) };
+      }
+      
+      // 3. Calculate local normal
+      const ldx = lp1.x - lp0.x;
+      const ldy = lp1.y - lp0.y;
+      const llen = Math.sqrt(ldx * ldx + ldy * ldy);
+      if (llen === 0) return;
+      
+      let localNormal = { x: -ldy / llen, y: ldx / llen };
+      
+      // 4. Side detection in local space (Robust Click Check)
+      if (this.lastClickPoint) {
+          const invMatrix = fabric.util.invertTransform(matrix);
+          const localClick = fabric.util.transformPoint(new fabric.Point(this.lastClickPoint.x, this.lastClickPoint.y), invMatrix);
+          const mid = { x: (lp0.x + lp1.x) / 2, y: (lp0.y + lp1.y) / 2 };
+          const v = { x: localClick.x - mid.x, y: localClick.y - mid.y };
+          // Flip normal if click was on the other side
+          if (v.x * localNormal.x + v.y * localNormal.y < 0) {
+              localNormal.x *= -1;
+              localNormal.y *= -1;
+          }
+      }
+
+      // 5. Generate scene-space points (ignoring viewport zoom/pan)
+      const toScene = (p: Point) => {
+          let pt = fabric.util.transformPoint(new fabric.Point(p.x, p.y), matrix);
+          if (this.canvas.viewportTransform) {
+              pt = fabric.util.transformPoint(pt, fabric.util.invertTransform(this.canvas.viewportTransform));
+          }
+          return pt;
+      };
+      
+      const c0 = toScene(lp0);
+      const c1 = toScene(lp1);
+      const cdx = c1.x - c0.x;
+      const cdy = c1.y - c0.y;
+      const clen = Math.sqrt(cdx * cdx + cdy * cdy);
+      const canvasNormal = { x: -cdy / clen, y: cdx / clen };
+      
+      // Sync canvasNormal with localNormal direction
+      const testP = toScene({ x: lp0.x + localNormal.x, y: lp0.y + localNormal.y });
+      const testV = { x: testP.x - c0.x, y: testP.y - c0.y };
+      if (testV.x * canvasNormal.x + testV.y * canvasNormal.y < 0) {
+          canvasNormal.x *= -1; canvasNormal.y *= -1;
+      }
+
+      const offsetPX = distanceMM; // Scene space is 1:1 with mm
+      const offX = canvasNormal.x * offsetPX;
+      const offY = canvasNormal.y * offsetPX;
+
+      // 6. Build the parallel path string
+      let d = `M ${c0.x + offX} ${c0.y + offY} `;
+      if (cmd[0] === 'L' || cmd[0] === 'Z') {
+          d += `L ${c1.x + offX} ${c1.y + offY}`;
+      } else if (cmd[0] === 'C') {
+          const cp1 = toScene({ x: cmd[1] - (offset.x || 0), y: cmd[2] - (offset.y || 0) });
+          const cp2 = toScene({ x: cmd[3] - (offset.x || 0), y: cmd[4] - (offset.y || 0) });
+          d += `C ${cp1.x + offX} ${cp1.y + offY} ${cp2.x + offX} ${cp2.y + offY} ${c1.x + offX} ${c1.y + offY}`;
+      }
+
+      const newPath = new fabric.Path(d, {
+          stroke: '#6366f1',
+          strokeWidth: 2,
+          fill: 'transparent',
+          strokeDashArray: [5, 5],
+          opacity: 0.8,
+          selectable: true,
+          hasControls: true,
+          data: { isParallel: true, baseMidpoint: { x: (c0.x + c1.x) / 2, y: (c0.y + c1.y) / 2 }, normal: canvasNormal }
+      } as any);
+
+      (newPath as any).isParallel = true;
+      (newPath as any).movementConstraint = {
+          normal: canvasNormal,
+          baseMidpoint: { x: (c0.x + c1.x) / 2, y: (c0.y + c1.y) / 2 },
+          originalMidpoint: { x: (c0.x + c1.x) / 2 + offX, y: (c0.y + c1.y) / 2 + offY }
+      };
+
+      this.canvas.add(newPath);
+
+      // Indicators
+      const mid0X = (c0.x + c1.x) / 2;
+      const mid0Y = (c0.y + c1.y) / 2;
+      const mid1X = mid0X + offX;
+      const mid1Y = mid0Y + offY;
+
+      const dimLine = new fabric.Line([mid0X, mid0Y, mid1X, mid1Y], {
+          stroke: '#ec4899', strokeWidth: 1.5, strokeDashArray: [2, 2], selectable: false, evented: false, opacity: 0.6
+      });
+      const label = new fabric.Text(`${distanceMM}mm`, {
+          left: (mid0X + mid1X) / 2 + 5, top: (mid0Y + mid1Y) / 2, fontSize: 12, fontWeight: 'bold', fill: 'white', backgroundColor: '#ec4899', padding: 3, rx: 2, ry: 2, selectable: false, evented: false, fontFamily: 'Inter, sans-serif'
+      } as any);
+
+      (newPath as any).indicators = [dimLine, label];
+      this.canvas.add(dimLine, label);
+      this.canvas.setActiveObject(newPath);
+      this.canvas.requestRenderAll();
+  }
+
   hideHandles() {
-    [...this.handles, ...this.connectionLines, ...this.labels, ...this.notchObjects, this.grainLineObj, this.hudLabel].forEach(o => o && this.canvas.remove(o));
-    this.handles = []; this.connectionLines = []; this.labels = []; this.notchObjects = []; this.grainLineObj = null; this.hudLabel = null;
+    [...this.handles, ...this.connectionLines, ...this.labels, ...this.notchObjects, this.grainLineObj, this.hudLabel, ...this.segmentHandles].forEach(o => o && this.canvas.remove(o));
+    this.handles = []; this.connectionLines = []; this.labels = []; this.notchObjects = []; this.grainLineObj = null; this.hudLabel = null; this.segmentHandles = [];
+  }
+
+  dispose() {
+      this.hideHandles();
+      if (this.path) {
+          this.canvas.remove(this.path);
+          (this.path as any)._editor = null;
+      }
   }
 
   static nestItems(canvas: fabric.Canvas, fabricWidth: number = 1500, margin: number = 15) {

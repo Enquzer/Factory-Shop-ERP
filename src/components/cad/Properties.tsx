@@ -4,7 +4,23 @@ import { Calculator, Scaling, Scissors, Ruler, MoveHorizontal, Activity, Layers 
 import { useState, useEffect } from 'react';
 import { distance, getCubicBezierLength } from '@/lib/cad/geometry';
 
-export default function PropertiesPanel({ selectedObjects }: { selectedObjects: any[] }) {
+export default function PropertiesPanel({ 
+    selectedObjects, 
+    gridSettings = { showGrid: true, gridSize: 20, snappingConfig: { grid: true, points: true, segments: true, gridSize: 20 } },
+    onGridSettingChange,
+    patternLibrary = [],
+    onPullPattern,
+    activeGradingSize = 'M',
+    onGradingSizeChange
+}: { 
+    selectedObjects: any[], 
+    gridSettings?: any,
+    onGridSettingChange?: (key: string, val: any) => void,
+    patternLibrary?: any[],
+    onPullPattern?: (pattern: any) => void,
+    activeGradingSize?: string,
+    onGradingSizeChange?: (size: string) => void
+}) {
   const [targetDist, setTargetDist] = useState<string>('');
   const [localPosX, setLocalPosX] = useState('');
   const [localPosY, setLocalPosY] = useState('');
@@ -37,17 +53,122 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
 
   if (selectedObjects.length === 0) {
     return (
-      <aside className="w-72 border-l bg-slate-50 p-6 flex flex-col gap-6 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">
-        <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400">Properties</h2>
-        <div className="flex flex-col items-center justify-center h-40 text-slate-300">
+      <aside className="w-80 border-l bg-slate-50 p-5 flex flex-col gap-6 shadow-[-4px_0_10px_rgba(0,0,0,0.02)] overflow-y-auto">
+        <div className="space-y-4">
+            <h2 className="font-black text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <Scaling className="w-3 h-3" /> Grading Rules (Target)
+            </h2>
+            <div className="grid grid-cols-3 gap-2">
+                {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
+                    <button 
+                        key={size}
+                        onClick={() => onGradingSizeChange?.(size)}
+                        className={`py-2 rounded-lg text-[10px] font-black transition-all border shadow-sm ${
+                            activeGradingSize === size 
+                            ? 'bg-blue-600 text-white border-blue-600' 
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'
+                        }`}
+                    >
+                        {size}
+                    </button>
+                ))}
+            </div>
+        </div>
+
+        <div className="space-y-4">
+            <h2 className="font-black text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <Layers className="w-3 h-3" /> Pattern Library ({patternLibrary.length})
+            </h2>
+            
+            {patternLibrary.length === 0 ? (
+                <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center">
+                    <p className="text-[10px] text-slate-400 italic">No patterns designated yet.<br/>Use 'Designate' tool to save panels.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-2">
+                    {patternLibrary.map(item => (
+                        <div key={item.id} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center gap-3 shadow-sm hover:border-blue-400 transition-all group">
+                             <div className="shrink-0 w-12 h-12 bg-slate-50 rounded-lg flex items-center justify-center overflow-hidden border border-slate-100 p-1">
+                                <svg viewBox="0 0 1000 1000" className="w-full h-full text-blue-500 opacity-60">
+                                    <path d={item.path} fill="currentColor" transform="scale(0.5) translate(500, 500)" />
+                                </svg>
+                             </div>
+                             <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-bold text-slate-700 truncate">{item.name}</p>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Size: {item.size}</p>
+                             </div>
+                             <button 
+                                onClick={() => onPullPattern?.(item)}
+                                className="hidden group-hover:flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg text-white shadow-md hover:bg-blue-700 active:scale-95 transition-all"
+                                title="Pull to Canvas"
+                             >
+                                <MoveHorizontal className="w-4 h-4" />
+                             </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+
+        <h2 className="font-black text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-2">Environment</h2>
+        
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
+            <h3 className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                <Scaling className="w-3 h-3" /> Grid Settings
+            </h3>
+            <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-600">Show Grid</span>
+                <input 
+                    type="checkbox" 
+                    checked={gridSettings.showGrid} 
+                    onChange={(e) => onGridSettingChange?.('showGrid', e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                />
+            </div>
+            <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Grid Size (mm)</label>
+                <div className="flex gap-2">
+                    <input 
+                        type="number" 
+                        value={gridSettings.gridSize} 
+                        onChange={(e) => onGridSettingChange?.('gridSize', parseInt(e.target.value) || 20)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-700"
+                    />
+                </div>
+            </div>
+        </div>
+
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
+            <h3 className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                <Activity className="w-3 h-3" /> Snapping
+            </h3>
+            <div className="space-y-3">
+                {[
+                    { id: 'grid', label: 'Snap to Grid' },
+                    { id: 'points', label: 'Snap to Points' },
+                    { id: 'segments', label: 'Snap to Segments' }
+                ].map(item => (
+                    <div key={item.id} className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-600">{item.label}</span>
+                        <input 
+                            type="checkbox" 
+                            checked={gridSettings.snappingConfig[item.id]} 
+                            onChange={(e) => onGridSettingChange?.('snapping', { [item.id]: e.target.checked })}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <div className="mt-auto flex flex-col items-center justify-center p-4 border border-dashed border-slate-200 rounded-xl text-slate-300">
             <Ruler className="w-8 h-8 mb-2 opacity-20" />
-            <p className="text-xs italic">Select an object or 2 nodes</p>
+            <p className="text-[10px] text-center italic">Selection Properties will appear here when an object is active.</p>
         </div>
       </aside>
     );
   }
 
-  // DETECT NODES
   const selectedNodes = selectedObjects.filter(o => (o as any).handleType === 'anchor');
   const isNodeSelected = selectedNodes.length > 0;
   const areTwoNodesSelected = selectedNodes.length === 2;
@@ -179,12 +300,23 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
                         </div>
                     )}
 
-                    <button 
-                        onClick={() => segmentInfo.editor.splitSegment(segmentInfo.endIdx)}
-                        className="w-full mt-2 py-2 bg-white hover:bg-blue-600 hover:text-white border border-blue-200 rounded text-[10px] font-black transition-all flex items-center justify-center gap-2"
-                    >
-                        <Scissors className="w-3 h-3" /> Add Vertex (Split)
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button 
+                            onClick={() => segmentInfo.editor.splitSegment(segmentInfo.endIdx)}
+                            className="w-full py-2 bg-white hover:bg-blue-600 hover:text-white border border-blue-200 rounded text-[9px] font-black transition-all flex items-center justify-center gap-2"
+                        >
+                            <Scissors className="w-3 h-3" /> Split (Node)
+                        </button>
+                        <button 
+                            onClick={() => {
+                                const dist = prompt('Enter Parallel Distance (mm):', '20');
+                                if (dist) segmentInfo.editor.makeParallel(segmentInfo.endIdx, parseFloat(dist));
+                            }}
+                            className="w-full py-2 bg-white hover:bg-blue-600 hover:text-white border border-blue-200 rounded text-[9px] font-black transition-all flex items-center justify-center gap-2"
+                        >
+                            <Layers className="w-3 h-3" /> Make Parallel
+                        </button>
+                    </div>
                 </div>
             </div>
         )}
@@ -242,49 +374,51 @@ export default function PropertiesPanel({ selectedObjects }: { selectedObjects: 
         )}
 
         {isPattern && (
-            <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl space-y-4">
-                <h3 className="text-[10px] font-black uppercase text-purple-400 tracking-wider flex items-center gap-2">
-                    <Layers className="w-3 h-3" /> Industrial Grading
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                    <Ruler className="w-3 h-3" /> Stroke Appearance
                 </h3>
-                <div className="grid grid-cols-4 gap-2">
-                    {['S', 'M', 'L', 'XL'].map(size => (
-                        <button 
-                            key={size}
-                            onClick={() => (selectedObject as any)._editor.grade(size)}
-                            className="py-2 bg-white hover:bg-purple-600 hover:text-white border border-purple-200 rounded text-[10px] font-black transition-all"
-                        >
-                            {size}
-                        </button>
-                    ))}
-                </div>
-                <p className="text-[9px] text-purple-400 font-medium italic">* Grades based on Standard T-Shirt Sloper deltas</p>
-            </div>
-        )}
-
-        {isPattern && (
-            <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-4">
-                <h3 className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-2">
-                    <Scaling className="w-3 h-3" /> Smart Gen (mm)
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                    {Object.keys(measurements).map(key => (
-                        <div key={key} className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase">{key}</label>
+                <div className="space-y-3">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Stroke Width (px)</label>
+                        <input 
+                            type="number"
+                            min="0.5"
+                            max="10"
+                            step="0.5"
+                            className="w-full bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-700"
+                            value={selectedObject.strokeWidth || 2}
+                            onChange={(e) => {
+                                selectedObject.set({ strokeWidth: parseFloat(e.target.value) || 2 });
+                                selectedObject.canvas?.requestRenderAll();
+                            }}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Stroke Color</label>
+                        <div className="flex gap-2">
                             <input 
-                                type="number"
-                                className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-xs font-bold text-slate-700"
-                                value={(measurements as any)[key]}
-                                onChange={(e) => setMeasurements({...measurements, [key]: parseInt(e.target.value) || 0})}
+                                type="color"
+                                className="w-12 h-8 rounded border border-slate-200 cursor-pointer"
+                                value={selectedObject.stroke || '#666666'}
+                                onChange={(e) => {
+                                    selectedObject.set({ stroke: e.target.value });
+                                    selectedObject.canvas?.requestRenderAll();
+                                }}
+                            />
+                            <input 
+                                type="text"
+                                className="flex-1 bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-mono text-slate-700"
+                                value={selectedObject.stroke || '#666666'}
+                                onChange={(e) => {
+                                    selectedObject.set({ stroke: e.target.value });
+                                    selectedObject.canvas?.requestRenderAll();
+                                }}
+                                placeholder="#666666"
                             />
                         </div>
-                    ))}
+                    </div>
                 </div>
-                <button 
-                    onClick={() => (selectedObject as any)._editor.applyParametricMeasurements(measurements)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-[10px] font-black transition-all shadow-md mt-2"
-                >
-                    Drive Pattern Logic
-                </button>
             </div>
         )}
 

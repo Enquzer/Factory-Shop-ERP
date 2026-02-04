@@ -9,15 +9,17 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  BarChart3
+  BarChart3,
+  FileText
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { LoadingBar } from "@/components/loading-bar";
-import { getOrdersFromDB } from "@/lib/orders";
+import { getOrders } from "@/lib/orders";
 import { Order } from "@/lib/orders";
+import { exportFinancialReportToPDF } from "@/lib/pdf-export-utils";
 
 export default function FinanceDashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -31,7 +33,7 @@ export default function FinanceDashboardPage() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const fetchedOrders = await getOrdersFromDB();
+      const fetchedOrders = await getOrders();
       setOrders(fetchedOrders);
     } catch (err) {
       console.error('Error fetching orders:', err);
@@ -40,6 +42,10 @@ export default function FinanceDashboardPage() {
       setLoading(false);
     }
   };
+
+  // Define status categories - consistent with reports page
+  const REVENUE_STATUSES = ['Paid', 'Released', 'Dispatched', 'Delivered'];
+  const PENDING_STATUSES = ['Pending', 'Awaiting Payment', 'Payment Slip Attached'];
 
   // Calculate finance metrics
   const calculateMetrics = () => {
@@ -52,16 +58,16 @@ export default function FinanceDashboardPage() {
     });
 
     const pendingPaymentOrders = orders.filter(order => 
-      order.status === 'Awaiting Payment' || order.status === 'Payment Slip Attached' || order.status === 'Pending'
+      PENDING_STATUSES.includes(order.status)
     );
 
-    const paidOrders = orders.filter(order => order.status === 'Paid');
+    const paidOrders = orders.filter(order => REVENUE_STATUSES.includes(order.status));
     
     const totalRevenue = paidOrders.reduce((sum, order) => sum + order.amount, 0);
     const pendingPayments = pendingPaymentOrders.reduce((sum, order) => sum + order.amount, 0);
     
     const recentRevenue = recentOrders
-      .filter(order => order.status === 'Paid')
+      .filter(order => REVENUE_STATUSES.includes(order.status))
       .reduce((sum, order) => sum + order.amount, 0);
 
     return {
@@ -71,8 +77,30 @@ export default function FinanceDashboardPage() {
       totalRevenue,
       pendingAmount: pendingPayments,
       recentRevenue,
-      avgOrderValue: orders.length > 0 ? totalRevenue / paidOrders.length : 0
+      avgOrderValue: paidOrders.length > 0 ? totalRevenue / paidOrders.length : 0
     };
+  };
+
+  const exportToPDF = async () => {
+    await exportFinancialReportToPDF({
+      title: "Finance Dashboard Summary",
+      columns: ['Metric', 'Value'],
+      data: [
+        ['Total Revenue', `ETB ${metrics.totalRevenue.toLocaleString()}`],
+        ['Paid Orders', metrics.paidOrders.toString()],
+        ['Pending Amount', `ETB ${metrics.pendingAmount.toLocaleString()}`],
+        ['Pending Orders', metrics.pendingPayments.toString()],
+        ['Recent Revenue (30d)', `ETB ${metrics.recentRevenue.toLocaleString()}`],
+        ['Avg Order Value', `ETB ${metrics.avgOrderValue.toLocaleString()}`]
+      ],
+      summaryData: [
+        { label: 'Total Revenue', value: `ETB ${metrics.totalRevenue.toLocaleString()}` },
+        { label: 'Paid Orders', value: metrics.paidOrders.toString() },
+        { label: 'Pending Pymts', value: `ETB ${metrics.pendingAmount.toLocaleString()}` },
+        { label: 'Avg Value', value: `ETB ${metrics.avgOrderValue.toLocaleString()}` },
+      ],
+      fileName: 'finance-dashboard'
+    });
   };
 
   const metrics = calculateMetrics();
@@ -99,9 +127,15 @@ export default function FinanceDashboardPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Finance Dashboard</h1>
-        <Button onClick={fetchOrders} variant="outline">
-          Refresh Data
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={fetchOrders} variant="outline">
+            Refresh Data
+          </Button>
+          <Button onClick={exportToPDF}>
+            <FileText className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
+        </div>
       </div>
 
       {/* Key Metrics */}
@@ -217,7 +251,7 @@ export default function FinanceDashboardPage() {
           <CardContent>
             <div className="space-y-4">
               {orders
-                .filter(order => order.status === 'Awaiting Payment' || order.status === 'Payment Slip Attached' || order.status === 'Pending')
+                .filter(order => PENDING_STATUSES.includes(order.status as any))
                 .slice(0, 5)
                 .map((order) => (
                   <div key={order.id} className="flex justify-between items-center p-3 border rounded-lg">
@@ -239,7 +273,7 @@ export default function FinanceDashboardPage() {
                   </div>
                 ))}
               
-              {orders.filter(order => order.status === 'Awaiting Payment' || order.status === 'Payment Slip Attached' || order.status === 'Pending').length === 0 && (
+              {orders.filter(order => PENDING_STATUSES.includes(order.status as any)).length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
                   <p>No pending payments</p>

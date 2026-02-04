@@ -37,7 +37,9 @@ export type Product = {
   sampleDevelopmentStatus?: 'Pending' | 'In Progress' | 'Completed';
   sampleQuotationStatus?: 'Pending' | 'In Progress' | 'Completed';
   sampleSizeSetStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleSizeSetQCStatus?: 'Pending' | 'Passed' | 'Failed';
   sampleCounterStatus?: 'Pending' | 'In Progress' | 'Completed';
+  sampleCounterQCStatus?: 'Pending' | 'Passed' | 'Failed';
   sampleApprovedBy?: string;
   sampleApprovedDate?: string;
 };

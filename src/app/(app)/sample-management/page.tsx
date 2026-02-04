@@ -9,15 +9,20 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { getProducts, updateProduct, Product } from "@/lib/products";
 import { 
-  FlaskConical, 
-  Search, 
-  CheckCircle, 
+  FlaskConical,
+  Search,
+  CheckCircle,
+  Image as ImageIcon, 
   Clock, 
   Save, 
   Layout, 
   History,
   CheckCircle2,
-  Circle
+  Circle,
+  XCircle,
+  Check,
+  FileText,
+  AlertCircle
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,9 +33,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { ProductHistoryDialog } from "@/components/sample/product-history-dialog";
 
 export default function SampleManagementPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +76,9 @@ export default function SampleManagementPage() {
       sampleDevelopmentStatus: product.sampleDevelopmentStatus || 'Pending',
       sampleQuotationStatus: product.sampleQuotationStatus || 'Pending',
       sampleSizeSetStatus: product.sampleSizeSetStatus || 'Pending',
+      sampleSizeSetQCStatus: product.sampleSizeSetQCStatus || 'Pending',
       sampleCounterStatus: product.sampleCounterStatus || 'Pending',
+      sampleCounterQCStatus: product.sampleCounterQCStatus || 'Pending',
       piecesPerSet: product.piecesPerSet || 1
     });
   };
@@ -101,10 +109,69 @@ export default function SampleManagementPage() {
     }
   };
 
+  const [inspections, setInspections] = useState<any[]>([]);
+  
+  const fetchInspections = async () => {
+    try {
+      const response = await fetch('/api/sample-management/inspections');
+      const data = await response.json();
+      setInspections(data);
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchInspections();
+  }, []);
+
+  const handleRequestQC = async (productId: string, sampleType: 'Size Set' | 'Counter') => {
+    if (!token) {
+        toast({ title: "Authorization Error", description: "You must be logged in to request QC.", variant: "destructive" });
+        return;
+    }
+    try {
+      const response = await fetch('/api/sample-management/inspections', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ productId, sampleType })
+      });
+      
+      if (response.status === 401) {
+          toast({ title: "Unauthorized", description: "Your session may have expired. Please login again.", variant: "destructive" });
+          return;
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        toast({
+          title: "QC Requested",
+          description: `${sampleType} quality check request sent to QC team.`,
+        });
+        fetchInspections();
+      }
+    } catch (error) {
+      toast({
+        title: "Request Failed",
+        description: "Failed to send QC request.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusIcon = (status?: string) => {
     switch (status) {
       case 'Completed': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case 'In Progress': return <Clock className="h-4 w-4 text-blue-500" />;
+      default: return <Circle className="h-4 w-4 text-gray-300" />;
+    }
+  };
+
+  const getQCIcon = (status?: string) => {
+    switch (status) {
+      case 'Passed': return <Check className="h-4 w-4 text-green-500" />;
+      case 'Failed': return <XCircle className="h-4 w-4 text-red-500" />;
       default: return <Circle className="h-4 w-4 text-gray-300" />;
     }
   };
@@ -150,10 +217,12 @@ export default function SampleManagementPage() {
                 <TableRow>
                   <TableHead>Product</TableHead>
                   <TableHead>Pieces/Set</TableHead>
-                  <TableHead>Development</TableHead>
-                  <TableHead>Quotation</TableHead>
+                  <TableHead>Development <span className="text-[10px] font-normal text-muted-foreground block">(Optional)</span></TableHead>
+                  <TableHead>Quotation <span className="text-[10px] font-normal text-muted-foreground block">(Optional)</span></TableHead>
                   <TableHead>Size Set</TableHead>
+                  <TableHead>Size Set QC</TableHead>
                   <TableHead>Counter Sample</TableHead>
+                  <TableHead>Counter QC</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -161,8 +230,21 @@ export default function SampleManagementPage() {
                 {filteredProducts.map((product) => (
                   <TableRow key={product.id}>
                     <TableCell>
-                      <div className="font-medium">{product.name}</div>
-                      <div className="text-xs text-muted-foreground">{product.productCode}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 relative rounded-md overflow-hidden border">
+                          {product.imageUrl ? (
+                            <img src={product.imageUrl} alt={product.name} className="object-cover w-full h-full" />
+                          ) : (
+                            <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                              <ImageIcon className="h-5 w-5 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-medium">{product.name}</div>
+                          <div className="text-xs text-muted-foreground">{product.productCode}</div>
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {editingId === product.id ? (
@@ -246,6 +328,28 @@ export default function SampleManagementPage() {
                     <TableCell>
                       {editingId === product.id ? (
                         <Select 
+                          value={editForm.sampleSizeSetQCStatus} 
+                          onValueChange={(v) => setEditForm({...editForm, sampleSizeSetQCStatus: v as any})}
+                        >
+                          <SelectTrigger className="h-8 w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Pending">Pending</SelectItem>
+                            <SelectItem value="Passed">Passed</SelectItem>
+                            <SelectItem value="Failed">Failed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {getQCIcon(product.sampleSizeSetQCStatus)}
+                          <span className="text-sm">{product.sampleSizeSetQCStatus || 'Pending'}</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {editingId === product.id ? (
+                        <Select 
                           value={editForm.sampleCounterStatus} 
                           onValueChange={(v) => setEditForm({...editForm, sampleCounterStatus: v as any})}
                         >
@@ -265,6 +369,28 @@ export default function SampleManagementPage() {
                         </div>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {editingId === product.id ? (
+                        <Select 
+                          value={editForm.sampleCounterQCStatus} 
+                          onValueChange={(v) => setEditForm({...editForm, sampleCounterQCStatus: v as any})}
+                        >
+                          <SelectTrigger className="h-8 w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Pending">Pending</SelectItem>
+                            <SelectItem value="Passed">Passed</SelectItem>
+                            <SelectItem value="Failed">Failed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {getQCIcon(product.sampleCounterQCStatus)}
+                          <span className="text-sm">{product.sampleCounterQCStatus || 'Pending'}</span>
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       {editingId === product.id ? (
                         <div className="flex justify-end gap-2">
@@ -275,9 +401,54 @@ export default function SampleManagementPage() {
                           </Button>
                         </div>
                       ) : (
-                        <Button size="sm" variant="outline" onClick={() => startEditing(product)}>
-                          Update Status
-                        </Button>
+                         <div className="flex flex-col gap-1">
+                          <Button size="sm" variant="outline" onClick={() => startEditing(product)}>
+                            Update Status
+                          </Button>
+                          <div className="flex gap-1 justify-end">
+                            {(() => {
+                              const sizeSetInsp = inspections.find(i => i.productId === product.id && i.sampleType === 'Size Set' && i.status !== 'Passed' && i.status !== 'Failed');
+                              return (
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className={`h-7 text-[10px] px-2 ${sizeSetInsp ? 'bg-yellow-50 text-yellow-600' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
+                                  onClick={() => !sizeSetInsp && handleRequestQC(product.id, 'Size Set')}
+                                  disabled={!!sizeSetInsp}
+                                >
+                                  {sizeSetInsp ? 'QC Requested' : 'Req SizeSet QC'}
+                                </Button>
+                              );
+                            })()}
+                            
+                            {(() => {
+                              const counterInsp = inspections.find(i => i.productId === product.id && i.sampleType === 'Counter' && i.status !== 'Passed' && i.status !== 'Failed');
+                              return (
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className={`h-7 text-[10px] px-2 ${counterInsp ? 'bg-yellow-50 text-yellow-600' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}
+                                  onClick={() => !counterInsp && handleRequestQC(product.id, 'Counter')}
+                                  disabled={!!counterInsp}
+                                >
+                                  {counterInsp ? 'QC Requested' : 'Req Counter QC'}
+                                </Button>
+                              );
+                            })()}
+                            <ProductHistoryDialog productId={product.id} productName={product.name} />
+                          </div>
+                          {/* Show Inspection Report links if any */}
+                          {inspections.filter(i => i.productId === product.id && i.status === 'Passed').map(ins => (
+                            <a 
+                              key={ins.id}
+                              href={`/api/sample-management/inspections/${ins.id}/report?download=true`}
+                              target="_blank"
+                              className="text-[10px] text-green-600 flex items-center justify-end gap-1 hover:underline"
+                            >
+                              <FileText className="h-3 w-3" /> {ins.sampleType} Report
+                            </a>
+                          ))}
+                         </div>
                       )}
                     </TableCell>
                   </TableRow>
