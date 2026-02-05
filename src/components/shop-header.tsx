@@ -25,6 +25,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { getShopByUsername } from '@/lib/shops-sqlite';
 import { useRouter } from 'next/navigation';
 import { HelpCenter } from '@/components/help-center';
+import { DynamicBreadcrumbs } from '@/components/dynamic-breadcrumbs';
 
 type Notification = {
   id: string;
@@ -226,7 +227,7 @@ export function ShopHeader() {
   return (
     <header className="flex h-14 items-center gap-4 border-b bg-card px-4 sm:px-6">
       <div className="w-full flex-1">
-        {/* Future breadcrumbs can go here */}
+        <DynamicBreadcrumbs />
       </div>
 
       <HelpCenter />

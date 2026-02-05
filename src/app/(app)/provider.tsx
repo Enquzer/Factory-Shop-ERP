@@ -70,6 +70,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                     console.log('Redirecting HR user to /hr');
                     setRedirecting(true);
                     router.push('/hr');
+                } else if (user.role === 'ecommerce' && !pathname.startsWith('/ecommerce-manager') && !pathname.startsWith('/profile')) {
+                    console.log('Redirecting eCommerce user to /ecommerce-manager');
+                    setRedirecting(true);
+                    router.push('/ecommerce-manager');
                 }
             }
             setCheckedAuth(true);

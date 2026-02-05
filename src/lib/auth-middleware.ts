@@ -4,7 +4,7 @@ import { getUserById } from './auth-sqlite';
 import { User } from './auth-sqlite'; // Import from auth-sqlite instead of auth
 
 // Define the expanded role type
-export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'admin' | 'customer';
+export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'admin' | 'customer' | 'ecommerce';
 
 // Extend the User type to include a method for checking roles
 export interface AuthenticatedUser extends Omit<User, 'role'> {

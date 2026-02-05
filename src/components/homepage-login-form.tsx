@@ -149,6 +149,10 @@ export function HomepageLoginForm() {
         console.log('Redirecting to /hr (HR case)');
         router.push("/hr");
         break;
+      case 'ecommerce':
+        console.log('Redirecting to /ecommerce-manager (eCommerce case)');
+        router.push("/ecommerce-manager");
+        break;
       default:
         console.log('Default case: Redirecting to /');
         router.push("/");

@@ -18,6 +18,8 @@ export type Shop = {
   maxVisibleVariants: number;
   // Telegram integration
   telegram_channel_id?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   // Timestamp fields
   createdAt?: string;
   updatedAt?: string;
@@ -106,6 +108,8 @@ export async function getAllShops(): Promise<Shop[]> {
       showVariantDetails: shop.show_variant_details === 1,
       maxVisibleVariants: shop.max_visible_variants,
       telegram_channel_id: shop.telegram_channel_id,
+      latitude: shop.latitude,
+      longitude: shop.longitude,
       createdAt: shop.created_at,
       updatedAt: shop.updated_at
       // Removed aiDistributionMode mapping
@@ -149,6 +153,8 @@ export async function getShopById(id: string): Promise<Shop | null> {
       showVariantDetails: shop.show_variant_details === 1,
       maxVisibleVariants: shop.max_visible_variants,
       telegram_channel_id: shop.telegram_channel_id,
+      latitude: shop.latitude,
+      longitude: shop.longitude,
       createdAt: shop.created_at,
       updatedAt: shop.updated_at
       // Removed aiDistributionMode mapping
@@ -196,6 +202,8 @@ export async function getShopByUsername(username: string): Promise<Shop | null> 
       showVariantDetails: shop.show_variant_details === 1,
       maxVisibleVariants: shop.max_visible_variants,
       telegram_channel_id: shop.telegram_channel_id,
+      latitude: shop.latitude,
+      longitude: shop.longitude,
       createdAt: shop.created_at,
       updatedAt: shop.updated_at
       // Removed aiDistributionMode mapping
@@ -236,9 +244,9 @@ export async function createShop(shop: Omit<Shop, 'id'>): Promise<Shop> {
     });
 
     await db.run(`
-      INSERT INTO shops (id, username, name, contactPerson, contactPhone, city, exactLocation, tradeLicenseNumber, tinNumber, discount, status, monthlySalesTarget, show_variant_details, max_visible_variants, telegram_channel_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, shopId, shop.username, shop.name, shop.contactPerson, shop.contactPhone, shop.city, shop.exactLocation, shop.tradeLicenseNumber, shop.tinNumber, shop.discount, shop.status, shop.monthlySalesTarget, shop.showVariantDetails ? 1 : 0, shop.maxVisibleVariants, shop.telegram_channel_id || null);
+      INSERT INTO shops (id, username, name, contactPerson, contactPhone, city, exactLocation, tradeLicenseNumber, tinNumber, discount, status, monthlySalesTarget, show_variant_details, max_visible_variants, telegram_channel_id, latitude, longitude)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, shopId, shop.username, shop.name, shop.contactPerson, shop.contactPhone, shop.city, shop.exactLocation, shop.tradeLicenseNumber, shop.tinNumber, shop.discount, shop.status, shop.monthlySalesTarget, shop.showVariantDetails ? 1 : 0, shop.maxVisibleVariants, shop.telegram_channel_id || null, shop.latitude || null, shop.longitude || null);
 
     return {
       id: shopId,
@@ -255,7 +263,9 @@ export async function createShop(shop: Omit<Shop, 'id'>): Promise<Shop> {
       monthlySalesTarget: shop.monthlySalesTarget,
       showVariantDetails: shop.showVariantDetails,
       maxVisibleVariants: shop.maxVisibleVariants,
-      telegram_channel_id: shop.telegram_channel_id
+      telegram_channel_id: shop.telegram_channel_id,
+      latitude: shop.latitude,
+      longitude: shop.longitude
       // Removed aiDistributionMode from return
     };
   } catch (error: any) {
@@ -334,6 +344,14 @@ export async function updateShop(id: string, shop: Partial<Shop>): Promise<boole
     if (shop.telegram_channel_id !== undefined) {
       fields.push('telegram_channel_id = ?');
       values.push(shop.telegram_channel_id);
+    }
+    if (shop.latitude !== undefined) {
+      fields.push('latitude = ?');
+      values.push(shop.latitude);
+    }
+    if (shop.longitude !== undefined) {
+      fields.push('longitude = ?');
+      values.push(shop.longitude);
     }
     // Removed aiDistributionMode update logic
 

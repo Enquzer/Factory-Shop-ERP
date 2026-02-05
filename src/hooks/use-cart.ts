@@ -1,8 +1,21 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { CartItem, addCartItem, getCartItems, updateCartItemQuantity, removeCartItem, clearCart } from '@/lib/customers-sqlite';
+import { useState, useEffect, useCallback } from 'react';
 import { useCustomerAuth } from '@/contexts/customer-auth-context';
+
+export type CartItem = {
+  id: string;
+  customerId: string;
+  productId: string;
+  productVariantId: string;
+  name: string;
+  price: number;
+  color: string;
+  size: string;
+  quantity: number;
+  imageUrl?: string;
+  createdAt: string | Date;
+};
 
 type CartHook = {
   items: CartItem[];
@@ -26,7 +39,7 @@ export function useCart(): CartHook {
   const itemCount = items.reduce((total, item) => total + item.quantity, 0);
   const totalPrice = items.reduce((total, item) => total + (item.price * item.quantity), 0);
 
-  const fetchCartItems = async () => {
+  const fetchCartItems = useCallback(async () => {
     if (!user) {
       setItems([]);
       return;
@@ -36,15 +49,26 @@ export function useCart(): CartHook {
     setError(null);
     
     try {
-      const cartItems = await getCartItems(user.id);
-      setItems(cartItems);
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch('/api/cart', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch cart items');
+      }
+      
+      const data = await response.json();
+      setItems(data.items || []);
     } catch (err) {
       console.error('Error fetching cart items:', err);
       setError('Failed to load cart items');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
   const addItem = async (item: Omit<CartItem, 'id' | 'customerId' | 'createdAt'>) => {
     if (!user) {
@@ -56,11 +80,25 @@ export function useCart(): CartHook {
     setError(null);
     
     try {
-      await addCartItem(user.id, item);
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch('/api/cart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(item)
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add item to cart');
+      }
+      
       await fetchCartItems(); // Refresh cart
     } catch (err) {
       console.error('Error adding item to cart:', err);
-      setError('Failed to add item to cart');
+      setError(err instanceof Error ? err.message : 'Failed to add item to cart');
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +119,20 @@ export function useCart(): CartHook {
     setError(null);
     
     try {
-      await updateCartItemQuantity(itemId, quantity);
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch(`/api/cart/${itemId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ quantity })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update quantity');
+      }
+      
       await fetchCartItems(); // Refresh cart
     } catch (err) {
       console.error('Error updating cart item quantity:', err);
@@ -101,7 +152,18 @@ export function useCart(): CartHook {
     setError(null);
     
     try {
-      await removeCartItem(itemId);
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch(`/api/cart/${itemId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to remove item');
+      }
+      
       await fetchCartItems(); // Refresh cart
     } catch (err) {
       console.error('Error removing item from cart:', err);
@@ -121,7 +183,18 @@ export function useCart(): CartHook {
     setError(null);
     
     try {
-      await clearCart(user.id);
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch('/api/cart/clear', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to clear cart');
+      }
+      
       setItems([]);
     } catch (err) {
       console.error('Error clearing cart:', err);
@@ -133,7 +206,7 @@ export function useCart(): CartHook {
 
   useEffect(() => {
     fetchCartItems();
-  }, [user?.id]);
+  }, [fetchCartItems]);
 
   return {
     items,

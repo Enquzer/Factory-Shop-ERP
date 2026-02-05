@@ -5,9 +5,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { type Shop } from "@/lib/shops";
 import { ShopsDashboard } from "./shops-dashboard";
 import { ShopsClientPage } from "./shops-client";
+import { useAuth } from "@/contexts/auth-context";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export function ShopsPageClient({ initialShops }: { initialShops: Shop[] }) {
+    const { user } = useAuth();
     const [shops, setShops] = useState<Shop[]>(initialShops);
+
+    if (user?.role === 'ecommerce') {
+        return (
+            <div className="flex items-center justify-center h-[70vh]">
+                <Card className="max-w-md text-center p-6 border-red-100 bg-red-50/50">
+                    <CardHeader>
+                        <CardTitle className="text-red-700">Access Restricted</CardTitle>
+                        <CardDescription>
+                            eCommerce Managers cannot access full Shop Management. Please use the Website Config page.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Link href="/ecommerce-manager/settings">
+                            <Button className="bg-red-600 hover:bg-red-700">Go to Website Config</Button>
+                        </Link>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     const handleShopsUpdate = (updatedShops: Shop[]) => {
         setShops(updatedShops);

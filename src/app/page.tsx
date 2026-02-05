@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 import Link from "next/link";
 import Image from "next/image";
-import { Facebook, Instagram, Mail, MapPin, Phone, HomeIcon } from "lucide-react";
+import { Facebook, Instagram, Mail, MapPin, Phone, HomeIcon, ShoppingBag } from "lucide-react";
 import { getProducts } from "@/lib/products";
 import { HomepageLoginForm } from "@/components/homepage-login-form";
 import { LoadingBar } from "@/components/loading-bar"; // Import the loading bar
@@ -79,9 +79,12 @@ export default function Home() {
             <CardContent className="grid gap-4">
               {/* Show the login form directly */}
               <HomepageLoginForm />
-              <div className="flex justify-center mt-2">
+              <div className="flex justify-center gap-4 mt-4 pt-4 border-t">
                 <Link href="/public-website" title="Home Page">
                   <HomeIcon className="h-6 w-6 text-muted-foreground hover:text-foreground transition-colors" />
+                </Link>
+                <Link href="/ecommerce" title="Shop Online">
+                  <ShoppingBag className="h-6 w-6 text-muted-foreground hover:text-orange-600 transition-colors" />
                 </Link>
               </div>
             </CardContent>

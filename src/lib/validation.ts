@@ -20,8 +20,9 @@ export const shopSchema = z.object({
   showVariantDetails: z.boolean().optional(),
   maxVisibleVariants: z.number().min(1).max(1000).optional(),
   // New field for Telegram integration
-  telegram_channel_id: z.string().max(50, 'Telegram channel ID must be less than 50 characters').optional().nullable()
-  // Removed aiDistributionMode field
+  telegram_channel_id: z.string().max(50, 'Telegram channel ID must be less than 50 characters').optional().nullable(),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable()
 });
 
 // Product variant validation schema

@@ -4,7 +4,7 @@ import { getDB, resetDbCache } from './db';
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr' | 'ecommerce';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -19,7 +19,7 @@ export type AuthResult = {
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'customer' | 'hr'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'customer' | 'hr' | 'ecommerce'
 ): Promise<AuthResult> => {
   try {
     console.log('Registering user with data:', { username, role });

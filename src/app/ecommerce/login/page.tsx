@@ -9,7 +9,7 @@ import { useCustomerAuth } from "@/contexts/customer-auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { Eye, EyeOff, User } from "lucide-react";
+import { Eye, EyeOff, User, ArrowLeft } from "lucide-react";
 
 export default function CustomerLoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -23,6 +23,7 @@ export default function CustomerLoginPage() {
   const [city, setCity] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
   const { login, register, isLoggingIn } = useCustomerAuth();
   const router = useRouter();
 
@@ -40,6 +41,10 @@ export default function CustomerLoginPage() {
       }
     } else {
       // Register
+      if (!agreeToTerms) {
+        setError("You must agree to the Terms and Conditions and Privacy Policy");
+        return;
+      }
       const result = await register({
         username,
         email,
@@ -206,6 +211,29 @@ export default function CustomerLoginPage() {
                 </div>
               </div>
 
+              {!isLogin && (
+                <div className="flex items-start space-x-3 py-2 bg-orange-50/50 p-4 rounded-xl border border-orange-100/50">
+                  <input
+                    id="terms"
+                    type="checkbox"
+                    checked={agreeToTerms}
+                    onChange={(e) => setAgreeToTerms(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                    required
+                  />
+                  <Label htmlFor="terms" className="text-xs text-gray-700 font-medium leading-relaxed cursor-pointer italic">
+                    I have read and understood the{" "}
+                    <Link href="/ecommerce/terms" target="_blank" className="text-orange-600 hover:text-orange-700 underline font-black">
+                      Terms and Conditions
+                    </Link>{" "}
+                    and{" "}
+                    <Link href="/ecommerce/privacy" target="_blank" className="text-orange-600 hover:text-orange-700 underline font-black">
+                      Privacy Policy
+                    </Link>
+                  </Label>
+                </div>
+              )}
+
               <Button 
                 type="submit" 
                 className="w-full bg-orange-500 hover:bg-orange-600 text-white" 
@@ -239,8 +267,8 @@ export default function CustomerLoginPage() {
             </div>
 
             <div className="mt-4 text-center">
-              <Link href="/ecommerce" className="text-green-700 hover:text-green-900 text-sm font-medium">
-                ← Back to Store
+              <Link href="/ecommerce" className="text-green-700 hover:text-green-900 text-sm font-medium flex items-center justify-center">
+                <ArrowLeft className="h-4 w-4 mr-2 text-orange-500" /> Back to Store
               </Link>
             </div>
           </CardContent>

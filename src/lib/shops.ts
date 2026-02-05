@@ -20,6 +20,8 @@ export type Shop = {
   maxVisibleVariants: number;
   // Telegram integration
   telegram_channel_id?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   // Timestamp fields
   createdAt?: Date | string;
   updatedAt?: Date | string;

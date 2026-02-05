@@ -40,10 +40,19 @@ export type EcommerceOrder = {
   shopId: string;
   shopName: string;
   totalAmount: number;
+  transportationCost?: number;
+  dispatchedFromShopId?: string;
+  dispatchDate?: Date;
+  trackingNumber?: string;
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
   paymentMethod?: string;
   paymentReference?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  deliveryDistance?: number | null;
+  deliveryType?: 'standard' | 'express';
+  cancellationReason?: string;
   orderItems: EcommerceOrderItem[];
   createdAt: Date;
   updatedAt: Date;
@@ -60,6 +69,57 @@ export type EcommerceOrderItem = {
   size: string;
   quantity: number;
   imageUrl?: string;
+};
+
+export type SupportTicket = {
+  id: string;
+  orderId: string;
+  customerId: string;
+  subject: string;
+  message: string;
+  status: 'open' | 'closed';
+  reply?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  customerName?: string;
+};
+
+export type ProductReview = {
+  id: string;
+  productId: string;
+  customerId: string;
+  customerName: string;
+  rating: number; // 1-5
+  comment?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Date;
+};
+
+export type RareProductRequest = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  productName: string;
+  description: string;
+  budget?: string;
+  urgency: string;
+  imageUrl?: string;
+  status: 'pending' | 'reviewed' | 'fulfilled' | 'rejected';
+  createdAt: Date;
+};
+
+export type ReturnRequest = {
+  id: string;
+  orderId: string;
+  customerId: string;
+  customerName: string;
+  items: string; // JSON string of items to return
+  reason: string;
+  explanation?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'completed';
+  adminNotes?: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 // Initialize database tables
@@ -116,16 +176,32 @@ export async function initializeCustomerTables() {
         shopId TEXT NOT NULL,
         shopName TEXT NOT NULL,
         totalAmount REAL NOT NULL,
+        transportationCost REAL DEFAULT 0,
+        dispatchedFromShopId TEXT,
+        dispatchDate DATETIME,
+        trackingNumber TEXT,
         status TEXT NOT NULL DEFAULT 'pending',
         paymentStatus TEXT NOT NULL DEFAULT 'pending',
         paymentMethod TEXT,
         paymentReference TEXT,
+        latitude REAL,
+        longitude REAL,
+        deliveryDistance REAL,
+        deliveryType TEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (customerId) REFERENCES customers(id),
-        FOREIGN KEY (shopId) REFERENCES shops(id)
+        FOREIGN KEY (shopId) REFERENCES shops(id),
+        FOREIGN KEY (dispatchedFromShopId) REFERENCES shops(id)
       )
     `);
+
+    // Add cancellationReason column if it doesn't exist
+    try {
+      await db.exec(`ALTER TABLE ecommerce_orders ADD COLUMN cancellationReason TEXT`);
+    } catch (e) {
+      // Column might already exist
+    }
     
     // Create ecommerce_order_items table
     await db.exec(`
@@ -143,6 +219,76 @@ export async function initializeCustomerTables() {
         FOREIGN KEY (orderId) REFERENCES ecommerce_orders(id) ON DELETE CASCADE
       )
     `);
+
+    // Create ecommerce_support_tickets table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS ecommerce_support_tickets (
+        id TEXT PRIMARY KEY,
+        orderId TEXT NOT NULL,
+        customerId TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        message TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        reply TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (orderId) REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create product_reviews table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS product_reviews (
+        id TEXT PRIMARY KEY,
+        productId TEXT NOT NULL,
+        customerId TEXT NOT NULL,
+        customerName TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        comment TEXT,
+        status TEXT DEFAULT 'pending',
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customerId) REFERENCES customers(id)
+      )
+    `);
+
+    // Create rare_product_requests table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS rare_product_requests (
+        id TEXT PRIMARY KEY,
+        customerId TEXT NOT NULL,
+        customerName TEXT NOT NULL,
+        productName TEXT NOT NULL,
+        description TEXT NOT NULL,
+        budget TEXT,
+        urgency TEXT DEFAULT 'normal',
+        imageUrl TEXT,
+        status TEXT DEFAULT 'pending',
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customerId) REFERENCES customers(id)
+      )
+    `);
+
+    // Create return_requests table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS return_requests (
+        id TEXT PRIMARY KEY,
+        orderId TEXT NOT NULL,
+        customerId TEXT NOT NULL,
+        customerName TEXT NOT NULL,
+        items TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        explanation TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        adminNotes TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (orderId) REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE
+      )
+    `);
+
+
     
     console.log('Customer tables initialized successfully');
   } catch (error) {
@@ -366,8 +512,13 @@ export async function createEcommerceOrder(orderData: Omit<EcommerceOrder, 'id' 
     try {
       // Create order
       await db.run(`
-        INSERT INTO ecommerce_orders (id, customerId, customerName, customerEmail, customerPhone, deliveryAddress, city, shopId, shopName, totalAmount, status, paymentStatus)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ecommerce_orders (
+          id, customerId, customerName, customerEmail, customerPhone, 
+          deliveryAddress, city, shopId, shopName, totalAmount, 
+          transportationCost, status, paymentStatus, paymentMethod,
+          latitude, longitude, deliveryDistance, deliveryType
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         orderId,
         orderData.customerId,
@@ -379,8 +530,14 @@ export async function createEcommerceOrder(orderData: Omit<EcommerceOrder, 'id' 
         orderData.shopId,
         orderData.shopName,
         orderData.totalAmount,
+        orderData.transportationCost || 0,
         orderData.status,
-        orderData.paymentStatus
+        orderData.paymentStatus,
+        orderData.paymentMethod || null,
+        orderData.latitude || null,
+        orderData.longitude || null,
+        orderData.deliveryDistance || 0,
+        orderData.deliveryType || 'standard'
       ]);
       
       // Create order items
@@ -508,6 +665,334 @@ export async function updateOrderPaymentStatus(orderId: string, paymentStatus: E
     return true;
   } catch (error) {
     console.error('Error updating order payment status:', error);
+    return false;
+  }
+}
+
+export async function updateEcommerceOrder(orderId: string, data: Partial<EcommerceOrder>): Promise<boolean> {
+  try {
+    const db = await getDB();
+    const entries = Object.entries(data).filter(([key, value]) => 
+      !['id', 'customerId', 'createdAt', 'updatedAt', 'orderItems'].includes(key) && value !== undefined
+    );
+    
+    if (entries.length === 0) return true;
+    
+    const sets = entries.map(([key]) => `${key} = ?`);
+    const params = entries.map(([_, value]) => value);
+    
+    params.push(orderId);
+    
+    await db.run(`
+      UPDATE ecommerce_orders 
+      SET ${sets.join(', ')}, updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, params);
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating ecommerce order:', error);
+    return false;
+  }
+}
+
+// Support functions
+export async function createSupportTicket(ticket: Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'reply'>): Promise<SupportTicket> {
+  try {
+    const db = await getDB();
+    const id = `TKT-${Date.now()}`;
+    
+    await db.run(`
+      INSERT INTO ecommerce_support_tickets (id, orderId, customerId, subject, message)
+      VALUES (?, ?, ?, ?, ?)
+    `, [id, ticket.orderId, ticket.customerId, ticket.subject, ticket.message]);
+    
+    const created = await db.get(`SELECT * FROM ecommerce_support_tickets WHERE id = ?`, [id]);
+    return {
+      ...created,
+      createdAt: new Date(created.createdAt),
+      updatedAt: new Date(created.updatedAt)
+    };
+  } catch (error) {
+    console.error('Error creating support ticket:', error);
+    throw error;
+  }
+}
+
+export async function getSupportTicketsByOrder(orderId: string): Promise<SupportTicket[]> {
+  try {
+    const db = await getDB();
+    const tickets = await db.all(`
+      SELECT * FROM ecommerce_support_tickets WHERE orderId = ? ORDER BY createdAt DESC
+    `, [orderId]);
+    
+    return tickets.map((t: any) => ({
+      ...t,
+      createdAt: new Date(t.createdAt),
+      updatedAt: new Date(t.updatedAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching support tickets:', error);
+    return [];
+  }
+}
+
+export async function updateSupportTicket(id: string, data: Partial<SupportTicket>): Promise<boolean> {
+  try {
+    const db = await getDB();
+    const entries = Object.entries(data).filter(([key]) => !['id', 'orderId', 'customerId', 'createdAt', 'updatedAt'].includes(key));
+    if (entries.length === 0) return true;
+    
+    const sets = entries.map(([key]) => `${key} = ?`);
+    const params = entries.map(([_, value]) => value);
+    params.push(id);
+    
+    await db.run(`
+      UPDATE ecommerce_support_tickets SET ${sets.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?
+    `, params);
+    return true;
+  } catch (error) {
+    console.error('Error updating support ticket:', error);
+    return false;
+  }
+}
+
+export async function getAllSupportTickets(): Promise<SupportTicket[]> {
+  try {
+    const db = await getDB();
+    const tickets = await db.all(`
+      SELECT t.*, c.firstName || ' ' || c.lastName as customerName, c.username
+      FROM ecommerce_support_tickets t
+      LEFT JOIN customers c ON t.customerId = c.id
+      ORDER BY t.createdAt DESC
+    `, []);
+    
+    return tickets.map((t: any) => ({
+      ...t,
+      createdAt: new Date(t.createdAt),
+      updatedAt: new Date(t.updatedAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching all support tickets:', error);
+    return [];
+  }
+}
+
+// Product Review Functions
+export async function createProductReview(review: Omit<ProductReview, 'id' | 'createdAt' | 'status'>): Promise<ProductReview> {
+  try {
+    const db = await getDB();
+    const id = `REV-${Date.now()}`;
+    
+    await db.run(`
+      INSERT INTO product_reviews (id, productId, customerId, customerName, rating, comment, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending')
+    `, [id, review.productId, review.customerId, review.customerName, review.rating, review.comment]);
+    
+    const created = await db.get(`SELECT * FROM product_reviews WHERE id = ?`, [id]);
+    return {
+      ...created,
+      createdAt: new Date(created.createdAt)
+    };
+  } catch (error) {
+    console.error('Error creating product review:', error);
+    throw error;
+  }
+}
+
+// Rare Product Request Functions
+export async function createRareProductRequest(request: Omit<RareProductRequest, 'id' | 'createdAt' | 'status'>): Promise<RareProductRequest> {
+  try {
+    const db = await getDB();
+    const id = `RARE-${Date.now()}`;
+    
+    await db.run(`
+      INSERT INTO rare_product_requests (id, customerId, customerName, productName, description, budget, urgency, imageUrl)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      request.customerId,
+      request.customerName,
+      request.productName,
+      request.description,
+      request.budget,
+      request.urgency,
+      request.imageUrl
+    ]);
+    
+    const created = await db.get(`SELECT * FROM rare_product_requests WHERE id = ?`, [id]);
+    return {
+      ...created,
+      createdAt: new Date(created.createdAt)
+    };
+  } catch (error) {
+    console.error('Error creating rare product request:', error);
+    throw error;
+  }
+}
+
+export async function getProductReviews(productId: string): Promise<ProductReview[]> {
+  try {
+    const db = await getDB();
+    const reviews = await db.all(`
+      SELECT * FROM product_reviews WHERE productId = ? AND status = 'approved' ORDER BY createdAt DESC
+    `, [productId]);
+    
+    return reviews.map((r: any) => ({
+      ...r,
+      createdAt: new Date(r.createdAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching product reviews:', error);
+    return [];
+  }
+}
+
+export async function getAllProductReviews(): Promise<ProductReview[]> {
+  try {
+    const db = await getDB();
+    const reviews = await db.all(`
+      SELECT * FROM product_reviews ORDER BY createdAt DESC
+    `);
+    
+    return reviews.map((r: any) => ({
+      ...r,
+      createdAt: new Date(r.createdAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching all product reviews:', error);
+    return [];
+  }
+}
+
+export async function updateProductReviewStatus(id: string, status: ProductReview['status']): Promise<boolean> {
+  try {
+    const db = await getDB();
+    await db.run(`
+      UPDATE product_reviews SET status = ? WHERE id = ?
+    `, [status, id]);
+    return true;
+  } catch (error) {
+    console.error('Error updating review status:', error);
+    return false;
+  }
+}
+
+export async function getAllRareProductRequests(): Promise<RareProductRequest[]> {
+  try {
+    const db = await getDB();
+    const requests = await db.all(`
+      SELECT * FROM rare_product_requests ORDER BY createdAt DESC
+    `, []);
+    
+    return requests.map((r: any) => ({
+      ...r,
+      createdAt: new Date(r.createdAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching all rare product requests:', error);
+    return [];
+  }
+}
+
+export async function updateRareProductRequestStatus(id: string, status: string): Promise<boolean> {
+  try {
+    const db = await getDB();
+    const result = await db.run(`
+      UPDATE rare_product_requests 
+      SET status = ? 
+      WHERE id = ?
+    `, [status, id]);
+    
+    return (result.changes || 0) > 0;
+  } catch (error) {
+    console.error('Error updating rare product request status:', error);
+    return false;
+  }
+}
+
+// Return Request Functions
+export async function createReturnRequest(request: Omit<ReturnRequest, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'adminNotes'>): Promise<ReturnRequest> {
+  try {
+    const db = await getDB();
+    const id = `RET-${Date.now()}`;
+    
+    await db.run(`
+      INSERT INTO return_requests (id, orderId, customerId, customerName, items, reason, explanation, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    `, [
+      id,
+      request.orderId,
+      request.customerId,
+      request.customerName,
+      request.items,
+      request.reason,
+      request.explanation
+    ]);
+    
+    const created = await db.get(`SELECT * FROM return_requests WHERE id = ?`, [id]);
+    return {
+      ...created,
+      createdAt: new Date(created.createdAt),
+      updatedAt: new Date(created.updatedAt)
+    };
+  } catch (error) {
+    console.error('Error creating return request:', error);
+    throw error;
+  }
+}
+
+export async function getAllReturnRequests(): Promise<ReturnRequest[]> {
+  try {
+    const db = await getDB();
+    const requests = await db.all(`
+      SELECT r.*, o.id as orderId
+      FROM return_requests r
+      LEFT JOIN ecommerce_orders o ON r.orderId = o.id
+      ORDER BY r.createdAt DESC
+    `);
+    
+    return requests.map((r: any) => ({
+      ...r,
+      createdAt: new Date(r.createdAt),
+      updatedAt: new Date(r.updatedAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching all return requests:', error);
+    return [];
+  }
+}
+
+export async function getReturnRequestsByCustomer(customerId: string): Promise<ReturnRequest[]> {
+  try {
+    const db = await getDB();
+    const requests = await db.all(`
+      SELECT * FROM return_requests WHERE customerId = ? ORDER BY createdAt DESC
+    `, [customerId]);
+    
+    return requests.map((r: any) => ({
+      ...r,
+      createdAt: new Date(r.createdAt),
+      updatedAt: new Date(r.updatedAt)
+    }));
+  } catch (error) {
+    console.error('Error fetching customer return requests:', error);
+    return [];
+  }
+}
+
+export async function updateReturnRequestStatus(id: string, status: string, adminNotes?: string): Promise<boolean> {
+  try {
+    const db = await getDB();
+    const result = await db.run(`
+      UPDATE return_requests 
+      SET status = ?, adminNotes = ?, updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [status, adminNotes || null, id]);
+    
+    return (result.changes || 0) > 0;
+  } catch (error) {
+    console.error('Error updating return request status:', error);
     return false;
   }
 }

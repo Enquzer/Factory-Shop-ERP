@@ -43,6 +43,8 @@ export async function GET(request: Request) {
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
         telegram_channel_id: shop.telegram_channel_id,
+        latitude: shop.latitude,
+        longitude: shop.longitude,
         createdAt: shop.createdAt,
         updatedAt: shop.updatedAt
       };
@@ -94,6 +96,8 @@ export async function GET(request: Request) {
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
         telegram_channel_id: shop.telegram_channel_id,
+        latitude: shop.latitude,
+        longitude: shop.longitude,
         createdAt: shop.createdAt,
         updatedAt: shop.updatedAt
       };
@@ -132,6 +136,8 @@ export async function GET(request: Request) {
         showVariantDetails: shop.showVariantDetails,
         maxVisibleVariants: shop.maxVisibleVariants,
         telegram_channel_id: shop.telegram_channel_id,
+        latitude: shop.latitude,
+        longitude: shop.longitude,
         createdAt: shop.createdAt,
         updatedAt: shop.updatedAt
       }));
@@ -270,7 +276,9 @@ export async function POST(request: NextRequest) {
       showVariantDetails: shopDataWithoutPassword.showVariantDetails !== undefined ? shopDataWithoutPassword.showVariantDetails : true,
       maxVisibleVariants: shopDataWithoutPassword.maxVisibleVariants || 1000,
       // Telegram integration
-      telegram_channel_id: shopDataWithoutPassword.telegram_channel_id || null
+      telegram_channel_id: shopDataWithoutPassword.telegram_channel_id || null,
+      latitude: shopDataWithoutPassword.latitude || null,
+      longitude: shopDataWithoutPassword.longitude || null
     };
 
     try {
@@ -364,9 +372,10 @@ export async function PUT(request: NextRequest) {
 
       // Normalized role check
       const isFactory = user.role === 'factory';
+      const isEcommerce = user.role === 'ecommerce';
       const isOwner = user.role === 'shop' && user.username === currentShop.username;
 
-      if (!isFactory && !isOwner) {
+      if (!isFactory && !isEcommerce && !isOwner) {
         throw new AuthorizationError('You do not have permission to update this shop');
       }
 
@@ -393,7 +402,7 @@ export async function PUT(request: NextRequest) {
     } catch (error: any) {
       return handleErrorResponse(error);
     }
-  }, ['factory', 'shop']);
+  }, ['factory', 'shop', 'ecommerce']);
 
   return handler(request, {});
 }

@@ -136,6 +136,17 @@ async function setupDatabaseSchema() {
       FOREIGN KEY (shopId) REFERENCES shops(id)
     );
 
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      userType TEXT NOT NULL,
+      shopId TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      href TEXT NOT NULL,
+      isRead BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS patterns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -145,6 +156,12 @@ async function setupDatabaseSchema() {
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (parent_pattern_id) REFERENCES patterns(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
@@ -323,6 +340,21 @@ export const dbUtils = {
       [shopId, messageId, channelId, messageText, messageType]
     );
     return result.lastID;
+  },
+
+  // System settings
+  async getSetting(key: string) {
+    const db = await getDB();
+    const result = await db.get('SELECT value FROM system_settings WHERE key = ?', [key]);
+    return result ? result.value : null;
+  },
+
+  async setSetting(key: string, value: string) {
+    const db = await getDB();
+    return await db.run(
+      'INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = CURRENT_TIMESTAMP',
+      [key, value]
+    );
   }
 };
 

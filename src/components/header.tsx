@@ -22,13 +22,14 @@ import { Bell, BookOpen, Globe } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useResponsive } from '@/contexts/responsive-context';
 import { HelpCenter } from '@/components/help-center';
+import { DynamicBreadcrumbs } from '@/components/dynamic-breadcrumbs';
 
 type Notification = {
   id: string;
-  userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing';
+  userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce';
   shopId?: string;
   title: string;
   description: string;
@@ -42,6 +43,7 @@ export function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const { isMobile, isTablet } = useResponsive();
 
   useEffect(() => {
@@ -54,8 +56,9 @@ export function Header() {
         let userType = user.role;
         
         // Handle special cases
-        if (user.role === 'sample_maker') userType = 'sample_maker';
-        if (user.role === 'quality_inspection') userType = 'quality_inspection';
+        if (pathname?.startsWith('/ecommerce-manager')) userType = 'ecommerce';
+        else if (user.role === 'sample_maker') userType = 'sample_maker';
+        else if (user.role === 'quality_inspection') userType = 'quality_inspection';
         
         const queryParams = new URLSearchParams({
           userType
@@ -88,8 +91,9 @@ export function Header() {
       
       // Map user role to userType for notifications
       let userType = user.role;
-      if (user.role === 'sample_maker') userType = 'sample_maker';
-      if (user.role === 'quality_inspection') userType = 'quality_inspection';
+      if (pathname?.startsWith('/ecommerce-manager')) userType = 'ecommerce';
+      else if (user.role === 'sample_maker') userType = 'sample_maker';
+      else if (user.role === 'quality_inspection') userType = 'quality_inspection';
       
       const queryParams = new URLSearchParams({
         userType,
@@ -160,7 +164,7 @@ export function Header() {
     <header className={`sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card px-2 ${isMobile ? 'sm:px-4' : 'px-4'} sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 sm:py-4`}>
       <SidebarTrigger />
       <div className="w-full flex-1">
-        {/* Future breadcrumbs can go here */}
+        <DynamicBreadcrumbs />
       </div>
 
       <Button variant="ghost" size={isMobile ? "icon" : "default"} className={`rounded-full ${isMobile ? 'h-8 w-8' : 'h-9 w-9'}`} asChild>

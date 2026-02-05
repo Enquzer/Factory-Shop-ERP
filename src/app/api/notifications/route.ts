@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userType = searchParams.get('userType') as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | null;
+    const userType = searchParams.get('userType') as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce' | null;
     const shopId = searchParams.get('shopId');
     
     console.log('GET request params:', { userType, shopId }); // Debug log
@@ -58,7 +58,7 @@ export async function PUT(request: Request) {
     const { searchParams } = new URL(request.url);
     const notificationId = searchParams.get('id');
     const markAll = searchParams.get('markAll') === 'true';
-    const userType = searchParams.get('userType') as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | null;
+    const userType = searchParams.get('userType') as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce' | null;
     const shopId = searchParams.get('shopId');
     
     console.log('PUT request params:', { notificationId, markAll, userType, shopId });

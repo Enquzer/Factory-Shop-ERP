@@ -33,6 +33,7 @@ interface CustomerAuthContextType {
   isLoading: boolean;
   isLoggingIn: boolean;
   register: (customerData: any) => Promise<{ success: boolean; message?: string }>;
+  refreshUser: () => Promise<void>;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(undefined);
@@ -186,6 +187,35 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    if (!user) return;
+    try {
+      const response = await fetch(`/api/customers/${user.username}`);
+      if (response.ok) {
+        const customer = await response.json();
+        const customerUser: CustomerUser = {
+          id: customer.id,
+          username: customer.username,
+          email: customer.email,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          role: 'customer',
+          phone: customer.phone,
+          deliveryAddress: customer.deliveryAddress,
+          city: customer.city,
+          preferredShopId: customer.preferredShopId,
+          createdAt: new Date(customer.createdAt),
+          updatedAt: new Date(customer.updatedAt)
+        };
+      
+        setUser(customerUser);
+        localStorage.setItem('customerUser', JSON.stringify(customerUser));
+      }
+    } catch (error) {
+      console.error('Error refreshing user details:', error);
+    }
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('customerUser');
@@ -195,7 +225,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <CustomerAuthContext.Provider value={{ user, login, logout, isLoading, isLoggingIn, register }}>
+    <CustomerAuthContext.Provider value={{ user, login, logout, isLoading, isLoggingIn, register, refreshUser }}>
       {children}
     </CustomerAuthContext.Provider>
   );

@@ -5,21 +5,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  ShoppingCart, 
-  Search, 
-  Filter, 
-  User, 
-  LogOut, 
+import {
+  ShoppingCart,
+  Search,
+  Filter,
+  User,
+  LogOut,
   Package,
   MapPin,
   Star
 } from "lucide-react";
+import { EcommerceFooter } from "@/components/ecommerce-footer";
 import { useCustomerAuth } from "@/contexts/customer-auth-context";
 import { useCart } from "@/hooks/use-cart";
 import { Logo } from "@/components/logo";
 import Image from "next/image";
 import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { EcommerceHeader } from "@/components/ecommerce-header";
 
 type Product = {
   id: string;
@@ -41,7 +45,8 @@ type Product = {
 
 export default function EcommercePage() {
   const { user, logout } = useCustomerAuth();
-  const { itemCount, totalPrice } = useCart();
+  const { itemCount, totalPrice, addItem } = useCart();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -91,13 +96,36 @@ export default function EcommercePage() {
     setFilteredProducts(filtered);
   }, [products, searchTerm, selectedCategory]);
 
-  const handleAddToCart = (product: Product) => {
+
+  const handleAddToCart = async (product: Product) => {
     // For now, add the first available variant
     const firstVariant = product.variants[0];
     if (firstVariant) {
-      // In a real implementation, you'd want to let the user select variant
-      // This is just a placeholder
-      console.log("Add to cart:", product, firstVariant);
+      try {
+        await addItem({
+          productId: product.id,
+          productVariantId: firstVariant.id,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          color: firstVariant.color,
+          size: firstVariant.size,
+          imageUrl: firstVariant.imageUrl || product.imageUrl
+        });
+        
+        toast({
+          title: "Added to Bag!",
+          description: `${product.name} has been added successfully.`,
+          duration: 2000,
+        });
+      } catch (err) {
+        console.error("Failed to add to cart:", err);
+        toast({
+          title: "Error",
+          description: "Login required to add items to bag.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -111,67 +139,7 @@ export default function EcommercePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-green-900 to-green-800 shadow-lg">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <Logo className="h-12" />
-              <nav className="hidden md:flex space-x-6">
-                <Link href="/public-website" className="text-white hover:text-green-200 font-medium transition-colors">
-                  Home
-                </Link>
-                <Link href="/ecommerce/products" className="text-white hover:text-green-200 transition-colors">
-                  Products
-                </Link>
-                {user && (
-                  <Link href="/ecommerce/orders" className="text-white hover:text-green-200 transition-colors">
-                    My Orders
-                  </Link>
-                )}
-              </nav>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              {/* Cart */}
-              <Link href="/ecommerce/cart" className="relative p-2">
-                <ShoppingCart className="h-6 w-6 text-gray-600" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {itemCount}
-                  </span>
-                )}
-              </Link>
-              
-              {/* User Menu */}
-              {user ? (
-                <div className="flex items-center space-x-3">
-                  <span className="text-white font-medium">Hello, {user.firstName}</span>
-                  <Button 
-                    variant="default" 
-                    size="sm" 
-                    onClick={logout}
-                    className="bg-orange-500 hover:bg-orange-600 text-white transition-colors"
-                  >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                  </Button>
-                </div>
-              ) : (
-                <Link href="/ecommerce/login">
-                  <Button 
-                    variant="default"
-                    className="bg-orange-500 hover:bg-orange-600 text-white transition-colors"
-                  >
-                    <User className="h-4 w-4 mr-2" />
-                    Login
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <EcommerceHeader />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-green-800 via-green-700 to-green-900 text-white py-16">
@@ -205,8 +173,8 @@ export default function EcommercePage() {
                 size="sm"
                 className={`${
                   selectedCategory === category 
-                    ? "bg-orange-500 text-white hover:bg-orange-600" 
-                    : "text-white border-white hover:bg-orange-500 hover:text-white"
+                    ? "bg-green-600 text-white hover:bg-green-700" 
+                    : "bg-orange-500 text-white hover:bg-orange-600 border-none"
                 } transition-colors`}
                 onClick={() => setSelectedCategory(category)}
               >
@@ -292,57 +260,7 @@ export default function EcommercePage() {
         )}
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gradient-to-r from-green-900 to-green-800 text-white py-12">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-              <div className="mb-4">
-                <Logo className="h-12" />
-              </div>
-              <p className="text-green-200">
-                Premium fashion solutions connecting factories and retailers across Ethiopia.
-              </p>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4 text-green-200">Quick Links</h4>
-              <ul className="space-y-2 text-green-300">
-                <li><Link href="/ecommerce" className="hover:text-white transition-colors">Home</Link></li>
-                <li><Link href="/ecommerce/products" className="hover:text-white transition-colors">Products</Link></li>
-                <li><Link href="/ecommerce/about" className="hover:text-white transition-colors">About Us</Link></li>
-                <li><Link href="/ecommerce/contact" className="hover:text-white transition-colors">Contact</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4 text-green-200">Customer Service</h4>
-              <ul className="space-y-2 text-green-300">
-                <li><Link href="/ecommerce/help" className="hover:text-white transition-colors">Help Center</Link></li>
-                <li><Link href="/ecommerce/returns" className="hover:text-white transition-colors">Returns</Link></li>
-                <li><Link href="/ecommerce/shipping" className="hover:text-white transition-colors">Shipping Info</Link></li>
-                <li><Link href="/ecommerce/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4 text-green-200">Contact Info</h4>
-              <div className="space-y-2 text-green-300">
-                <div className="flex items-center">
-                  <MapPin className="h-4 w-4 mr-2" />
-                  <span>123 Industrial Zone, Addis Ababa</span>
-                </div>
-                <div>+251 911 123 456</div>
-                <div>contact@carement.com</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="border-t border-green-700 mt-8 pt-8 text-center text-green-300">
-            <p>&copy; {new Date().getFullYear()} Carement Fashion. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      <EcommerceFooter />
     </div>
   );
 }

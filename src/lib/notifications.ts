@@ -2,7 +2,7 @@ import { getDb } from './db';
 
 export type Notification = {
     id: string;
-    userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing';
+    userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce';
     shopId?: string; // only for shop users
     title: string;
     description: string;
@@ -42,7 +42,7 @@ export const createNotification = async (notification: Omit<Notification, 'id' |
 };
 
 // Get notifications for a user type (and optional shopId)
-export const getNotifications = async (userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing', shopId: string | null): Promise<Notification[]> => {
+export const getNotifications = async (userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce', shopId: string | null): Promise<Notification[]> => {
     try {
         const db = await getDb();
         let notifications;
@@ -91,7 +91,7 @@ export const markNotificationAsRead = async (notificationId: string) => {
 };
 
 // Mark all notifications as read for a user
-export const markAllNotificationsAsRead = async (userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing', shopId: string | null) => {
+export const markAllNotificationsAsRead = async (userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce', shopId: string | null) => {
     try {
         const db = await getDb();
         console.log('Marking all notifications as read for userType:', userType, 'shopId:', shopId); // Debug log

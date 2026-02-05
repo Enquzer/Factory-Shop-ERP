@@ -15,13 +15,18 @@ import {
   MapPin,
   Star,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowLeft
 } from "lucide-react";
 import { useCustomerAuth } from "@/contexts/customer-auth-context";
 import { useCart } from "@/hooks/use-cart";
 import { Logo } from "@/components/logo";
 import Image from "next/image";
 import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { EcommerceHeader } from "@/components/ecommerce-header";
+import { EcommerceFooter } from "@/components/ecommerce-footer";
 
 type Product = {
   id: string;
@@ -43,7 +48,8 @@ type Product = {
 
 export default function ProductsPage() {
   const { user, logout } = useCustomerAuth();
-  const { itemCount, totalPrice } = useCart();
+  const { itemCount, totalPrice, addItem } = useCart();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -96,13 +102,35 @@ export default function ProductsPage() {
     setCurrentPage(1); // Reset to first page when filters change
   }, [products, searchTerm, selectedCategory]);
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = async (product: Product) => {
     // For now, add the first available variant
     const firstVariant = product.variants[0];
     if (firstVariant) {
-      // In a real implementation, you'd want to let the user select variant
-      // This is just a placeholder
-      console.log("Add to cart:", product, firstVariant);
+      try {
+        await addItem({
+          productId: product.id,
+          productVariantId: firstVariant.id,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          color: firstVariant.color,
+          size: firstVariant.size,
+          imageUrl: firstVariant.imageUrl || product.imageUrl
+        });
+        
+        toast({
+          title: "Added to Bag!",
+          description: `${product.name} has been added successfully.`,
+          duration: 2000,
+        });
+      } catch (err) {
+        console.error("Failed to add to cart:", err);
+        toast({
+          title: "Error",
+          description: "Login required to add items to bag.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -134,67 +162,7 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-green-900 to-green-800 shadow-lg">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <Logo className="h-12" />
-              <nav className="hidden md:flex space-x-6">
-                <Link href="/public-website" className="text-white hover:text-green-200 font-medium transition-colors">
-                  Home
-                </Link>
-                <Link href="/ecommerce/products" className="text-white hover:text-green-200 transition-colors">
-                  Products
-                </Link>
-                {user && (
-                  <Link href="/ecommerce/orders" className="text-white hover:text-green-200 transition-colors">
-                    My Orders
-                  </Link>
-                )}
-              </nav>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              {/* Cart */}
-              <Link href="/ecommerce/cart" className="relative p-2">
-                <ShoppingCart className="h-6 w-6 text-white" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {itemCount}
-                  </span>
-                )}
-              </Link>
-              
-              {/* User Menu */}
-              {user ? (
-                <div className="flex items-center space-x-3">
-                  <span className="text-white font-medium">Hello, {user.firstName}</span>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={logout}
-                    className="border-white text-white hover:bg-white hover:text-green-900 transition-colors"
-                  >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                  </Button>
-                </div>
-              ) : (
-                <Link href="/ecommerce/login">
-                  <Button 
-                    variant="outline"
-                    className="border-white text-white hover:bg-white hover:text-green-900 transition-colors"
-                  >
-                    <User className="h-4 w-4 mr-2" />
-                    Login
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <EcommerceHeader />
 
       {/* Products Section */}
       <section className="container mx-auto px-4 py-8">
@@ -219,18 +187,22 @@ export default function ProductsPage() {
             </div>
             
             {/* Category Filter */}
-            <div>
-              <select
-                className="w-full p-2 border border-gray-300 rounded-md"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category === "all" ? "All Categories" : category}
-                  </option>
-                ))}
-              </select>
+            <div className="md:col-span-2 flex flex-wrap gap-2">
+              {categories.map((category) => (
+                <Button
+                  key={category}
+                  variant={selectedCategory === category ? "default" : "outline"}
+                  size="sm"
+                  className={`${
+                    selectedCategory === category 
+                      ? "bg-green-600 text-white hover:bg-green-700" 
+                      : "bg-orange-500 text-white hover:bg-orange-600 border-none"
+                  } transition-colors`}
+                  onClick={() => setSelectedCategory(category)}
+                >
+                  {category === "all" ? "All Categories" : category}
+                </Button>
+              ))}
             </div>
             
             {/* Results Count */}
@@ -254,6 +226,7 @@ export default function ProductsPage() {
               </p>
               <Link href="/ecommerce">
                 <Button className="bg-orange-500 hover:bg-orange-600 text-white">
+                  <ArrowLeft className="h-4 w-4 mr-2 text-white" />
                   Back to Store
                 </Button>
               </Link>
@@ -363,6 +336,7 @@ export default function ProductsPage() {
           </>
         )}
       </section>
+      <EcommerceFooter />
     </div>
   );
 }
