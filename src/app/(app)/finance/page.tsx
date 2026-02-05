@@ -8,7 +8,7 @@ import {
   Package, 
   ShoppingCart, 
   Users, 
-  DollarSign, 
+  Banknote, 
   Eye, 
   CheckCircle,
   AlertTriangle,
@@ -143,7 +143,7 @@ export default function FinanceManagementPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Finance Management</h1>
         <Badge variant="outline" className="bg-green-100 text-green-800">
-          <DollarSign className="h-4 w-4 mr-2" />
+          <CheckCircle className="h-4 w-4 mr-2" />
           Active
         </Badge>
       </div>
@@ -196,7 +196,7 @@ export default function FinanceManagementPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <Banknote className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">

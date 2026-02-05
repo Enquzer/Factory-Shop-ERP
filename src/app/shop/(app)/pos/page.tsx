@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingCart, Plus, Minus, Trash2, Users, TrendingUp, DollarSign, Package, Search, Calendar, ChevronDown, X, Check, Square, User, BarChart3, ShoppingCart as CartIcon, Award } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, Users, TrendingUp, Banknote, Package, Search, Calendar, ChevronDown, X, Check, Square, User, BarChart3, ShoppingCart as CartIcon, Award } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import VisitorCounterUpdated from '@/components/visitor-counter-updated';
 import SalesTrendChart from '@/components/sales-trend-chart';

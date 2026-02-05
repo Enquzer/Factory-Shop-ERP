@@ -1,33 +1,17 @@
-const sqlite3 = require('sqlite3').verbose();
+
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
 const path = require('path');
 
-const dbPath = path.join(process.cwd(), 'db', 'carement.db');
-const db = new sqlite3.Database(dbPath);
-
-console.log('Checking database schema...\n');
-
-// Check material_requisitions table
-db.serialize(() => {
-  db.all("PRAGMA table_info(material_requisitions)", (err, rows) => {
-    if (err) {
-      console.error('Error:', err);
-      return;
-    }
-    console.log('=== material_requisitions table ===');
-    console.log(rows);
-    console.log('');
+async function checkTables() {
+  const db = await open({
+    filename: path.join(process.cwd(), 'db', 'carement.db'),
+    driver: sqlite3.Database
   });
 
-  // Check orders table
-  db.all("PRAGMA table_info(orders)", (err, rows) => {
-    if (err) {
-      console.error('Error:', err);
-      return;
-    }
-    console.log('=== orders table ===');
-    console.log(rows);
-    console.log('');
-  });
-});
+  const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table'");
+  tables.forEach(t => console.log(t.name));
+  await db.close();
+}
 
-db.close();
+checkTables();

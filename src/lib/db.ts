@@ -191,6 +191,7 @@ async function insertDefaultData() {
     { name: 'quality_inspection', displayName: 'Quality Control', description: 'Quality inspection access', permissions: '{"dashboard":true,"qc":true,"reports":true}' },
     { name: 'marketing', displayName: 'Marketing Department', description: 'Marketing operations access', permissions: '{"dashboard":true,"marketing":true,"reports":true}' },
     { name: 'designer', displayName: 'Designer', description: 'Designer studio access', permissions: '{"dashboard":true,"design":true,"reports":true}' },
+    { name: 'hr', displayName: 'HR Manager', description: 'HR and Incentive management access', permissions: '{"dashboard":true,"hr":true,"reports":true}' },
     { name: 'admin', displayName: 'System Administrator', description: 'Full system administrator', permissions: '{"dashboard":true,"users":true,"products":true,"orders":true,"inventory":true,"reports":true,"settings":true}' }
   ];
 

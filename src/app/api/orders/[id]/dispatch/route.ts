@@ -66,21 +66,31 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
 
   // NEW: Update Inventory - Reduce from Factory, Add to Shop
   try {
+    console.log(`[DISPATCH] Starting inventory update for order ${orderId}`);
     const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    console.log(`[DISPATCH] Processing ${orderItems.length} items`);
     
     // Validate all items first to ensure we don't end up with partial updates
     for (const item of orderItems) {
       const quantity = Math.floor(Math.max(0, Number(item.quantity || 0)));
-      if (quantity <= 0) continue; // Skip items with 0 quantity
+      if (quantity <= 0) {
+        console.log(`[DISPATCH] Skipping item ${item.name} - zero quantity`);
+        continue;
+      }
 
       const variant = await db.get(`SELECT stock, color, size FROM product_variants WHERE id = ?`, [item.variant.id]);
       if (!variant) {
+        console.error(`[DISPATCH] Variant ${item.variant.id} not found`);
         throw new Error(`Variant ${item.variant.id} not found`);
       }
+      console.log(`[DISPATCH] Variant ${item.variant.id} (${variant.color}, ${variant.size}) - Current stock: ${variant.stock}, Requested: ${quantity}`);
       if (variant.stock < quantity) {
+        console.error(`[DISPATCH] Insufficient stock for ${item.name} (${variant.color}, ${variant.size})`);
         throw new Error(`Insufficient factory stock for ${item.name} (${variant.color}, ${variant.size}). Available: ${variant.stock}, Requested: ${quantity}`);
       }
     }
+
+    console.log(`[DISPATCH] All items validated successfully. Proceeding with inventory update.`);
 
     for (const item of orderItems) {
       const variantId = item.variant.id;
@@ -88,11 +98,13 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
       if (quantity <= 0) continue;
       
       // 1. Reduce from Factory Inventory (Already validated above, but we use MAX to be safe)
-      await db.run(`
+      const factoryResult = await db.run(`
         UPDATE product_variants 
         SET stock = MAX(0, stock - ?) 
         WHERE id = ?
       `, [quantity, variantId]);
+      
+      console.log(`[DISPATCH] Reduced factory stock for variant ${variantId} by ${quantity}. Changes: ${factoryResult.changes}`);
       
       // 2. Add to Shop Inventory
       // Check if item already exists in shop inventory
@@ -113,12 +125,14 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
         const currentProductCode = product?.productCode || item.productCode || 'N/A';
 
         // Update existing shop inventory and ensure productCode is set
-        await db.run(`
+        const shopResult = await db.run(`
           UPDATE shop_inventory 
           SET stock = stock + ?,
               productCode = ?
           WHERE id = ?
         `, [quantity, currentProductCode, shopItem.id]);
+        
+        console.log(`[DISPATCH] Updated shop inventory for variant ${variantId}. Previous stock: ${shopItem.stock}, Added: ${quantity}. Changes: ${shopResult.changes}`);
       } else {
         // Get the actual product code from the database
         const product = await db.get(`
@@ -129,6 +143,7 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
         `, [variantId]);
         
         if (!product) {
+          console.error(`[DISPATCH] Product not found for variant ${variantId}`);
           throw new Error(`Product not found for variant ${variantId}`);
         }
         
@@ -148,11 +163,13 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
           quantity,
           item.imageUrl || item.variant.imageUrl || null
         ]);
+        
+        console.log(`[DISPATCH] Created new shop inventory record for variant ${variantId} with stock: ${quantity}`);
       }
     }
-    console.log(`Inventory updated for order ${orderId}: Factory stock reduced, Shop ${order.shopId} inventory increased.`);
+    console.log(`[DISPATCH] ✅ Inventory updated successfully for order ${orderId}: Factory stock reduced, Shop ${order.shopId} inventory increased.`);
   } catch (inventoryError: any) {
-    console.error('Failed to update inventory during dispatch:', inventoryError);
+    console.error('[DISPATCH] ❌ Failed to update inventory during dispatch:', inventoryError);
     return NextResponse.json({ 
       error: 'Inventory update failed', 
       details: inventoryError.message 

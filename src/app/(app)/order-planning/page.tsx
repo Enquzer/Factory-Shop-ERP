@@ -62,6 +62,7 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { 
   MarketingOrder, 
+  MarketingOrderStatus,
   getMarketingOrders, 
   updateMarketingOrder, 
   deleteMarketingOrder,
@@ -80,6 +81,8 @@ import { cn } from "@/lib/utils";
 import { MaterialRequisitionsDialog } from '@/components/production/material-requisitions-dialog';
 import { BOMModificationDialog } from '@/components/production/bom-modification-dialog';
 import { MarketingOrderComponent, updateMarketingOrderComponent, initializeOrderComponents } from '@/lib/marketing-orders';
+import { OperatorAssignmentSidebar } from '@/components/hr/operator-assignment-sidebar';
+import { UserPlus } from 'lucide-react';
 
 interface PlanningRow extends MarketingOrder {
   displayId: string;
@@ -114,6 +117,10 @@ export default function OrderPlanningPage() {
   const [bomOrderDetails, setBomOrderDetails] = useState<any>(null);
   const [bomItems, setBomItems] = useState<any[]>([]);
 
+  // Operator Assignment State
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [assigningOp, setAssigningOp] = useState<{ sequence: number; name: string; componentName?: string } | null>(null);
+
   // Interaction State for Gantt
   const [interactingOrder, setInteractingOrder] = useState<string | null>(null);
   const [interactionType, setInteractionType] = useState<'move' | 'resize' | null>(null);
@@ -131,7 +138,10 @@ export default function OrderPlanningPage() {
     setLoading(true);
     try {
       const data = await getMarketingOrders();
-      setOrders(data.filter(o => o.status !== 'Completed'));
+      // Filter out orders that are in Store, Delivery, or Completed status
+      // These orders are no longer in active production planning
+      const activeStatuses: MarketingOrderStatus[] = ['Store', 'Delivery', 'Completed'];
+      setOrders(data.filter(o => !activeStatuses.includes(o.status)));
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
@@ -961,35 +971,94 @@ export default function OrderPlanningPage() {
                                     
                                     const orderDetails = await orderResponse.json();
                                     
-                                    const response = await authenticatedFetch(`/api/requisitions?orderId=${order.id}`);
-                                    
-                                    if (!response.ok) {
-                                      throw new Error('Failed to fetch BOM items');
+                                    // First, fetch designer BOM items for this product code
+                                    let designerBomItems: any[] = [];
+                                    try {
+                                      const designerBomResponse = await authenticatedFetch(`/api/designer-bom?productCode=${encodeURIComponent(orderDetails.productCode)}`);
+                                      if (designerBomResponse.ok) {
+                                        designerBomItems = await designerBomResponse.json();
+                                        console.log('Designer BOM items fetched:', designerBomItems);
+                                      }
+                                    } catch (error) {
+                                      console.warn('No designer BOM found for this product:', error);
                                     }
                                     
-                                    const bomData = await response.json();
+                                    // Then fetch existing requisitions
+                                    let existingRequisitions: any[] = [];
+                                    try {
+                                      const response = await authenticatedFetch(`/api/requisitions?orderId=${order.id}`);
+                                      if (response.ok) {
+                                        existingRequisitions = await response.json();
+                                      }
+                                    } catch (error) {
+                                      console.warn('No existing requisitions found:', error);
+                                    }
                                     
-                                    // Convert requisitions to BOM items format
-                                    const convertedBomItems = bomData.map((item: any) => ({
-                                      id: item.id,
-                                      materialName: item.materialName,
-                                      materialId: item.materialId,
-                                      quantityPerUnit: item.quantityPerUnit || 0,
-                                      wastagePercentage: item.wastagePercentage || 5,
-                                      unitOfMeasure: item.unitOfMeasure,
-                                      type: item.type || 'Fabric',
-                                      supplier: item.supplier,
-                                      cost: item.cost || 0,
-                                      // Calculate the required fields for PDF generation
-                                      requestedQty: item.requestedQty || orderDetails.quantity || 1,
-                                      calculatedTotal: item.calculatedTotal || 
-                                        ((item.quantityPerUnit || 0) * (item.requestedQty || orderDetails.quantity || 1)) * (1 + ((item.wastagePercentage || 5) / 100)),
-                                      calculatedCost: item.calculatedCost || 
-                                        (((item.quantityPerUnit || 0) * (item.requestedQty || orderDetails.quantity || 1)) * (1 + ((item.wastagePercentage || 5) / 100))) * (item.cost || 0)
-                                    }));
+                                    // Merge designer BOM items with existing requisitions
+                                    // Designer BOM items take precedence, but we keep any custom items added by planners
+                                    const mergedBomItems: any[] = [];
+                                    const processedMaterialIds = new Set<string>();
+                                    
+                                    // Add designer BOM items first
+                                    designerBomItems.forEach((item: any) => {
+                                      mergedBomItems.push({
+                                        id: item.id,
+                                        materialName: item.materialName,
+                                        materialId: item.materialId,
+                                        quantityPerUnit: item.quantityPerUnit || 0,
+                                        wastagePercentage: item.wastagePercentage || 5,
+                                        unitOfMeasure: item.unitOfMeasure || 'M',
+                                        type: item.type || 'Fabric',
+                                        supplier: item.supplier || '',
+                                        cost: item.cost || 0,
+                                        materialImageUrl: item.materialImageUrl || '',
+                                        comments: item.comments || '',
+                                        fromDesigner: true // Mark as designer-created
+                                      });
+                                      if (item.materialId) {
+                                        processedMaterialIds.add(item.materialId);
+                                      }
+                                    });
+                                    
+                                    // Add any custom items from requisitions that aren't in designer BOM
+                                    existingRequisitions.forEach((item: any) => {
+                                      if (!item.materialId || !processedMaterialIds.has(item.materialId)) {
+                                        mergedBomItems.push({
+                                          id: item.id,
+                                          materialName: item.materialName,
+                                          materialId: item.materialId,
+                                          quantityPerUnit: item.quantityPerUnit || 0,
+                                          wastagePercentage: item.wastagePercentage || 5,
+                                          unitOfMeasure: item.unitOfMeasure,
+                                          type: item.type || 'Fabric',
+                                          supplier: item.supplier,
+                                          cost: item.cost || 0,
+                                          requestedQty: item.requestedQty || orderDetails.quantity || 1,
+                                          calculatedTotal: item.calculatedTotal || 
+                                            ((item.quantityPerUnit || 0) * (item.requestedQty || orderDetails.quantity || 1)) * (1 + ((item.wastagePercentage || 5) / 100)),
+                                          calculatedCost: item.calculatedCost || 
+                                            (((item.quantityPerUnit || 0) * (item.requestedQty || orderDetails.quantity || 1)) * (1 + ((item.wastagePercentage || 5) / 100))) * (item.cost || 0),
+                                          fromDesigner: false // Mark as planner-added
+                                        });
+                                      }
+                                    });
+                                    
+                                    if (mergedBomItems.length === 0) {
+                                      toast({
+                                        title: "No BOM Items",
+                                        description: "No BOM items found. The designer hasn't created a BOM for this product yet. You can add items manually.",
+                                        variant: "default"
+                                      });
+                                    } else {
+                                      toast({
+                                        title: "BOM Loaded",
+                                        description: `Loaded ${designerBomItems.length} designer BOM items${existingRequisitions.length > 0 ? ` and ${existingRequisitions.length} existing requisitions` : ''}`,
+                                        variant: "default"
+                                      });
+                                    }
                                     
                                     setBomOrderDetails(orderDetails);
-                                    setBomItems(convertedBomItems);
+                                    setBomItems(mergedBomItems);
                                     setIsBomDialogOpen(true);
                                   } catch (error: any) {
                                     console.error('Error fetching BOM details:', error);
@@ -1157,6 +1226,7 @@ export default function OrderPlanningPage() {
                   <TableHead>Machine Type</TableHead>
                   <TableHead className="text-right">SMV</TableHead>
                   <TableHead className="text-right">MP</TableHead>
+                  <TableHead>Operator</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1229,6 +1299,32 @@ export default function OrderPlanningPage() {
                             onChange={(e) => updateOBItem(actualIndex, 'manpower', parseInt(e.target.value))}
                             className="h-8 text-right font-medium text-xs"
                           />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {item.operatorName ? (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[10px] font-medium">
+                                {item.operatorName}
+                              </Badge>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground italic">Unassigned</span>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 w-6 p-0 hover:bg-primary/10 text-primary"
+                              onClick={() => {
+                                setAssigningOp({ 
+                                  sequence: item.sequence, 
+                                  name: item.operationName,
+                                  componentName: item.componentName
+                                });
+                                setIsAssignDialogOpen(true);
+                              }}
+                            >
+                              <UserPlus className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" onClick={() => removeOBRow(actualIndex)} className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive/10">
@@ -1349,6 +1445,21 @@ export default function OrderPlanningPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selectedOrder && assigningOp && (
+        <OperatorAssignmentSidebar 
+          isOpen={isAssignDialogOpen}
+          onClose={() => setIsAssignDialogOpen(false)}
+          orderId={selectedOrder.id}
+          operationCode={assigningOp.sequence.toString()}
+          operationName={assigningOp.name}
+          componentName={assigningOp.componentName}
+          onAssigned={() => {
+            // Refresh OB items to show the new operator
+            openOBDialog(selectedOrder as any);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool } from 'lucide-react';
+import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -37,6 +37,7 @@ const factoryLinks = [
   { href: '/users', label: 'User Management', icon: User }, // Using User icon instead of Users
 
   { href: '/finance', label: 'Finance Management', icon: FileText },
+  { href: '/hr', label: 'HR & Incentives', icon: Users },
   { href: '/designer', label: 'Designer', icon: Palette },
   { href: '/help-center', label: 'Help Center', icon: HelpCircle },
   { href: '/profile', label: 'Profile', icon: User },
@@ -66,6 +67,19 @@ const shopLinks = [
   { href: '/shop/orders', label: 'My Orders', icon: ShoppingCart },
   { href: '/shop/products', label: 'Products', icon: Package },
   { href: '/shop/inventory', label: 'My Inventory', icon: ClipboardList },
+  { href: '/profile', label: 'Profile', icon: User },
+];
+
+const hrLinks = [
+  { href: '/hr', label: 'HR Dashboard', icon: LayoutDashboard },
+  { href: '/hr/employees', label: 'Employee Directory', icon: User },
+  { href: '/hr/skills', label: 'Skill Matrix', icon: Award },
+  { href: '/hr/actions', label: 'Reward & Discipline', icon: ShieldCheck },
+  { href: '/hr/leaves', label: 'Leave Management', icon: ClipboardList },
+  { href: '/hr/incentives', label: 'Incentive Ledger', icon: BarChart4 },
+  { href: '/hr/payroll', label: 'Payroll & Ledger', icon: Banknote },
+  { href: '/hr/training', label: 'Training & Exams', icon: GraduationCap },
+  { href: '/hr/settings', label: 'HR Settings', icon: Settings },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
@@ -178,6 +192,10 @@ export function Nav() {
         { href: '/profile', label: 'Profile', icon: User },
       ];
       userType = 'designer';
+      break;
+    case 'hr':
+      currentLinks = hrLinks;
+      userType = 'hr';
       break;
     case 'factory':
     default:

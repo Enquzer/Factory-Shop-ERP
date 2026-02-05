@@ -1,6 +1,6 @@
 // lib/pdf-generator.ts
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { MarketingOrder } from './marketing-orders';
 import { Product } from './products';
 import { Order } from './orders';
@@ -300,7 +300,7 @@ export async function generateProductionPlanningPDF(
       }
     });
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 55,
       head: head,
       body: tableData,
@@ -358,7 +358,7 @@ export async function generateProductionPlanningPDF(
           doc.text(`Operation Bulletin: ${order.orderNumber} / ${order.productCode}${compLabel}`, 15, currentY);
           currentY += 5;
 
-          (doc as any).autoTable({
+          autoTable(doc, {
             startY: currentY,
             head: [['Seq', 'Operation', 'Machine', 'SMV', 'MP']],
             body: obData.map(item => [item.sequence, item.operationName, item.machineType, item.smv?.toFixed(2), item.manpower]),
@@ -611,7 +611,7 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
     console.log('Adding items table with', order.items.length, 'items');
     
     // Add table with size/color breakdown
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: currentY + 20,
       head: [['Size', 'Color', 'Quantity']],
       body: order.items.map(item => [decodeHTMLEntities(item.size), decodeHTMLEntities(item.color), item.quantity]),

@@ -39,19 +39,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 const isStoreRoute = pathname.startsWith('/store');
                 const isFinanceRoute = pathname.startsWith('/finance');
 
+                console.log('AppProvider Redirect Check:', { role: user.role, pathname, isShopRoute, isStoreRoute, isFinanceRoute });
+
                 if (user.role === 'shop' && !isShopRoute) {
+                    console.log('Redirecting Shop user to Dashboard');
                     setRedirecting(true);
                     router.push('/shop/dashboard');
                 } else if (user.role === 'factory' && (isShopRoute || isStoreRoute || isFinanceRoute)) {
-                    // Factory users can access dashboard, but maybe not store/shop specifics if stricter?
-                    // Actually factory admin usually accessing everything? 
-                    // But the code previously redirected factory user from shop route to dashboard.
+                    console.log('Redirecting Factory user to Dashboard');
                     setRedirecting(true);
                     router.push('/dashboard');
                 } else if (user.role === 'store' && !isStoreRoute) {
+                    console.log('Redirecting Store user to Dashboard');
                     setRedirecting(true);
-                    router.push('/store/dashboard'); // Redirect to store dashboard
+                    router.push('/store/dashboard');
                 } else if (user.role === 'finance' && !isFinanceRoute) {
+                    console.log('Redirecting Finance user to Reports');
                     setRedirecting(true);
                     router.push('/finance/reports');
                 } else if (user.role === 'packing' && !pathname.startsWith('/packing')) {
@@ -63,6 +66,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 } else if (user.role === 'designer' && !pathname.startsWith('/designer') && !pathname.startsWith('/sample-management') && !pathname.startsWith('/marketing-orders') && !pathname.startsWith('/products') && !pathname.startsWith('/profile')) {
                     setRedirecting(true);
                     router.push('/designer');
+                } else if (user.role === 'hr' && !pathname.startsWith('/hr') && !pathname.startsWith('/profile')) {
+                    console.log('Redirecting HR user to /hr');
+                    setRedirecting(true);
+                    router.push('/hr');
                 }
             }
             setCheckedAuth(true);

@@ -37,7 +37,8 @@ import Image from 'next/image';
 import { format } from 'date-fns';
 import { DailyProductionForm } from '@/components/daily-production-form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ClipboardList, X } from 'lucide-react';
+import { ClipboardList, X, UserPlus, Fingerprint } from 'lucide-react';
+import { OperatorAssignmentSidebar } from '@/components/hr/operator-assignment-sidebar';
 
 export default function SewingDashboardPage() {
   const { user, isLoading } = useAuth();
@@ -51,6 +52,11 @@ export default function SewingDashboardPage() {
   const [isOBDialogOpen, setIsOBDialogOpen] = useState(false);
   const [isProductionDialogOpen, setIsProductionDialogOpen] = useState(false);
   const [totalProducedMap, setTotalProducedMap] = useState<Record<string, number>>({});
+  
+  // Assignment Sidebar State
+  const [isAssignmentOpen, setIsAssignmentOpen] = useState(false);
+  const [assignmentData, setAssignmentData] = useState<{opCode: string, opName: string} | null>(null);
+  const [assignmentsMap, setAssignmentsMap] = useState<Record<string, string>>({}); // opCode -> employeeName
 
   // Check if user has sewing role, otherwise redirect
   useEffect(() => {
@@ -160,10 +166,24 @@ export default function SewingDashboardPage() {
       const items = await getOperationBulletin(order.id, order.productCode);
       setObItems(items);
       setIsOBDialogOpen(true);
+      
+      // Fetch assignments for this order
+      const res = await fetch(`/api/hr/assignments?orderId=${order.id}`);
+      if (res.ok) {
+        const assignments = await res.json();
+        const map: Record<string, string> = {};
+        assignments.forEach((a: any) => map[a.opCode] = a.employeeId);
+        setAssignmentsMap(map);
+      }
     } catch (error) {
       console.error('Error fetching OB:', error);
       toast({ title: "Error", description: "Failed to load Operation Breakdown", variant: "destructive" });
     }
+  };
+
+  const handleOpenAssignment = (opCode: string, opName: string) => {
+    setAssignmentData({ opCode, opName });
+    setIsAssignmentOpen(true);
   };
 
   const handleOpenProductionForm = (order: MarketingOrder) => {
@@ -568,7 +588,11 @@ export default function SewingDashboardPage() {
                   <div className="flex-1 overflow-y-auto">
                     {components.map(comp => (
                       <TabsContent key={comp} value={comp} className="mt-0 focus-visible:outline-none">
-                        <OperationBreakdownTable items={obItems.filter(i => (i.componentName || 'General') === comp)} />
+                        <OperationBreakdownTable 
+                          items={obItems.filter(i => (i.componentName || 'General') === comp)} 
+                          onAssign={handleOpenAssignment}
+                          assignments={assignmentsMap}
+                        />
                       </TabsContent>
                     ))}
                   </div>
@@ -581,6 +605,21 @@ export default function SewingDashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Operator Assignment Sidebar */}
+      {selectedOrder && assignmentData && (
+        <OperatorAssignmentSidebar 
+          isOpen={isAssignmentOpen}
+          onClose={() => setIsAssignmentOpen(false)}
+          orderId={selectedOrder.id}
+          operationCode={assignmentData.opCode}
+          operationName={assignmentData.opName}
+          onAssigned={() => {
+            // Refresh assignments
+            handleViewOB(selectedOrder);
+          }}
+        />
+      )}
 
       {/* Daily Production Status Dialog */}
       <Dialog open={isProductionDialogOpen} onOpenChange={setIsProductionDialogOpen}>
@@ -620,7 +659,11 @@ export default function SewingDashboardPage() {
   );
 }
 
-function OperationBreakdownTable({ items }: { items: OperationBulletinItem[] }) {
+function OperationBreakdownTable({ items, onAssign, assignments }: { 
+  items: OperationBulletinItem[], 
+  onAssign?: (opCode: string, opName: string) => void,
+  assignments?: Record<string, string>
+}) {
   return (
     <Table className="border rounded-md overflow-hidden">
       <TableHeader className="bg-muted/50 sticky top-0 z-10 transition-colors">
@@ -629,19 +672,40 @@ function OperationBreakdownTable({ items }: { items: OperationBulletinItem[] }) 
           <TableHead className="font-bold text-[10px] uppercase text-muted-foreground px-4">Operation Name</TableHead>
           <TableHead className="font-bold text-[10px] uppercase text-muted-foreground px-4">Machine Type</TableHead>
           <TableHead className="text-right font-bold text-[10px] uppercase text-muted-foreground px-4">SMV</TableHead>
+          <TableHead className="text-right font-bold text-[10px] uppercase text-muted-foreground px-4">Operator</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {items.map((item, idx) => (
-          <TableRow key={idx} className="hover:bg-muted/30 transition-colors border-b last:border-0 h-11">
-            <TableCell className="font-mono text-xs text-muted-foreground px-4">{item.sequence}</TableCell>
-            <TableCell className="font-semibold text-sm px-4">{item.operationName}</TableCell>
-            <TableCell className="px-4">
-              <Badge variant="outline" className="font-normal bg-white text-[10px] uppercase tracking-wider h-5 px-1.5">{item.machineType}</Badge>
-            </TableCell>
-            <TableCell className="text-right font-bold text-primary px-4">{item.smv.toFixed(2)}</TableCell>
-          </TableRow>
-        ))}
+        {items.map((item, idx) => {
+          const assignedId = assignments?.[item.sequence.toString()] || assignments?.[item.operationName];
+          
+          return (
+            <TableRow key={idx} className="hover:bg-muted/30 transition-colors border-b last:border-0 h-11">
+              <TableCell className="font-mono text-xs text-muted-foreground px-4">{item.sequence}</TableCell>
+              <TableCell className="font-semibold text-sm px-4">{item.operationName}</TableCell>
+              <TableCell className="px-4">
+                <Badge variant="outline" className="font-normal bg-white text-[10px] uppercase tracking-wider h-5 px-1.5">{item.machineType}</Badge>
+              </TableCell>
+              <TableCell className="text-right font-bold text-primary px-4">{item.smv.toFixed(2)}</TableCell>
+              <TableCell className="text-right px-4">
+                {assignedId ? (
+                  <Badge className="bg-green-500 hover:bg-green-600 cursor-pointer" onClick={() => onAssign?.(item.sequence.toString(), item.operationName)}>
+                    <User className="h-3 w-3 mr-1" /> {assignedId}
+                  </Badge>
+                ) : (
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="h-7 text-[10px] text-blue-600 hover:bg-blue-50"
+                    onClick={() => onAssign?.(item.sequence.toString(), item.operationName)}
+                  >
+                    <UserPlus className="h-3 w-3 mr-1" /> Assign
+                  </Button>
+                )}
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

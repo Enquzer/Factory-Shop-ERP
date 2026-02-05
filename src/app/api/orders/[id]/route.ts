@@ -11,9 +11,10 @@ export async function GET(
     // Authenticate the request
     const user = await authenticateRequest(request);
     
-    // Only factory, shop, finance, and store users can access orders
-    if (!user || (user.role !== 'factory' && user.role !== 'shop' && user.role !== 'finance' && user.role !== 'store')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Allow factory, shop, finance, store, planning, cutting, sewing, and packing users to access orders
+    const allowedRoles = ['factory', 'shop', 'finance', 'store', 'planning', 'cutting', 'sewing', 'packing'];
+    if (!user || !allowedRoles.includes(user.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     const orderId = params.id;

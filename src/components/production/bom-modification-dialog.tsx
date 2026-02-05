@@ -29,6 +29,7 @@ interface BOMItem {
   calculatedCost?: number; // Added for calculated cost
   isCustom?: boolean; // Added to identify custom materials not in the database
   materialImageUrl?: string; // Raw material image URL
+  fromDesigner?: boolean; // Added to identify items from designer BOM
 }
 
 interface MarketingOrderItem {
@@ -612,53 +613,122 @@ export function BOMModificationDialog({
                   {bomItems.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell>
-                        <select
-                          value={item.type}
-                          onChange={(e) => updateBomItemWithCalculation(item.id, 'type', e.target.value)}
-                          className="w-full border rounded px-2 py-1 text-sm"
-                        >
-                          <option value="Fabric">Fabric</option>
-                          <option value="Trim">Trim</option>
-                          <option value="Finishing">Finishing</option>
-                          <option value="Packaging">Packaging</option>
-                          <option value="Thread">Thread</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </TableCell>
-                      <TableCell>
-                        {item.type.toLowerCase() === 'fabric' ? (
-                          <select
-                            value={item.materialName}
-                            onChange={(e) => updateBomItemWithCalculation(item.id, 'materialName', e.target.value)}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                          >
-                            <option value="">Select Fabric</option>
-                            {availableMaterials
-                              .filter(material => material.category.toLowerCase() === 'fabric')
-                              .map(material => (
-                                <option key={material.id} value={material.name}>
-                                  {material.name}
-                                </option>
-                              ))}
-                            <option value="request_material">+ Request New Material</option>
-                          </select>
+                        {item.fromDesigner ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-700">{item.type}</span>
+                            <select
+                              value={item.type}
+                              onChange={(e) => updateBomItemWithCalculation(item.id, 'type', e.target.value)}
+                              className="w-20 border rounded px-1 py-0.5 text-xs text-gray-500"
+                              title="Change type if needed"
+                            >
+                              <option value="Fabric">Fabric</option>
+                              <option value="Trim">Trim</option>
+                              <option value="Finishing">Finishing</option>
+                              <option value="Packaging">Packaging</option>
+                              <option value="Thread">Thread</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
                         ) : (
                           <select
-                            value={item.materialName}
-                            onChange={(e) => updateBomItemWithCalculation(item.id, 'materialName', e.target.value)}
+                            value={item.type}
+                            onChange={(e) => updateBomItemWithCalculation(item.id, 'type', e.target.value)}
                             className="w-full border rounded px-2 py-1 text-sm"
                           >
-                            <option value="">Select Material</option>
-                            {availableMaterials
-                              .filter(material => material.category.toLowerCase() !== 'fabric')
-                              .map(material => (
-                                <option key={material.id} value={material.name}>
-                                  {material.name}
-                                </option>
-                              ))}
-                            <option value="request_material">+ Request New Material</option>
+                            <option value="Fabric">Fabric</option>
+                            <option value="Trim">Trim</option>
+                            <option value="Finishing">Finishing</option>
+                            <option value="Packaging">Packaging</option>
+                            <option value="Thread">Thread</option>
+                            <option value="Other">Other</option>
                           </select>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {item.fromDesigner ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-700 flex-1">{item.materialName || 'Not specified'}</span>
+                                {item.type.toLowerCase() === 'fabric' ? (
+                                  <select
+                                    value={item.materialName}
+                                    onChange={(e) => updateBomItemWithCalculation(item.id, 'materialName', e.target.value)}
+                                    className="w-32 border rounded px-1 py-0.5 text-xs text-gray-500"
+                                    title="Change material if needed"
+                                  >
+                                    <option value="">Select Fabric</option>
+                                    {availableMaterials
+                                      .filter(material => material.category.toLowerCase() === 'fabric')
+                                      .map(material => (
+                                        <option key={material.id} value={material.name}>
+                                          {material.name}
+                                        </option>
+                                      ))}
+                                    <option value="request_material">+ Request New Material</option>
+                                  </select>
+                                ) : (
+                                  <select
+                                    value={item.materialName}
+                                    onChange={(e) => updateBomItemWithCalculation(item.id, 'materialName', e.target.value)}
+                                    className="w-32 border rounded px-1 py-0.5 text-xs text-gray-500"
+                                    title="Change material if needed"
+                                  >
+                                    <option value="">Select Material</option>
+                                    {availableMaterials
+                                      .filter(material => material.category.toLowerCase() !== 'fabric')
+                                      .map(material => (
+                                        <option key={material.id} value={material.name}>
+                                          {material.name}
+                                        </option>
+                                      ))}
+                                    <option value="request_material">+ Request New Material</option>
+                                  </select>
+                                )}
+                              </div>
+                              <Badge variant="secondary" className="text-[8px] h-4 px-1 w-fit bg-blue-50 text-blue-600 border-blue-200">
+                                Designer's Selection
+                              </Badge>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              {item.type.toLowerCase() === 'fabric' ? (
+                                <select
+                                  value={item.materialName}
+                                  onChange={(e) => updateBomItemWithCalculation(item.id, 'materialName', e.target.value)}
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                >
+                                  <option value="">Select Fabric</option>
+                                  {availableMaterials
+                                    .filter(material => material.category.toLowerCase() === 'fabric')
+                                    .map(material => (
+                                      <option key={material.id} value={material.name}>
+                                        {material.name}
+                                      </option>
+                                    ))}
+                                  <option value="request_material">+ Request New Material</option>
+                                </select>
+                              ) : (
+                                <select
+                                  value={item.materialName}
+                                  onChange={(e) => updateBomItemWithCalculation(item.id, 'materialName', e.target.value)}
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                >
+                                  <option value="">Select Material</option>
+                                  {availableMaterials
+                                    .filter(material => material.category.toLowerCase() !== 'fabric')
+                                    .map(material => (
+                                      <option key={material.id} value={material.name}>
+                                        {material.name}
+                                      </option>
+                                    ))}
+                                  <option value="request_material">+ Request New Material</option>
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Input

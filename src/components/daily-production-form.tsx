@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MarketingOrderItem, MarketingOrderStatus } from '@/lib/marketing-orders';
 import { Badge } from '@/components/ui/badge';
 import { VelocityProductionGrid } from './velocity-production-grid';
+import { UserPlus } from 'lucide-react';
 
 interface DailyProductionFormProps {
   orderId: string;
@@ -44,6 +45,10 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
   const [dailyProductionStatus, setDailyProductionStatus] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // HR integration
+  const [availableOperators, setAvailableOperators] = useState<any[]>([]);
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>("");
   
   // Fetch total produced quantity
   const fetchTotalProduced = async () => {
@@ -79,8 +84,32 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
     if (orderId) {
       fetchTotalProduced();
       fetchHistory();
+      fetchOperators();
     }
   }, [orderId]);
+
+  const fetchOperators = async () => {
+    try {
+      // First fetch assignments for this order
+      const assignRes = await fetch(`/api/hr/assignments?orderId=${orderId}`);
+      if (assignRes.ok) {
+        const assignments = await assignRes.json();
+        const empRes = await fetch('/api/hr/employees');
+        if (empRes.ok) {
+          const allEmps = await empRes.json();
+          // Filter only those assigned to this order or generic sewing operators
+          const sewingEmps = allEmps.filter((e: any) => 
+            e.jobCenter === 'Sewing machine operator' || 
+            assignments.some((a: any) => a.employeeId === e.employeeId)
+          );
+          setAvailableOperators(sewingEmps);
+          if (sewingEmps.length > 0) setSelectedOperatorId(sewingEmps[0].employeeId);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
   
   // Initialize status updates with default values
   useEffect(() => {
@@ -302,8 +331,8 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
             date,
             quantity: totalUpdate.quantity,
             status: totalUpdate.status,
-            processStage: currentStage,
             componentName: ((currentStage === 'Sewing' || userRole === 'sewing') && components && components.length > 1) ? selectedCompId : null,
+            employeeId: (currentStage === 'Sewing' || userRole === 'sewing') ? selectedOperatorId : null,
             isTotalUpdate: true
           }),
         });
@@ -343,6 +372,7 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                 status: update.status,
                 processStage: currentStage,
                 componentName: ((currentStage === 'Sewing' || userRole === 'sewing') && components && components.length > 1) ? selectedCompId : null,
+                employeeId: (currentStage === 'Sewing' || userRole === 'sewing') ? selectedOperatorId : null,
                 isTotalUpdate: false
               }),
             });
@@ -560,6 +590,29 @@ export function DailyProductionForm({ orderId, items, totalQuantity, onStatusUpd
                   </div>
                 </div>
               </div>
+
+              {/* Operator Selection for Sewing */}
+              {(totalUpdate.processStage === 'Sewing' || userRole === 'sewing') && (
+                <div className="p-4 bg-indigo-50 border-2 border-indigo-100 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2 text-indigo-800 font-bold">
+                    <UserPlus className="h-4 w-4" /> 
+                    SELECT OPERATOR FOR THIS OUTPUT
+                  </div>
+                  <Select value={selectedOperatorId} onValueChange={setSelectedOperatorId}>
+                    <SelectTrigger className="bg-white border-indigo-200">
+                      <SelectValue placeholder="Which operator is working?" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableOperators.map(op => (
+                        <SelectItem key={op.employeeId} value={op.employeeId}>
+                          {op.name} ({op.employeeId})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-indigo-600 italic">This will correctly credit the units produced to their monthly incentive.</p>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 border-b pb-4">
                 <Button 

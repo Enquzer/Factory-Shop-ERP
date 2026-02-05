@@ -34,7 +34,9 @@ import {
   ClipboardList,
   FlaskConical,
   BarChart3,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink,
+  Link as LinkIcon
 } from "lucide-react";
 import Image from "next/image";
 import { DailyProductionForm } from "@/components/daily-production-form";
@@ -345,6 +347,47 @@ export function MarketingOrderDetailDialog({
                           <span className="font-bold text-red-600">{order.plannedDeliveryDate ? new Date(order.plannedDeliveryDate).toLocaleDateString() : '-'}</span>
                        </div>
                     </div>
+
+                    {(order.ppmMeetingAttached || order.sampleApprovalAttached || order.cuttingQualityAttached) && (
+                      <div className="mt-4 pt-4 border-t space-y-2">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Production Documentation</span>
+                        <div className="grid grid-cols-1 gap-1">
+                          {order.ppmMeetingAttached && (
+                            <a 
+                              href={order.ppmMeetingAttached} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-1.5 rounded bg-slate-50 border hover:bg-slate-100 transition-colors"
+                            >
+                              <span className="text-[10px] font-bold text-slate-600">PPM Minutes</span>
+                              <ExternalLink className="h-3 w-3 text-primary" />
+                            </a>
+                          )}
+                          {order.sampleApprovalAttached && (
+                            <a 
+                              href={order.sampleApprovalAttached} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-1.5 rounded bg-slate-50 border hover:bg-slate-100 transition-colors"
+                            >
+                              <span className="text-[10px] font-bold text-slate-600">Sample Approval</span>
+                              <ExternalLink className="h-3 w-3 text-primary" />
+                            </a>
+                          )}
+                          {order.cuttingQualityAttached && (
+                            <a 
+                              href={order.cuttingQualityAttached} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-1.5 rounded bg-slate-50 border hover:bg-slate-100 transition-colors"
+                            >
+                              <span className="text-[10px] font-bold text-slate-600">Cutting Quality</span>
+                              <ExternalLink className="h-3 w-3 text-primary" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {order.description && (
                       <div className="mt-4 pt-4 border-t">
                         <span className="text-xs font-bold text-slate-400 uppercase">Notes:</span>

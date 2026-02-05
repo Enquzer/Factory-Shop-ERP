@@ -4,7 +4,7 @@ import { getDB, resetDbCache } from './db';
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -19,7 +19,7 @@ export type AuthResult = {
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'customer'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'customer' | 'hr'
 ): Promise<AuthResult> => {
   try {
     console.log('Registering user with data:', { username, role });
@@ -156,7 +156,7 @@ export const authenticateUser = async (
       user: {
         id: user.id,
         username: user.username,
-        role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer',
+        role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr',
         profilePictureUrl: user.profilePictureUrl,
         createdAt: new Date(user.created_at)
       }
@@ -187,7 +187,7 @@ export const getUserById = async (id: number): Promise<User | undefined> => {
     return {
       id: user.id,
       username: user.username,
-      role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer',
+      role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr',
       profilePictureUrl: user.profilePictureUrl,
       createdAt: new Date(user.created_at)
     };
@@ -213,7 +213,7 @@ export const getUserByUsername = async (username: string): Promise<User | undefi
     return {
       id: user.id,
       username: user.username,
-      role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer',
+      role: user.role as 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr',
       profilePictureUrl: user.profilePictureUrl,
       createdAt: new Date(user.created_at)
     };

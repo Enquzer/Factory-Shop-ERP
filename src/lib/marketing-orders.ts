@@ -143,6 +143,8 @@ export type OperationBulletinItem = {
   machineType: string;
   smv: number;
   manpower: number;
+  operatorId?: string;
+  operatorName?: string;
 };
 
 export interface QualityInspection {
@@ -1265,20 +1267,28 @@ export async function updateDailyProductionStatus(status: Omit<DailyProductionSt
 export async function getOperationBulletinFromDB(orderId?: string, productCode?: string): Promise<OperationBulletinItem[]> {
   try {
     const db = await getDb();
-    let query = 'SELECT * FROM operation_bulletins WHERE ';
+    let query = `
+      SELECT ob.*, ea.employeeId as operatorId, e.name as operatorName
+      FROM operation_bulletins ob
+      LEFT JOIN employee_assignments ea ON ob.orderId = ea.orderId 
+        AND CAST(ob.sequence AS TEXT) = ea.opCode 
+        AND (ob.componentName = ea.componentName OR (ob.componentName IS NULL AND ea.componentName IS NULL))
+      LEFT JOIN employees e ON ea.employeeId = e.employeeId
+      WHERE 
+    `;
     const params: any[] = [];
 
     if (orderId) {
-      query += 'orderId = ? ';
+      query += 'ob.orderId = ? ';
       params.push(orderId);
     } else if (productCode) {
-      query += 'productCode = ? ';
+      query += 'ob.productCode = ? ';
       params.push(productCode);
     } else {
       return [];
     }
 
-    query += 'ORDER BY sequence ASC';
+    query += ' ORDER BY ob.sequence ASC';
     const items = await db.all(query, ...params);
     return items;
   } catch (error) {

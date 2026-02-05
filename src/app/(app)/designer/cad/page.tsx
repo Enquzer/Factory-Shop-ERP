@@ -113,6 +113,7 @@ export default function CADToolPage() {
   const curveState = useRef<{ step: number, p1?: {x:number, y:number}, p2?: {x:number, y:number} }>({ step: 0 });
   const tempPath = useRef<fabric.Path | null>(null);
   const designateCollection = useRef<fabric.Object[]>([]);
+  const snapMarker = useRef<fabric.Circle | null>(null);
 
   // Drawing Logic Hook
   useEffect(() => {
@@ -340,6 +341,50 @@ export default function CADToolPage() {
         canvasInstance.requestRenderAll();
     };
     
+    const findBestSnapPoint = (ptr: {x: number, y: number}, radius: number): {x: number, y: number} | null => {
+        if (!canvasInstance) return null;
+
+        let bestPoint: {x: number, y: number} | null = null;
+        let minDist = Infinity;
+
+        const checkPoint = (px: number, py: number) => {
+            const dist = Math.hypot(px - ptr.x, py - ptr.y);
+            if (dist < radius && dist < minDist) {
+                minDist = dist;
+                bestPoint = { x: px, y: py };
+            }
+        };
+
+        const traverse = (objs: any[]) => {
+            objs.forEach(o => {
+                if (o.isGrid || o.isTemp || o.isHandle || (o as any).id === 'designate-hover') return;
+                
+                if (o.type === 'group') {
+                    traverse(o.getObjects());
+                    return;
+                }
+
+                const path = getSceneSpacePath(o);
+                if (path) {
+                    path.forEach(cmd => {
+                        if (cmd.length >= 3) {
+                             checkPoint(cmd[cmd.length-2], cmd[cmd.length-1]);
+                        }
+                    });
+                }
+            });
+        };
+
+        traverse(canvasInstance.getObjects());
+
+        const anchorHandles = canvasInstance.getObjects().filter((o: any) => o.handleType === 'anchor');
+        anchorHandles.forEach((h: any) => {
+            checkPoint(h.left, h.top);
+        });
+
+        return bestPoint;
+    };
+
     const handleDown = (opt: any) => {
         // Right Click to Finish Drawing
         if (opt.e.button === 2) {
@@ -433,21 +478,14 @@ export default function CADToolPage() {
             let x = ptr.x;
             let y = ptr.y;
 
-            // Anchor Point Snapping (snap to existing corners)
+            // --- Enhanced Snapping ---
             const snapRadius = 15 / (canvasInstance.getZoom() || 1);
-            const anchorHandles = canvasInstance.getObjects().filter((o: any) => o.handleType === 'anchor');
-            let snappedToPoint = false;
+            const snappedPoint = findBestSnapPoint(ptr, snapRadius);
 
-            for (const h of anchorHandles) {
-                if (Math.hypot(h.left - ptr.x, h.top - ptr.y) < snapRadius) {
-                    x = h.left;
-                    y = h.top;
-                    snappedToPoint = true;
-                    break;
-                }
-            }
-
-            if (!snappedToPoint && showGrid) {
+            if (snappedPoint) {
+                x = snappedPoint.x;
+                y = snappedPoint.y;
+            } else if (showGrid) {
                 x = Math.round(x / gridSize) * gridSize;
                 y = Math.round(y / gridSize) * gridSize;
             }
@@ -537,21 +575,44 @@ export default function CADToolPage() {
         }
 
         if ((activeTool === 'pen' || activeTool === 'curve') && draftCommands.current.length > 0) {
-            // Point Snapping in preview
+            // --- Enhanced Snapping Preview ---
             const snapRadius = 15 / (canvasInstance.getZoom() || 1);
-            const anchorHandles = canvasInstance.getObjects().filter((o: any) => o.handleType === 'anchor');
-            let snapped = false;
-            for (const h of anchorHandles) {
-                if (Math.hypot(h.left - ptr.x, h.top - ptr.y) < snapRadius) {
-                    x = h.left; y = h.top; snapped = true; break;
+            const snappedPoint = findBestSnapPoint(ptr, snapRadius);
+            
+            // Manage Snap Marker
+            if (snappedPoint) {
+                x = snappedPoint.x;
+                y = snappedPoint.y;
+                
+                if (!snapMarker.current) {
+                    snapMarker.current = new fabric.Circle({
+                        radius: 5,
+                        fill: 'transparent',
+                        stroke: '#ec4899', // Pink snap color
+                        strokeWidth: 2,
+                        selectable: false,
+                        evented: false,
+                        originX: 'center',
+                        originY: 'center'
+                    });
+                    canvasInstance.add(snapMarker.current);
                 }
+                snapMarker.current.set({ left: x, top: y, visible: true });
+                (snapMarker.current as any).bringToFront();
+            } else {
+                 if (snapMarker.current) {
+                    snapMarker.current.set({ visible: false });
+                 }
+                 if (showGrid) {
+                    x = Math.round(x / gridSize) * gridSize;
+                    y = Math.round(y / gridSize) * gridSize;
+                 }
             }
 
-            if (!snapped && showGrid) {
-                x = Math.round(x / gridSize) * gridSize;
-                y = Math.round(y / gridSize) * gridSize;
-            }
             updateTempPath({x, y});
+        } else {
+             // Hide marker if not drawing or no snap
+             if (snapMarker.current) snapMarker.current.set({ visible: false });
         }
     };
 

@@ -44,8 +44,22 @@ export async function POST(request: Request) {
               userId: null,
               notes: statusData.isTotalUpdate ? 'Total Update' : `${statusData.size}-${statusData.color} - ${statusData.status}`
           });
+
+          // Log to HR Production Logs for Incentive Calculation
+          if (statusData.employeeId && (statusData.processStage === 'Sewing' || statusData.processStage === 'Finishing')) {
+              const { logProduction } = require('@/lib/hr');
+              await logProduction({
+                  employeeId: statusData.employeeId,
+                  orderId: statusData.orderId,
+                  opCode: statusData.componentName || 'SEW001', // Default or specific opCode
+                  unitsProduced: statusData.quantity,
+                  machineId: statusData.machineId || 'M-001',
+                  date: statusData.date
+              });
+              console.log('Logged to HR production logs for employee:', statusData.employeeId);
+          }
       } catch (e) {
-          console.error("Failed to log production ledger (non-fatal):", e);
+          console.error("Failed to log production ledger/HR (non-fatal):", e);
       }
 
       return NextResponse.json({ message: 'Daily production status updated successfully' });

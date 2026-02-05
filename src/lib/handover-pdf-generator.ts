@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { MarketingOrder, QualityInspection } from './marketing-orders';
 import { CuttingHandover, CuttingHandoverItem } from './cutting';
@@ -50,7 +50,7 @@ export async function generateHandoverPDF(
     ['Handed Over By:', handover.handoverBy, 'Received By:', handover.receivedBy]
   ];
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: 65,
     body: orderDetails,
     theme: 'plain',
@@ -84,7 +84,7 @@ export async function generateHandoverPDF(
   
   console.log('Items table data:', itemsTable);
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: currentY + 5,
     head: [['Size', 'Color', 'Quantity Handed Over']],
     body: itemsTable,
@@ -114,7 +114,7 @@ export async function generateHandoverPDF(
       ['Remarks:', latestQualityInspection.remarks || 'None']
     ];
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: currentY + 5,
       body: qualityData,
       theme: 'plain',
