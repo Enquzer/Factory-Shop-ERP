@@ -6,10 +6,12 @@ export type Employee = {
   employeeId: string;
   name: string;
   jobCenter: string;
+  departmentId?: number;
+  managerId?: string; // Reporting To (employeeId)
   phone?: string;
   address?: string;
   joinedDate?: string;
-  status: 'Active' | 'Inactive';
+  status: 'Active' | 'Inactive' | 'On Leave';
   profilePicture?: string;
   skills: any[];
   attendanceDays: number;
@@ -22,6 +24,16 @@ export type Employee = {
   pensionOptOut?: boolean;
   loyaltyStatus?: string;
 };
+
+export type Department = {
+  id: number;
+  name: string;
+  managerId?: string; // employeeId of the department manager
+  managerName?: string; // Optional join
+  createdAt: string;
+  updatedAt: string;
+};
+
 
 export type OperationRate = {
   id: number;
@@ -74,18 +86,33 @@ export async function getEmployeeById(employeeId: string): Promise<Employee | nu
   };
 }
 
+export async function getNextEmployeeId(): Promise<string> {
+  const db = await getDb();
+  const row = await db.get("SELECT employeeId FROM employees ORDER BY id DESC LIMIT 1");
+  if (!row) return 'EMP-001';
+  
+  const lastId = row.employeeId;
+  const match = lastId.match(/(\d+)/);
+  if (match) {
+    const nextNum = parseInt(match[0]) + 1;
+    return `EMP-${nextNum.toString().padStart(3, '0')}`;
+  }
+  return `EMP-${Math.floor(Math.random() * 1000)}`; // Fallback
+}
+
+
 export async function createEmployee(employee: Omit<Employee, 'id'>): Promise<number> {
   const db = await getDb();
   const result = await db.run(`
     INSERT INTO employees (
-      employeeId, name, jobCenter, phone, address, joinedDate, 
+      employeeId, name, jobCenter, departmentId, managerId, phone, address, joinedDate, 
       status, profilePicture, skills, attendanceDays, 
       disciplinaryFines, qualityPenalties, baseSalary,
       promotionTrack, trainingHistory, examHistory, 
       pensionOptOut, loyaltyStatus
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
-    employee.employeeId, employee.name, employee.jobCenter, employee.phone, 
+    employee.employeeId, employee.name, employee.jobCenter, employee.departmentId, employee.managerId, employee.phone, 
     employee.address, employee.joinedDate, employee.status, employee.profilePicture, 
     JSON.stringify(employee.skills || []), employee.attendanceDays || 0, 
     employee.disciplinaryFines || 0, employee.qualityPenalties || 0, employee.baseSalary || 0,
@@ -107,6 +134,66 @@ export async function updateEmployee(employeeId: string, updates: Partial<Employ
   await db.run(`UPDATE employees SET ${setClause} WHERE employeeId = ?`, [...values, employeeId]);
   resetDbCache();
 }
+
+// --- Department Management ---
+
+export async function getDepartments(): Promise<Department[]> {
+  const db = await getDb();
+  return await db.all(`
+    SELECT d.*, e.name as managerName 
+    FROM departments d
+    LEFT JOIN employees e ON d.managerId = e.employeeId
+    ORDER BY d.name ASC
+  `);
+}
+
+export async function getJobCenters(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.all('SELECT DISTINCT jobCenter FROM employees WHERE jobCenter IS NOT NULL ORDER BY jobCenter ASC');
+  const defaults = [
+    "Garment Production managers",
+    "Line supervisors",
+    "Mechanic",
+    "Cutting operators",
+    "Spreading operators",
+    "Printing operators",
+    "Trimers",
+    "Ironing operators",
+    "Packing operators",
+    "Sewing operator helpers",
+    "Floor cleaners",
+    "Sewing machine operator"
+  ];
+  const existing = rows.map((r: any) => r.jobCenter);
+  return Array.from(new Set([...defaults, ...existing]));
+}
+
+
+export async function createDepartment(name: string, managerId?: string): Promise<number> {
+  const db = await getDb();
+  const result = await db.run('INSERT INTO departments (name, managerId) VALUES (?, ?)', [name, managerId]);
+  resetDbCache();
+  return result.lastID;
+}
+
+export async function updateDepartment(id: number, updates: Partial<Department>): Promise<void> {
+  const db = await getDb();
+  const fields = Object.keys(updates);
+  if (fields.length === 0) return;
+  
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => (updates as any)[f]);
+  
+  await db.run(`UPDATE departments SET ${setClause}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`, [...values, id]);
+  resetDbCache();
+}
+
+export async function deleteDepartment(id: number): Promise<void> {
+  const db = await getDb();
+  await db.run('DELETE FROM departments WHERE id = ?', [id]);
+  resetDbCache();
+}
+
 
 // --- Operation Rates ---
 
@@ -275,20 +362,17 @@ export async function deleteLeave(id: number) {
 
 // --- Incentive Algorithm ---
 
-const JOB_CENTER_MULTIPLIERS: Record<string, number> = {
-  "Garment Production managers": 2.0,
-  "Line supervisors": 1.5,
-  "Mechanic": 1.5,
-  "Cutting operators": 1.3,
-  "Spreading operators": 1.1,
-  "Printing operators": 1.0,
-  "Trimers": 0.8,
-  "Ironing operators": 0.8,
-  "Packing operators": 0.8,
-  "Sewing operator helpers": 0.7,
-  "Floor cleaners": 0.6,
-  "Sewing machine operator": 1.0 // Implicitly 1.0 for sewing operators
-};
+// Helper to get multipliers
+export async function getJobCenterMultipliers(): Promise<Record<string, number>> {
+  const db = await getDb();
+  const rows = await db.all('SELECT jobCenter, multiplier FROM job_center_settings');
+  const multipliers: Record<string, number> = {};
+  rows.forEach((r: any) => {
+    multipliers[r.jobCenter] = r.multiplier;
+  });
+  return multipliers;
+}
+
 
 export async function calculateMonthlyIncentives(month: string) { // month format: YYYY-MM
   const db = await getDb();
@@ -303,7 +387,12 @@ export async function calculateMonthlyIncentives(month: string) { // month forma
   `, [`${month}-%`]);
   
   // 3. Fetch all operation rates
+  // 3. Fetch all operation rates
   const rates = await getOperationRates();
+
+  // 4. Fetch multipliers
+  const multipliers = await getJobCenterMultipliers();
+
   
   const results: any[] = [];
   let totalSewingBonuses = 0;
@@ -343,7 +432,8 @@ export async function calculateMonthlyIncentives(month: string) { // month forma
 
   // Calculate Indirect Labor
   for (const staff of indirectLabor) {
-    const multiplier = JOB_CENTER_MULTIPLIERS[staff.jobCenter] || 0;
+    const multiplier = multipliers[staff.jobCenter] || 0;
+
     let monthlyBonus = avgSewingBonus * multiplier;
     
     // Apply Disciplinary Deductions
@@ -673,10 +763,19 @@ export async function getEmployeeTraining(employeeId?: string) {
 
 export async function enrollEmployeeTraining(data: any) {
   const db = await getDb();
-  await db.run(`
-    INSERT INTO employee_training (employeeId, moduleId, status, startDate, instructor)
-    VALUES (?, ?, ?, ?, ?)
-  `, [data.employeeId, data.moduleId, 'Enrolled', data.startDate, data.instructor]);
+  const employeeIds = Array.isArray(data.employeeIds) ? data.employeeIds : [data.employeeId];
+  
+  for (const empId of employeeIds) {
+    // Basic check to avoid duplicates if needed, but for now just insert
+    // Ideally use INSERT OR IGNORE or check existence
+    const exists = await db.get('SELECT id FROM employee_training WHERE employeeId = ? AND moduleId = ?', [empId, data.moduleId]);
+    if (!exists) {
+        await db.run(`
+            INSERT INTO employee_training (employeeId, moduleId, status, startDate, instructor)
+            VALUES (?, ?, ?, ?, ?)
+        `, [empId, data.moduleId, 'Enrolled', data.startDate, data.instructor]);
+    }
+  }
   resetDbCache();
 }
 
@@ -730,5 +829,87 @@ export async function recordExamResult(result: any) {
     result.employeeId, result.examId, result.examDate, 
     result.score, status, expiryDate, result.certificateUrl
   ]);
+  resetDbCache();
+}
+
+// --- Training Sessions ---
+
+export async function createTrainingModule(data: any) {
+  const db = await getDb();
+  await db.run(`
+    INSERT INTO training_modules (title, description, department, durationDays, category)
+    VALUES (?, ?, ?, ?, ?)
+  `, [data.title, data.description, data.department, data.durationDays, data.category]);
+  resetDbCache();
+}
+
+export async function getTrainingSessions() {
+  const db = await getDb();
+  return await db.all(`
+    SELECT ts.*, tm.title as moduleTitle, tm.durationDays 
+    FROM training_sessions ts
+    JOIN training_modules tm ON ts.moduleId = tm.id
+    ORDER BY ts.startDateTime DESC
+  `);
+}
+
+export async function createTrainingSession(data: any) {
+  const db = await getDb();
+  const { lastID } = await db.run(`
+    INSERT INTO training_sessions (moduleId, startDateTime, endDateTime, location, instructor, capacity, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [data.moduleId, data.startDateTime, data.endDateTime, data.location, data.instructor, data.capacity, 'Scheduled']);
+  return lastID;
+}
+
+export async function getSessionAttendees(sessionId: number) {
+  const db = await getDb();
+  return await db.all(`
+    SELECT tsa.*, e.name as employeeName, e.departmentId
+    FROM training_session_attendees tsa
+    JOIN employees e ON tsa.employeeId = e.employeeId
+    WHERE tsa.sessionId = ?
+  `, [sessionId]);
+}
+
+export async function registerSessionAttendee(sessionId: number, employeeId: string) {
+  const db = await getDb();
+  // Check if already registered
+  const existing = await db.get('SELECT id FROM training_session_attendees WHERE sessionId = ? AND employeeId = ?', [sessionId, employeeId]);
+  if (existing) return;
+
+  await db.run(`
+    INSERT INTO training_session_attendees (sessionId, employeeId, status)
+    VALUES (?, ?, 'Registered')
+  `, [sessionId, employeeId]);
+}
+
+export async function updateSessionAttendance(id: number, status: string, remarks?: string) {
+  const db = await getDb();
+  await db.run('UPDATE training_session_attendees SET status = ?, remarks = ? WHERE id = ?', [status, remarks, id]);
+  
+  // If marked Attended, ensure they have an employee_training record (completion)
+  if (status === 'Attended') {
+    const att = await db.get(`
+      SELECT tsa.*, ts.moduleId, ts.startDateTime, ts.instructor 
+      FROM training_session_attendees tsa
+      JOIN training_sessions ts ON tsa.sessionId = ts.id
+      WHERE tsa.id = ?
+    `, [id]);
+    
+    if (att) {
+      // Check if already in employee_training
+      const et = await db.get('SELECT id FROM employee_training WHERE employeeId = ? AND moduleId = ?', [att.employeeId, att.moduleId]);
+      if (!et) {
+        await db.run(`
+          INSERT INTO employee_training (employeeId, moduleId, status, startDate, completionDate, instructor)
+          VALUES (?, ?, 'Completed', ?, ?, ?)
+        `, [att.employeeId, att.moduleId, att.startDateTime, att.startDateTime, att.instructor]);
+      } else {
+         // Update existing if pending
+         await db.run(`UPDATE employee_training SET status = 'Completed', completionDate = ? WHERE id = ? AND status != 'Completed'`, [att.startDateTime, et.id]);
+      }
+    }
+  }
   resetDbCache();
 }

@@ -56,13 +56,13 @@ export const getNotifications = async (userType: 'factory' | 'shop' | 'store' | 
             `, userType, shopId);
             console.log('Found shop notifications:', notifications); // Debug log
         } else {
-            console.log(`Fetching ${userType} notifications`); // Debug log
+            // Fetching notifications
             notifications = await db.all(`
               SELECT * FROM notifications 
               WHERE userType = ?
               ORDER BY created_at DESC
             `, userType);
-            console.log(`Found ${userType} notifications:`, notifications); // Debug log
+            // Found notifications
         }
         return notifications.map((notification: any) => ({
             ...notification,
@@ -94,7 +94,7 @@ export const markNotificationAsRead = async (notificationId: string) => {
 export const markAllNotificationsAsRead = async (userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce', shopId: string | null) => {
     try {
         const db = await getDb();
-        console.log('Marking all notifications as read for userType:', userType, 'shopId:', shopId); // Debug log
+        // Marking notifications as read
         if (userType === 'shop' && shopId) {
             await db.run(`
               UPDATE notifications 

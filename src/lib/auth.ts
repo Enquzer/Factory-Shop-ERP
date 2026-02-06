@@ -1,7 +1,7 @@
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin' | 'designer' | 'customer' | 'hr' | 'ecommerce';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin' | 'ie_admin' | 'ie_user' | 'designer' | 'customer' | 'hr' | 'ecommerce';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -31,7 +31,7 @@ export const registerUser = async (
     const result = await response.json();
     return result;
   } catch (error) {
-    console.error('Error registering user:', error);
+    // Error registering user
     return {
       success: false,
       message: 'Failed to register user'
@@ -55,7 +55,7 @@ export const authenticateUser = async (
     const result = await response.json();
     return result;
   } catch (error) {
-    console.error('Error authenticating user:', error);
+    // Error authenticating user
     return {
       success: false,
       message: 'Authentication failed'
@@ -74,7 +74,7 @@ export const getUserById = async (id: number): Promise<User | undefined> => {
     const user = await response.json();
     return user;
   } catch (error) {
-    console.error('Error fetching user:', error);
+    // Error fetching user
     return undefined;
   }
 };
@@ -90,7 +90,7 @@ export const getUserByUsername = async (username: string): Promise<User | undefi
     const user = await response.json();
     return user;
   } catch (error) {
-    console.error('Error fetching user:', error);
+    // Error fetching user
     return undefined;
   }
 };

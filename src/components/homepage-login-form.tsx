@@ -103,7 +103,6 @@ export function HomepageLoginForm() {
   }, [currentUser, isAttemptingLogin]);
   
   const redirectToDashboard = (role: string) => {
-    console.log('redirectToDashboard called with role:', role);
     switch (role) {
       case 'factory':
         router.push("/dashboard");
@@ -146,15 +145,16 @@ export function HomepageLoginForm() {
         router.push("/designer");
         break;
       case 'hr':
-        console.log('Redirecting to /hr (HR case)');
         router.push("/hr");
         break;
       case 'ecommerce':
-        console.log('Redirecting to /ecommerce-manager (eCommerce case)');
         router.push("/ecommerce-manager");
         break;
+      case 'ie_admin':
+      case 'ie_user':
+        router.push("/ie");
+        break;
       default:
-        console.log('Default case: Redirecting to /');
         router.push("/");
         break;
     }

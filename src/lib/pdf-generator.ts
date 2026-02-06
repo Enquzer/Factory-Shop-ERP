@@ -734,6 +734,10 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
         currentY += 7;
         doc.text(decodeHTMLEntities(`  Driver Name: ${order.dispatchInfo.driverName}`), 20, currentY);
       }
+      if (order.dispatchInfo.comment) {
+        currentY += 7;
+        doc.text(decodeHTMLEntities(`  Comment: ${order.dispatchInfo.comment}`), 20, currentY);
+      }
       if (order.dispatchInfo.attachments && order.dispatchInfo.attachments.length > 0) {
         currentY += 7;
         doc.text(decodeHTMLEntities(`  Attachments: ${order.dispatchInfo.attachments.join(', ')}`), 20, currentY);
@@ -2253,4 +2257,131 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
     console.error('Error generating owner KPI report:', error);
     throw new Error('Failed to generate owner KPI report');
   }
+}
+
+/**
+ * Generates a professional PDF for a machine layout configuration
+ */
+export async function generateMachineLayoutPDF(layout: any): Promise<string> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const title = `Production Layout: ${layout.layoutName}`;
+  await (addHeaderAndLogo as any)(doc, title);
+
+  let currentY = 55;
+
+  // Add Project Info Section
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Layout Information', 20, currentY);
+  currentY += 10;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Order ID: ${layout.orderId || 'N/A'}`, 25, currentY);
+  doc.text(`Section: ${layout.section}`, 100, currentY);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 175, currentY);
+  currentY += 6;
+  doc.text(`Product Code: ${layout.productCode || 'N/A'}`, 25, currentY);
+  doc.text(`Total Machines: ${layout.machinePositions?.length || 0}`, 100, currentY);
+  doc.text(`Time: ${new Date().toLocaleTimeString()}`, 175, currentY);
+  currentY += 15;
+
+  // Layout Visualization Area
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Floor Layout Visualization', 20, currentY);
+  currentY += 5;
+
+  // Draw bounding box for layout area
+  const layoutX = 20;
+  const layoutY = currentY;
+  const layoutW = 250;
+  const layoutH = 80;
+  doc.setDrawColor(200);
+  doc.rect(layoutX, layoutY, layoutW, layoutH);
+
+  // Scale machine positions to fit in the box
+  const scaleX = layoutW / 1200;
+  const scaleY = layoutH / 600;
+
+  if (layout.machinePositions && layout.machinePositions.length > 0) {
+    // Draw connecting lines (flow) first so they are behind machines
+    if (layout.machinePositions.length > 1) {
+      const sortedPositions = [...layout.machinePositions].sort((a, b) => a.sequence - b.sequence);
+      doc.setDrawColor(59, 130, 246); 
+      doc.setLineWidth(0.3);
+      doc.setLineDashPattern([2, 1], 0);
+
+      for (let i = 0; i < sortedPositions.length - 1; i++) {
+        const pos1 = sortedPositions[i];
+        const pos2 = sortedPositions[i + 1];
+
+        const x1 = layoutX + ((pos1.x + 48) * scaleX);
+        const y1 = layoutY + ((pos1.y + 48) * scaleY);
+        const x2 = layoutX + ((pos2.x + 48) * scaleX);
+        const y2 = layoutY + ((pos2.y + 48) * scaleY);
+
+        doc.line(x1, y1, x2, y2);
+      }
+      doc.setLineDashPattern([], 0); // Reset dash
+    }
+
+    // Draw machine boxes
+    layout.machinePositions.forEach((pos: any) => {
+      const mx = layoutX + (pos.x * scaleX);
+      const my = layoutY + (pos.y * scaleY);
+      const mw = 12; 
+      const mh = 8; 
+
+      // Draw machine box
+      doc.setDrawColor(41, 128, 185);
+      doc.setFillColor(235, 245, 251);
+      doc.rect(mx, my, mw, mh, 'FD');
+
+      // Add seq number
+      doc.setFontSize(7);
+      doc.setTextColor(41, 128, 185);
+      doc.text(pos.sequence.toString(), mx + 1, my + 3.5);
+
+      // Add machine code/short name
+      doc.setFontSize(5);
+      doc.setTextColor(0);
+      const label = pos.machine?.machineCode || pos.machineId?.toString() || 'M';
+      doc.text(label, mx + 1, my + 6.5);
+    });
+  }
+
+  currentY = layoutY + layoutH + 15;
+
+  // Add Machines List Table
+  if (layout.machinePositions && layout.machinePositions.length > 0) {
+    const tableData = layout.machinePositions.map((pos: any) => [
+      pos.sequence,
+      pos.machine?.machineCode || 'N/A',
+      pos.machine?.machineName || 'Machine ' + pos.machineId,
+      pos.machine?.category || 'N/A',
+      pos.operatorName || 'Unassigned'
+    ]).sort((a: any, b: any) => a[0] - b[0]);
+
+    const { default: autoTable } = await import('jspdf-autotable');
+    (autoTable as any)(doc, {
+      startY: currentY,
+      head: [['Seq', 'Code', 'Machine Name', 'Category', 'Operator Assigned']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+      styles: { fontSize: 8 }
+    });
+  }
+
+  addFooter(doc, (doc as any).lastAutoTable?.finalY || currentY + 20);
+  
+  const blob = doc.output('blob');
+  return URL.createObjectURL(blob);
 }

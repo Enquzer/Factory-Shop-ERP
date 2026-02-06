@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap, MessageSquare } from 'lucide-react';
+import { Building2, LayoutDashboard, Layout, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap, MessageSquare, GitBranch } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -79,6 +79,7 @@ const hrLinks = [
   { href: '/hr/incentives', label: 'Incentive Ledger', icon: BarChart4 },
   { href: '/hr/payroll', label: 'Payroll & Ledger', icon: Banknote },
   { href: '/hr/training', label: 'Training & Exams', icon: GraduationCap },
+  { href: '/hr/org-chart', label: 'Organizational Chart', icon: GitBranch },
   { href: '/hr/settings', label: 'HR Settings', icon: Settings },
   { href: '/profile', label: 'Profile', icon: User },
 ];
@@ -91,6 +92,19 @@ const ecommerceLinks = [
   { href: '/ecommerce-manager/analytics', label: 'Analytics & Reports', icon: BarChart3 },
   { href: '/ecommerce-manager/settings', label: 'Website Config', icon: Settings },
   { href: '/products', label: 'Product Catalog', icon: Package },
+  { href: '/profile', label: 'Profile', icon: User },
+];
+
+const ieLinks = [
+  { href: '/ie', label: 'IE Dashboard', icon: LayoutDashboard },
+  { href: '/ie/operations', label: 'Operation Library', icon: Factory },
+  { href: '/ie/ob-builder', label: 'OB Builder', icon: FileText },
+  { href: '/ie/machines', label: 'Machine Management', icon: Settings },
+  { href: '/ie/layout-designer', label: 'Layout Designer', icon: Layout },
+  { href: '/ie/line-balancing', label: 'Line Balancing', icon: Users },
+  { href: '/ie/efficiency', label: 'Efficiency Monitor', icon: BarChart3 },
+  { href: '/ie/resource-planning', label: 'Resource Planning', icon: ClipboardList },
+  { href: '/ie/reports', label: 'IE Reports', icon: FileText },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
@@ -211,6 +225,11 @@ export function Nav() {
     case 'ecommerce':
       currentLinks = ecommerceLinks;
       userType = 'ecommerce';
+      break;
+    case 'ie_admin':
+    case 'ie_user':
+      currentLinks = ieLinks;
+      userType = 'ie_admin'; // or 'ie_user' - using ie_admin for consistency
       break;
     case 'factory':
     default:

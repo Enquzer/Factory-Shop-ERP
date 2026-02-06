@@ -16,17 +16,20 @@ import {
   Trash2, 
   Trophy, 
   Banknote, 
-  History, 
+  History as HistoryIcon, 
   ShieldCheck, 
   Target, 
   Loader2,
   TrendingUp,
   User,
   Camera,
-  Upload
+  Upload,
+  PlusCircle
 } from 'lucide-react';
+
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
@@ -200,8 +203,21 @@ function EmployeeDetailDialog({ employee }: { employee: any }) {
   const [exams, setExams] = useState<any[]>([]);
   const [photo, setPhoto] = useState(employee.profilePicture);
   const [uploading, setUploading] = useState(false);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [allEmployees, setAllEmployees] = useState<any[]>([]);
+  const [editData, setEditData] = useState({
+    departmentId: employee.departmentId?.toString() || 'none',
+    managerId: employee.managerId || 'none',
+    status: employee.status
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetch('/api/hr/departments').then(res => res.json()).then(setDepartments);
+    fetch('/api/hr/employees').then(res => res.json()).then(setAllEmployees);
+  }, []);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -256,6 +272,22 @@ function EmployeeDetailDialog({ employee }: { employee: any }) {
     }
   };
 
+  const handleQuickUpdate = async (updates: any) => {
+    try {
+      const res = await fetch('/api/hr/employees', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: employee.employeeId, ...updates }),
+      });
+      if (res.ok) {
+        toast({ title: "Updated", description: "Employee record updated." });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -265,7 +297,10 @@ function EmployeeDetailDialog({ employee }: { employee: any }) {
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto border-none shadow-2xl">
         <DialogHeader>
+          <DialogTitle className="sr-only">Employee Details: {employee.name}</DialogTitle>
+          <DialogDescription className="sr-only">Comprehensive view and management of employee profile, assignments, and performance.</DialogDescription>
           <div className="flex flex-col md:flex-row items-center gap-6 pb-6 border-b">
+
             <div className="relative group">
               <Avatar className="h-24 w-24 border-4 border-primary/10 shadow-xl transition-all group-hover:brightness-50">
                 <AvatarImage src={photo} />
@@ -327,21 +362,73 @@ function EmployeeDetailDialog({ employee }: { employee: any }) {
 
             <section>
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4 flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-green-500" /> Payroll & Compliance
+                <ShieldCheck className="h-4 w-4 text-green-500" /> Organization & Status
               </h3>
               <div className="bg-secondary/20 p-5 rounded-2xl space-y-4 border border-border/50">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Base Salary</span>
-                  <span className="text-lg font-bold text-green-600">{employee.baseSalary?.toLocaleString() || '0'} <span className="text-xs font-normal">Br</span></span>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Department</label>
+                  <Select 
+                    value={editData.departmentId} 
+                    onValueChange={(val) => {
+                      setEditData(prev => ({ ...prev, departmentId: val }));
+                      handleQuickUpdate({ departmentId: val === 'none' ? null : parseInt(val) });
+                    }}
+                  >
+                    <SelectTrigger className="h-9 bg-background/50">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Department</SelectItem>
+                      {departments.map(dept => (
+                        <SelectItem key={dept.id} value={dept.id.toString()}>{dept.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Pension Scheme</span>
-                  <Badge variant={employee.pensionOptOut ? "destructive" : "outline"} className="rounded-full">
-                    {employee.pensionOptOut ? 'Opted Out' : 'Active (7/11%)'}
-                  </Badge>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Reporting Manager</label>
+                  <Select 
+                    value={editData.managerId} 
+                    onValueChange={(val) => {
+                      setEditData(prev => ({ ...prev, managerId: val }));
+                      handleQuickUpdate({ managerId: val === 'none' ? null : val });
+                    }}
+                  >
+                    <SelectTrigger className="h-9 bg-background/50">
+                      <SelectValue placeholder="Select manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Manager (Top Level)</SelectItem>
+                      {allEmployees.filter(e => e.employeeId !== employee.employeeId).map(emp => (
+                        <SelectItem key={emp.employeeId} value={emp.employeeId}>{emp.name} ({emp.employeeId})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Employment Status</label>
+                  <Select 
+                    value={editData.status} 
+                    onValueChange={(val) => {
+                      setEditData(prev => ({ ...prev, status: val }));
+                      handleQuickUpdate({ status: val });
+                    }}
+                  >
+                    <SelectTrigger className="h-9 bg-background/50">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Inactive">Inactive</SelectItem>
+                      <SelectItem value="On Leave">On Leave</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </section>
+
 
             <SalaryAdjustmentForm employee={employee} />
           </div>
@@ -349,7 +436,7 @@ function EmployeeDetailDialog({ employee }: { employee: any }) {
           <div className="space-y-8">
             <section>
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4 flex items-center gap-2">
-                <History className="h-4 w-4 text-blue-500" /> Career & Action History
+                <HistoryIcon className="h-4 w-4 text-blue-500" /> Career & Action History
               </h3>
               <div className="space-y-4">
                 {actions.length > 0 ? (

@@ -286,7 +286,12 @@ export async function generateOrderTelegramPDF(orderId: string, stage: 'order_pl
     doc.text(`Driver Name: ${dispatchInfo?.driverName || 'N/A'}`, 25, currentY + 32);
     doc.text(`License Plate: ${dispatchInfo?.transportLicensePlate || 'N/A'}`, 25, currentY + 40);
     doc.text(`Contact Person: ${dispatchInfo?.contactPerson || shop.contactPerson}`, 25, currentY + 48);
-    currentY += 60;
+    if (dispatchInfo?.comment) {
+      doc.text(`Comment: ${dispatchInfo.comment}`, 25, currentY + 56);
+      currentY += 68;
+    } else {
+      currentY += 60;
+    }
   }
 
   // Footer

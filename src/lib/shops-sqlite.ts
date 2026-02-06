@@ -172,15 +172,15 @@ export async function getShopById(id: string): Promise<Shop | null> {
 // Get a shop by username
 export async function getShopByUsername(username: string): Promise<Shop | null> {
   try {
-    console.log(`Getting database connection for shop username: ${username}`);
+    // Getting database connection
     // Get database connection
     const db = await getDb();
-    console.log(`Database connection established, querying for username: ${username}`);
+    // Database connection established
 
     const shop = await db.get(`
       SELECT * FROM shops WHERE username = ?
     `, username);
-    console.log(`Database query completed for ${username}, result:`, shop ? 'FOUND' : 'NOT FOUND');
+    // Database query completed
 
     if (!shop) {
       return null;

@@ -83,7 +83,7 @@ export function Header() {
 
     // Cleanup subscription on component unmount
     return () => clearInterval(intervalId);
-  }, [user]);
+  }, [user, pathname]);
 
   const handleMarkAsRead = async () => {
     try {

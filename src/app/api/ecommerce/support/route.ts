@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupportTicket, getSupportTicketsByOrder, getCustomerByUsername } from '@/lib/customers-sqlite';
 import { authenticateRequest } from '@/lib/auth-middleware';
+import { createNotification } from '@/lib/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +27,14 @@ export async function POST(request: NextRequest) {
       customerId: customer.id,
       subject,
       message
+    });
+    
+    // Notify Ecommerce Manager about new support ticket
+    await createNotification({
+      userType: 'ecommerce',
+      title: 'New Support Ticket',
+      description: `${subject} - Order #${orderId.split('-').pop()}`,
+      href: `/ecommerce-manager/support`
     });
     
     return NextResponse.json({ ticket });

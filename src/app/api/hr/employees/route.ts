@@ -1,9 +1,17 @@
-
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmployees, createEmployee, updateEmployee } from '@/lib/hr';
+import { getEmployees, createEmployee, updateEmployee, getNextEmployeeId, getJobCenters } from '@/lib/hr';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    if (searchParams.get('nextId') === 'true') {
+      const id = await getNextEmployeeId();
+      return NextResponse.json({ id });
+    }
+    if (searchParams.get('jobCenters') === 'true') {
+      const centers = await getJobCenters();
+      return NextResponse.json(centers);
+    }
     const employees = await getEmployees();
     return NextResponse.json(employees);
   } catch (error) {

@@ -6,7 +6,7 @@ import { getMarketingOrderByIdFromDB } from '@/lib/marketing-orders';
 // GET /api/cutting - Get all cutting records
 async function handleGet(req: NextRequest, user: any) {
   try {
-    console.log('handleGet called for user:', user.username);
+    // handleGet called
     const records = await getCuttingRecordsFromDB();
     console.log('Fetched cutting records count:', records.length);
     return NextResponse.json(records);
@@ -78,7 +78,7 @@ async function handlePost(req: NextRequest, user: any) {
 export async function GET(req: NextRequest) {
   console.log('GET /api/cutting started');
   const user = await authenticateRequest(req);
-  console.log('User authenticated for /api/cutting:', user ? user.username : 'NULL');
+  // User authenticated for /api/cutting
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

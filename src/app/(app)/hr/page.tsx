@@ -136,11 +136,25 @@ export default function HRPage() {
           badge="Operations"
         />
         <MenuCard 
+          title="Organizational Chart" 
+          description="View and manage departments and employee reporting hierarchy." 
+          icon={<Users className="h-8 w-8 text-indigo-500" />}
+          href="/hr/org-chart"
+          badge="Hierarchy"
+        />
+        <MenuCard 
           title="Training & Exams" 
           description="Track exam history, promotions, and skill development." 
           icon={<GraduationCap className="h-8 w-8 text-blue-500" />}
           href="/hr/training"
           badge="Development"
+        />
+        <MenuCard 
+          title="Drivers Management" 
+          description="Register and manage drivers, contacts, and transport details." 
+          icon={<Users className="h-8 w-8 text-red-500" />}
+          href="/hr/drivers"
+          badge="Logistics"
         />
       </div>
 

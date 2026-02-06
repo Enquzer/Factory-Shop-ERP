@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,22 @@ import {
   DialogHeader, 
   DialogTitle 
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Order } from "@/lib/orders";
+
+interface Driver {
+  id: number;
+  name: string;
+  contact: string;
+  license_plate: string;
+}
 
 interface DispatchDialogProps {
   order: Order | null;
@@ -22,15 +36,46 @@ interface DispatchDialogProps {
 }
 
 export function DispatchDialog({ order, open, onOpenChange, onDispatch }: DispatchDialogProps) {
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState<string>("");
   const [driverName, setDriverName] = useState("");
   const [transportLicensePlate, setTransportLicensePlate] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().split('T')[0]);
   const [padNumber, setPadNumber] = useState("");
   const [receiptNumber, setReceiptNumber] = useState("");
+  const [comment, setComment] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      fetchDrivers();
+    }
+  }, [open]);
+
+  const fetchDrivers = async () => {
+    try {
+      const response = await fetch("/api/hr/drivers");
+      if (response.ok) {
+        const data = await response.json();
+        setDrivers(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch drivers:", error);
+    }
+  };
+
+  const handleDriverChange = (driverId: string) => {
+    setSelectedDriverId(driverId);
+    const driver = drivers.find(d => d.id.toString() === driverId);
+    if (driver) {
+      setDriverName(driver.name);
+      setContactPerson(driver.contact);
+      setTransportLicensePlate(driver.license_plate || "");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +85,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
     
     try {
       const dispatchInfo = {
+        shopId: order.shopId,
         shopName: order.shopName,
         transportLicensePlate,
         contactPerson,
@@ -47,8 +93,8 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
         driverName,
         padNumber,
         receiptNumber,
+        comment,
         // In a real implementation, you would handle file uploads here
-        // For now, we'll just pass the attachments array
         attachments: attachments.map(file => file.name)
       };
 
@@ -61,7 +107,9 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
       setDispatchDate(new Date().toISOString().split('T')[0]);
       setPadNumber("");
       setReceiptNumber("");
+      setComment("");
       setAttachments([]);
+      setSelectedDriverId("");
       
       toast({
         title: "Success",
@@ -123,6 +171,22 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
                 disabled 
               />
             </div>
+
+            <div className="space-y-2 col-span-full">
+              <Label htmlFor="driverSelect">Select Registered Driver</Label>
+              <Select onValueChange={handleDriverChange} value={selectedDriverId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a driver..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {drivers.map((driver) => (
+                    <SelectItem key={driver.id} value={driver.id.toString()}>
+                      {driver.name} ({driver.license_plate || 'No Plate'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             
             <div className="space-y-2">
               <Label htmlFor="driverName">Driver Name</Label>
@@ -140,12 +204,11 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
                 id="transportLicensePlate" 
                 value={transportLicensePlate}
                 onChange={(e) => setTransportLicensePlate(e.target.value)}
-                required
               />
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="contactPerson">Contact Person</Label>
+              <Label htmlFor="contactPerson">Driver Contact</Label>
               <Input 
                 id="contactPerson" 
                 value={contactPerson}
@@ -186,13 +249,24 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
                 required
               />
             </div>
+
+            <div className="space-y-2 col-span-full">
+              <Label htmlFor="comment">Comments / Dispatch Side Notes</Label>
+              <Textarea 
+                id="comment" 
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Add any optional comments here..."
+                className="min-h-[80px]"
+              />
+            </div>
           </div>
           
           <div className="space-y-2">
             <Label>Order Items</Label>
-            <div className="border rounded-md max-h-60 overflow-y-auto">
+            <div className="border rounded-md max-h-60 overflow-y-auto font-sans">
               <table className="w-full">
-                <thead className="bg-muted">
+                <thead className="bg-muted sticky top-0">
                   <tr>
                     <th className="text-left p-3 text-sm font-medium">Product</th>
                     <th className="text-left p-3 text-sm font-medium">Variant</th>

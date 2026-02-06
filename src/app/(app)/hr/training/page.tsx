@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   GraduationCap, 
   BookOpen, 
@@ -21,8 +22,12 @@ import {
   FileCheck,
   Trophy,
   AlertCircle,
-  Download
+  Download,
+  CalendarDays,
+  MapPin,
+  Users
 } from 'lucide-react';
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -38,11 +43,20 @@ export default function TrainingExamsPage() {
   const [search, setSearch] = useState('');
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
+  
+  // New States for Sessions
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [isCreateModuleModalOpen, setIsCreateModuleModalOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [sessionAttendees, setSessionAttendees] = useState<any[]>([]);
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+
   const { toast } = useToast();
 
   // Form States
   const [enrollForm, setEnrollForm] = useState({
-    employeeId: '',
+    employeeIds: [] as string[],
     moduleId: '',
     startDate: format(new Date(), 'yyyy-MM-dd'),
     instructor: ''
@@ -56,6 +70,24 @@ export default function TrainingExamsPage() {
     certificateUrl: ''
   });
 
+  const [sessionForm, setSessionForm] = useState({
+    moduleId: '',
+    startDateTime: '',
+    endDateTime: '',
+    location: 'Training Room A',
+    instructor: '',
+    capacity: 20
+  });
+
+  const [newModuleForm, setNewModuleForm] = useState({
+    title: '',
+    description: '',
+    department: 'General',
+    durationDays: 1,
+    category: 'Technical'
+  });
+
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -63,12 +95,13 @@ export default function TrainingExamsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [modRes, examRes, progRes, resRes, empRes] = await Promise.all([
+      const [modRes, examRes, progRes, resRes, empRes, sessionsRes] = await Promise.all([
         fetch('/api/hr/training?type=modules'),
         fetch('/api/hr/exams?type=exams'),
         fetch('/api/hr/training?type=progress'),
         fetch('/api/hr/exams?type=results'),
-        fetch('/api/hr/employees')
+        fetch('/api/hr/employees'),
+        fetch('/api/hr/training/sessions')
       ]);
 
       if (modRes.ok) setModules(await modRes.json());
@@ -76,10 +109,83 @@ export default function TrainingExamsPage() {
       if (progRes.ok) setTrainingProgress(await progRes.json());
       if (resRes.ok) setExamResults(await resRes.json());
       if (empRes.ok) setEmployees(await empRes.json());
+      if (sessionsRes.ok) setSessions(await sessionsRes.json());
+
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSessionAttendees = async (sessionId: number) => {
+    const res = await fetch(`/api/hr/training/sessions?id=${sessionId}`);
+    if (res.ok) setSessionAttendees(await res.json());
+  };
+
+  const handleCreateModule = async () => {
+    try {
+      const res = await fetch('/api/hr/training/modules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newModuleForm)
+      });
+      if (res.ok) {
+        toast({ title: "Success", description: "New Training Module Created" });
+        setIsCreateModuleModalOpen(false);
+        fetchData();
+      }
+    } catch (err) {
+      toast({ title: "Error", variant: "destructive", description: "Failed to create module" });
+    }
+  };
+
+  const handleCreateSession = async () => {
+    try {
+      const res = await fetch('/api/hr/training/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionForm)
+      });
+      if (res.ok) {
+        toast({ title: "Success", description: "Training Session Scheduled" });
+        setIsSessionModalOpen(false);
+        fetchData();
+      }
+    } catch (err) {
+      toast({ title: "Error", variant: "destructive", description: "Failed to schedule session" });
+    }
+  };
+
+  const handeRegisterAttendee = async (employeeId: string) => {
+    if (!selectedSession) return;
+    try {
+      const res = await fetch('/api/hr/training/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'register_attendee', sessionId: selectedSession.id, employeeId })
+      });
+      if (res.ok) {
+         toast({ title: "Registered", description: "Employee added to session" });
+         fetchSessionAttendees(selectedSession.id);
+      }
+    } catch (err) {
+       toast({ title: "Error", variant: "destructive", description: "Failed to register" });
+    }
+  };
+
+  const handleMarkAttendance = async (id: number, status: string) => {
+    try {
+      const res = await fetch('/api/hr/training/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'mark_attendance', id, status, remarks: '' })
+      }); 
+      if (res.ok) {
+        if (selectedSession) fetchSessionAttendees(selectedSession.id);
+      }
+    } catch(err) {
+        console.error(err);
     }
   };
 
@@ -150,6 +256,133 @@ export default function TrainingExamsPage() {
         </div>
         
         <div className="flex gap-2">
+          {/* Create Module Dialog */}
+          <Dialog open={isCreateModuleModalOpen} onOpenChange={setIsCreateModuleModalOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="rounded-full shadow-lg gap-2">
+                <Plus className="h-4 w-4" /> New Module
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Training Module</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Title</label>
+                  <Input 
+                    value={newModuleForm.title}
+                    onChange={(e) => setNewModuleForm({...newModuleForm, title: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Description</label>
+                  <Input 
+                    value={newModuleForm.description}
+                    onChange={(e) => setNewModuleForm({...newModuleForm, description: e.target.value})}
+                  />
+                </div>
+                <div className="flex gap-4">
+                  <div className="space-y-2 flex-1">
+                    <label className="text-sm font-medium">Department</label>
+                    <Select onValueChange={(v) => setNewModuleForm({...newModuleForm, department: v})} defaultValue={newModuleForm.department}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="General">General</SelectItem>
+                          <SelectItem value="Production">Production</SelectItem>
+                          <SelectItem value="HR">HR</SelectItem>
+                          <SelectItem value="Sewing">Sewing</SelectItem>
+                          <SelectItem value="Safety">Safety</SelectItem>
+                        </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <label className="text-sm font-medium">Duration (Days)</label>
+                    <Input 
+                      type="number"
+                      value={newModuleForm.durationDays}
+                      onChange={(e) => setNewModuleForm({...newModuleForm, durationDays: parseInt(e.target.value)})}
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateModuleModalOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreateModule}>Create Module</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Schedule Session Dialog */}
+          <Dialog open={isSessionModalOpen} onOpenChange={setIsSessionModalOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="rounded-full shadow-lg gap-2">
+                <CalendarDays className="h-4 w-4" /> Schedule Session
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Schedule Training Session</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Module</label>
+                  <Select onValueChange={(v) => setSessionForm({...sessionForm, moduleId: v})}>
+                    <SelectTrigger><SelectValue placeholder="Select Module" /></SelectTrigger>
+                    <SelectContent>
+                      {modules.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-4">
+                  <div className="space-y-2 flex-1">
+                    <label className="text-sm font-medium">Start Date & Time</label>
+                    <Input 
+                      type="datetime-local"
+                      value={sessionForm.startDateTime}
+                      onChange={(e) => setSessionForm({...sessionForm, startDateTime: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <label className="text-sm font-medium">End Date & Time</label>
+                    <Input 
+                      type="datetime-local"
+                      value={sessionForm.endDateTime}
+                      onChange={(e) => setSessionForm({...sessionForm, endDateTime: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Location</label>
+                  <Input 
+                    value={sessionForm.location}
+                    onChange={(e) => setSessionForm({...sessionForm, location: e.target.value})}
+                  />
+                </div>
+                <div className="flex gap-4">
+                   <div className="space-y-2 flex-1">
+                    <label className="text-sm font-medium">Instructor</label>
+                    <Input 
+                        value={sessionForm.instructor}
+                        onChange={(e) => setSessionForm({...sessionForm, instructor: e.target.value})}
+                    />
+                   </div>
+                   <div className="space-y-2 flex-1">
+                    <label className="text-sm font-medium">Capacity</label>
+                    <Input 
+                        type="number"
+                        value={sessionForm.capacity}
+                        onChange={(e) => setSessionForm({...sessionForm, capacity: parseInt(e.target.value)})}
+                    />
+                   </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsSessionModalOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreateSession}>Schedule Session</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={isEnrollModalOpen} onOpenChange={setIsEnrollModalOpen}>
             <DialogTrigger asChild>
               <Button className="rounded-full shadow-lg gap-2">
@@ -162,13 +395,28 @@ export default function TrainingExamsPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Employee</label>
-                  <Select onValueChange={(v) => setEnrollForm({...enrollForm, employeeId: v})}>
-                    <SelectTrigger><SelectValue placeholder="Select Employee" /></SelectTrigger>
-                    <SelectContent>
-                      {employees.map(e => <SelectItem key={e.employeeId} value={e.employeeId}>{e.name} ({e.employeeId})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <label className="text-sm font-medium">Employees (Select Multiple)</label>
+                  <div className="border rounded-lg p-4 max-h-64 overflow-y-auto space-y-2">
+                    {employees.map(e => (
+                      <div key={e.employeeId} className="flex items-center space-x-2">
+                        <Checkbox 
+                          id={`emp-${e.employeeId}`}
+                          checked={enrollForm.employeeIds.includes(e.employeeId)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setEnrollForm({...enrollForm, employeeIds: [...enrollForm.employeeIds, e.employeeId]});
+                            } else {
+                              setEnrollForm({...enrollForm, employeeIds: enrollForm.employeeIds.filter(id => id !== e.employeeId)});
+                            }
+                          }}
+                        />
+                        <label htmlFor={`emp-${e.employeeId}`} className="text-sm cursor-pointer">
+                          {e.name} ({e.employeeId})
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{enrollForm.employeeIds.length} employee(s) selected</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Module</label>
@@ -242,8 +490,9 @@ export default function TrainingExamsPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="progress" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 rounded-xl bg-secondary/50 p-1">
+      <Tabs defaultValue="sessions" className="w-full">
+        <TabsList className="grid w-full grid-cols-5 rounded-xl bg-secondary/50 p-1">
+          <TabsTrigger value="sessions" className="gap-2"><CalendarDays className="h-4 w-4" /> Sessions</TabsTrigger>
           <TabsTrigger value="progress" className="gap-2"><Clock className="h-4 w-4" /> Training Progress</TabsTrigger>
           <TabsTrigger value="exams" className="gap-2"><Trophy className="h-4 w-4" /> Exam Results</TabsTrigger>
           <TabsTrigger value="catalog" className="gap-2"><BookOpen className="h-4 w-4" /> Modules Catalog</TabsTrigger>
@@ -364,6 +613,104 @@ export default function TrainingExamsPage() {
                </Table>
              </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="sessions" className="mt-6">
+          <div className="grid gap-6">
+            {sessions.map((session) => (
+              <Card key={session.id} className="border-none shadow-md overflow-hidden hover:shadow-lg transition-all">
+                <CardContent className="p-0 flex flex-col md:flex-row">
+                   <div className="bg-primary/5 p-6 flex flex-col justify-center items-center w-full md:w-32 border-r border-border/50">
+                      <div className="text-2xl font-bold text-primary">{format(new Date(session.startDateTime), 'dd')}</div>
+                      <div className="text-sm uppercase tracking-wider text-muted-foreground">{format(new Date(session.startDateTime), 'MMM')}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{format(new Date(session.startDateTime), 'HH:mm')}</div>
+                   </div>
+                   <div className="p-6 flex-1">
+                      <div className="flex justify-between items-start">
+                         <div>
+                            <h3 className="text-lg font-bold">{session.moduleTitle}</h3>
+                            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                               <div className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {session.location}</div>
+                               <div className="flex items-center gap-1"><User className="h-3 w-3" /> {session.instructor}</div>
+                               <div className="flex items-center gap-1"><Clock className="h-3 w-3" /> {session.durationDays} Days</div>
+                            </div>
+                         </div>
+                         <Badge variant={session.status === 'Scheduled' ? 'secondary' : 'default'}>{session.status}</Badge>
+                      </div>
+                      
+                      <div className="mt-6 flex items-center justify-between">
+                         <div className="flex -space-x-2">
+                            {/* Avatars placeholder */}
+                            <div className="h-8 w-8 rounded-full bg-slate-200 border-2 border-background flex items-center justify-center text-[10px] font-bold">JD</div>
+                            <div className="h-8 w-8 rounded-full bg-slate-300 border-2 border-background flex items-center justify-center text-[10px] font-bold">+5</div>
+                         </div>
+                         <Dialog>
+                            <DialogTrigger asChild>
+                               <Button variant="outline" size="sm" onClick={() => { setSelectedSession(session); fetchSessionAttendees(session.id); }}>
+                                  Manage Attendees
+                               </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-3xl">
+                               <DialogHeader>
+                                  <DialogTitle>Session Attendees - {session.moduleTitle}</DialogTitle>
+                               </DialogHeader>
+                               <div className="space-y-6">
+                                  <div className="flex gap-2 items-center bg-muted/30 p-4 rounded-lg">
+                                     <User className="h-4 w-4 text-muted-foreground" />
+                                     <Select onValueChange={(v) => handeRegisterAttendee(v)}>
+                                        <SelectTrigger className="w-[300px] border-none bg-transparent shadow-none"><SelectValue placeholder="Add attendee..." /></SelectTrigger>
+                                        <SelectContent>
+                                           {employees.map(e => <SelectItem key={e.employeeId} value={e.employeeId}>{e.name}</SelectItem>)}
+                                        </SelectContent>
+                                     </Select>
+                                     <Button size="sm" variant="ghost">Add</Button>
+                                  </div>
+
+                                  <Table>
+                                     <TableHeader>
+                                        <TableRow>
+                                           <TableHead>Employee</TableHead>
+                                           <TableHead>Status</TableHead>
+                                           <TableHead className="text-right">Action</TableHead>
+                                        </TableRow>
+                                     </TableHeader>
+                                     <TableBody>
+                                        {sessionAttendees.map(att => (
+                                           <TableRow key={att.id}>
+                                              <TableCell className="font-medium">{att.employeeName}</TableCell>
+                                              <TableCell>
+                                                 <Badge variant={att.status === 'Attended' ? 'default' : 'secondary'} className={att.status === 'Attended' ? 'bg-green-500' : ''}>
+                                                    {att.status}
+                                                 </Badge>
+                                              </TableCell>
+                                              <TableCell className="text-right">
+                                                 {att.status !== 'Attended' && (
+                                                    <Button size="sm" variant="ghost" className="text-green-600 h-6" onClick={() => handleMarkAttendance(att.id, 'Attended')}>
+                                                       Mark Present
+                                                    </Button>
+                                                 )}
+                                              </TableCell>
+                                           </TableRow>
+                                        ))}
+                                        {sessionAttendees.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No attendees registered yet.</TableCell></TableRow>}
+                                     </TableBody>
+                                  </Table>
+                               </div>
+                            </DialogContent>
+                         </Dialog>
+                      </div>
+                   </div>
+                </CardContent>
+              </Card>
+            ))}
+            {sessions.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                    <CalendarDays className="h-12 w-12 mx-auto opacity-20 mb-4" />
+                    <p>No training sessions scheduled.</p>
+                    <Button variant="link" onClick={() => setIsSessionModalOpen(true)}>Schedule first session</Button>
+                </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="catalog" className="mt-6">

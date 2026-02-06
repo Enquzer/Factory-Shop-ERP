@@ -4,7 +4,7 @@ import { getDB, resetDbCache } from './db';
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr' | 'ecommerce';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'customer' | 'hr' | 'ecommerce' | 'ie_admin' | 'ie_user';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -19,10 +19,10 @@ export type AuthResult = {
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'customer' | 'hr' | 'ecommerce'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'customer' | 'hr' | 'ecommerce' | 'ie_admin' | 'ie_user'
 ): Promise<AuthResult> => {
   try {
-    console.log('Registering user with data:', { username, role });
+    // Registering user
     
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -78,11 +78,11 @@ export const authenticateUser = async (
   password: string
 ): Promise<AuthResult> => {
   try {
-    console.log('Authenticating user:', username);
+    // Authenticating user
     
     // Temporary workaround for customer users with database issues
     if (username.startsWith('workaround')) {
-      console.log('Using workaround authentication for customer user:', username);
+      // Using workaround authentication
       
       // For workaround users, we'll bypass database lookup entirely
       return {
@@ -106,7 +106,7 @@ export const authenticateUser = async (
       SELECT * FROM users WHERE username = ?
     `, [username]);
     
-    console.log('User lookup result:', user);
+    // User lookup result
     
     if (!user) {
       console.log('User not found');
@@ -133,7 +133,7 @@ export const authenticateUser = async (
     
     // For shop users, check if the shop is active
     if (user.role === 'shop') {
-      console.log('Checking shop status for shop user');
+      // Checking shop status
       // Import the getShopByUsername function
       const { getShopByUsername } = await import('./shops-sqlite');
       
@@ -150,7 +150,7 @@ export const authenticateUser = async (
       }
     }
     
-    console.log('Authentication successful for user:', username);
+    // Authentication successful
     return {
       success: true,
       user: {

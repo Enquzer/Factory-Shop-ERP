@@ -30,57 +30,80 @@ export default function LocationMap({
   const userMarkerRef = useRef<L.Marker | null>(null);
   const shopMarkerRef = useRef<L.Marker | null>(null);
   const polylineRef = useRef<L.Polyline | null>(null);
+  const mapKey = useRef<string>('map-' + Date.now());
+
+  // Reset map key on unmount to ensure clean state
+  useEffect(() => {
+    return () => {
+      mapKey.current = 'map-' + Date.now();
+    };
+  }, []);
 
   // Initialize Map
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-
-    const map = L.map(containerRef.current, {
-        zoomControl: true,
-        attributionControl: true
-    }).setView([9.0192, 38.7525], 13);
-    
-    mapRef.current = map;
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
-
-    map.on('click', (e) => {
-        onLocationSelect(e.latlng.lat, e.latlng.lng);
-    });
-
-    const resizeObserver = new ResizeObserver(() => {
-        if (mapRef.current && typeof window !== 'undefined') {
-            mapRef.current.invalidateSize();
-        }
-    });
-    
-    if (containerRef.current) {
-        resizeObserver.observe(containerRef.current);
+    // Check if map already exists or container not ready
+    if (!containerRef.current || mapRef.current) {
+      return;
     }
 
-    return () => {
-      if (containerRef.current) {
-        resizeObserver.unobserve(containerRef.current);
-      }
-      resizeObserver.disconnect();
+    // Additional safety check to ensure container is not already initialized
+    if (containerRef.current.querySelector('.leaflet-container')) {
+      console.warn('Map container already has leaflet map initialized');
+      return;
+    }
+
+    try {
+      const map = L.map(containerRef.current, {
+          zoomControl: true,
+          attributionControl: true
+      }).setView([9.0192, 38.7525], 13);
       
-      if (mapRef.current) {
-          const mapInstance = mapRef.current;
-          mapRef.current = null; // Clear ref immediately
-          
-          // Use setTimeout to ensure we're not in the middle of a render cycle
-          setTimeout(() => {
-            try {
-              mapInstance.off();
-              mapInstance.remove();
-            } catch (e) {
-              console.warn("Error during map removal:", e);
-            }
-          }, 0);
+      mapRef.current = map;
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      map.on('click', (e) => {
+          onLocationSelect(e.latlng.lat, e.latlng.lng);
+      });
+
+      const resizeObserver = new ResizeObserver(() => {
+          if (mapRef.current && typeof window !== 'undefined') {
+              mapRef.current.invalidateSize();
+          }
+      });
+      
+      if (containerRef.current) {
+          resizeObserver.observe(containerRef.current);
       }
-    };
+
+      return () => {
+        if (containerRef.current) {
+          resizeObserver.unobserve(containerRef.current);
+        }
+        resizeObserver.disconnect();
+        
+        if (mapRef.current) {
+            const mapInstance = mapRef.current;
+            mapRef.current = null; // Clear ref immediately
+            
+            // Use setTimeout to ensure we're not in the middle of a render cycle
+            setTimeout(() => {
+              try {
+                mapInstance.off();
+                mapInstance.remove();
+              } catch (e) {
+                console.warn("Error during map removal:", e);
+              }
+            }, 0);
+        }
+      };
+    } catch (error) {
+      console.error('Error initializing map:', error);
+      // Clear the ref if initialization failed
+      mapRef.current = null;
+    }
   }, [onLocationSelect]);
 
   // Update Markers and Polyline
@@ -199,7 +222,7 @@ export default function LocationMap({
 
   return (
     <div className={className || "relative h-[480px] w-full rounded-[2.5rem] overflow-hidden border-4 border-white shadow-2xl bg-slate-100"}>
-      <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+      <div key={mapKey.current} ref={containerRef} style={{ height: "100%", width: "100%" }} />
       
       {/* HUD Overlays */}
       <div className="absolute top-6 left-6 z-[1000] flex flex-col gap-3">

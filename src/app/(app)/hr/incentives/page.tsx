@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Banknote, Download, Calculator, TrendingUp, AlertCircle, FileText } from 'lucide-react';
+import { Banknote, Download, Calculator, TrendingUp, AlertCircle, FileText, Settings } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+
+import Link from 'next/link';
 
 export default function IncentivesPage() {
   const [data, setData] = useState<any>(null);
@@ -75,6 +77,11 @@ export default function IncentivesPage() {
           <Button variant="outline" className="rounded-full">
             <Download className="mr-2 h-4 w-4" /> Export Payroll
           </Button>
+          <Link href="/hr/settings">
+            <Button variant="ghost" className="rounded-full">
+              <Settings className="mr-2 h-4 w-4" /> Rules
+            </Button>
+          </Link>
         </div>
       </div>
 

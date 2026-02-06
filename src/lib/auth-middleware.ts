@@ -4,7 +4,7 @@ import { getUserById } from './auth-sqlite';
 import { User } from './auth-sqlite'; // Import from auth-sqlite instead of auth
 
 // Define the expanded role type
-export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'admin' | 'customer' | 'ecommerce';
+export type UserRole = 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'designer' | 'admin' | 'customer' | 'ecommerce' | 'hr' | 'ie_admin' | 'ie_user';
 
 // Extend the User type to include a method for checking roles
 export interface AuthenticatedUser extends Omit<User, 'role'> {
@@ -21,7 +21,7 @@ function verifyToken(token: string): Promise<{ userId: number } | null> {
       // In a real implementation, use a proper JWT library with secret signing
       const tokenParts = token.split('.');
       if (tokenParts.length !== 3) {
-        console.error('Invalid token format');
+        // Invalid token format
         resolve(null);
         return;
       }
@@ -31,7 +31,7 @@ function verifyToken(token: string): Promise<{ userId: number } | null> {
       
       // Check if token is expired
       if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-        console.error('Token expired');
+        // Token expired
         resolve(null);
         return;
       }
@@ -47,14 +47,14 @@ function verifyToken(token: string): Promise<{ userId: number } | null> {
       const expectedSignature = btoa(signatureData + secret).replace(/[^a-zA-Z0-9]/g, '');
       
       if (tokenParts[2] !== expectedSignature) {
-        console.error('Signature mismatch');
+        // Signature mismatch
         resolve(null);
         return;
       }
       
       resolve({ userId: payload.userId });
     } catch (error) {
-      console.error('Token verification error:', error);
+      // Token verification error
       resolve(null);
     }
   });
@@ -84,22 +84,22 @@ export async function authenticateRequest(request: NextRequest): Promise<Authent
     }
     
     // Verify the token
-    console.log('Verifying token...');
+    // Verifying token
     const payload = await verifyToken(token);
     if (!payload) {
-      console.log('Token verification failed');
+      // Token verification failed
       return null;
     }
-    console.log('Token verified, payload:', payload);
+    // Token verified
     
     // Get user from database
-    console.log(`Getting user by ID: ${payload.userId}`);
+    // Getting user by ID
     const user = await getUserById(payload.userId);
     if (!user) {
-      console.log('User not found in database');
+      // User not found
       return null;
     }
-    console.log('User found:', { id: user.id, username: user.username, role: user.role });
+    // User found
     
     // Return authenticated user with role checking method
     // Normalize role for legacy names (e.g., "Factory Admin", "Planning Manager", etc.)
@@ -143,7 +143,7 @@ export async function authenticateRequest(request: NextRequest): Promise<Authent
       }
     }
     
-    console.log(`Normalized role: ${normalizedRole}`);
+    // Normalized role
       return {
         ...user,
         role: normalizedRole,
@@ -155,7 +155,7 @@ export async function authenticateRequest(request: NextRequest): Promise<Authent
         }
       };
   } catch (error) {
-    console.error('Authentication error:', error);
+    // Authentication error
     return null;
   }
 }
@@ -197,6 +197,22 @@ export function withAuth(handler: (request: NextRequest, user: AuthenticatedUser
 }
 
 // Middleware function for API routes with role check
+
+// Helper function to check if user is IE admin
+export function isIEAdmin(user: AuthenticatedUser | null): boolean {
+  return user?.role === 'ie_admin';
+}
+
+// Helper function to check if user is IE user
+export function isIEUser(user: AuthenticatedUser | null): boolean {
+  return user?.role === 'ie_user' || user?.role === 'ie_admin';
+}
+
+// Helper function to check if user has IE module access
+export function hasIEAccess(user: AuthenticatedUser | null): boolean {
+  return user?.hasRole(['ie_admin', 'ie_user']) || false;
+}
+
 export function withRoleAuth(
   handler: (request: NextRequest, user: AuthenticatedUser, context?: any) => Promise<Response>,
   requiredRole: UserRole | UserRole[]
@@ -212,22 +228,26 @@ export function withRoleAuth(
         });
       }
       
-      console.log(`Checking role for user ${user.username}. Role: ${user.role}, Required: ${requiredRole}`);
+      // Checking role
       if (!user.hasRole(requiredRole)) {
-        console.log(`Role check failed for user ${user.username}. Role: ${user.role}, required one of: ${JSON.stringify(requiredRole)}`);
+        // Role check failed
         return new Response(JSON.stringify({ error: 'Forbidden' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' }
         });
       }
-      console.log(`Role check passed for user ${user.username}`);
+      // Role check passed
       
       // Execute the handler and ensure a response is returned
       const result = await handler(request, user, context);
       return result;
-    } catch (error) {
-      console.error('Error in withRoleAuth middleware:', error);
-      return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+    } catch (error: any) {
+      // Error in withRoleAuth middleware
+      console.error('withRoleAuth error:', error);
+      return new Response(JSON.stringify({ 
+        error: error.message || 'Internal Server Error',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });

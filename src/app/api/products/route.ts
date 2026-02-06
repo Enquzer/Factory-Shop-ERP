@@ -95,14 +95,14 @@ export async function POST(request: NextRequest) {
     const hasRequiredRole = requiredRoles.includes(authResult.role);
     
     if (!hasRequiredRole) {
-      console.log('Role check failed - user role:', authResult.role);
+      // Role check failed
       return new Response(JSON.stringify({ error: 'Forbidden' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json' }
       });
     }
     
-    console.log('User authenticated:', authResult);
+    // User authenticated
     
     // Parse the request body
     let productData;

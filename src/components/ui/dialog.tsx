@@ -43,10 +43,11 @@ const DialogContent = React.forwardRef<
   // Get the id from DialogDescription if it exists
   const descriptionId = descriptionChild?.props?.id;
   
-  // Add aria-describedby if we have a description
-  const contentProps = descriptionId 
-    ? { ...props, 'aria-describedby': descriptionId }
-    : props;
+  // Add aria-describedby - set to undefined if no description to suppress warning
+  const contentProps = {
+    ...props,
+    'aria-describedby': descriptionId || undefined
+  };
   
   return (
     <DialogPortal>

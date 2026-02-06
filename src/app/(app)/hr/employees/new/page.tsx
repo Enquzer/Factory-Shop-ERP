@@ -22,24 +22,13 @@ import {
   Save, 
   Loader2, 
   Camera,
-  Target
+  Target,
+  PlusCircle
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import Link from 'next/link';
 
-const JOB_CENTERS = [
-  "Garment Production managers",
-  "Line supervisors",
-  "Mechanic",
-  "Cutting operators",
-  "Spreading operators",
-  "Printing operators",
-  "Trimers",
-  "Ironing operators",
-  "Packing operators",
-  "Sewing operator helpers",
-  "Floor cleaners",
-  "Sewing machine operator"
-];
+
 
 export default function NewEmployeePage() {
   const { token } = useAuth();
@@ -47,6 +36,10 @@ export default function NewEmployeePage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("personal");
+  const [jobCenters, setJobCenters] = useState<string[]>([]);
+  const [isNewCenterDialogOpen, setIsNewCenterDialogOpen] = useState(false);
+  const [newCenterName, setNewCenterName] = useState("");
+
 
   const [formData, setFormData] = useState({
     employeeId: '',
@@ -63,8 +56,25 @@ export default function NewEmployeePage() {
     examHistory: '',
     pensionOptOut: false,
     loyaltyStatus: 'New',
+    departmentId: undefined as number | undefined,
+    managerId: '',
     skills: []
   });
+
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+
+  useState(() => {
+    fetch('/api/hr/departments').then(res => res.json()).then(setDepartments);
+    fetch('/api/hr/employees').then(res => res.json()).then(setEmployees);
+    fetch('/api/hr/employees?nextId=true').then(res => res.json()).then(data => {
+      setFormData(prev => ({ ...prev, employeeId: data.id }));
+    });
+    fetch('/api/hr/employees?jobCenters=true').then(res => res.json()).then(setJobCenters);
+  });
+
+
+
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,9 +113,10 @@ export default function NewEmployeePage() {
     }));
   };
 
-  const handleSelectChange = (name: string, value: string) => {
+  const handleSelectChange = (name: string, value: any) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
+
 
   const handleSwitchChange = (name: string, checked: boolean) => {
     setFormData(prev => ({ ...prev, [name]: checked }));
@@ -206,8 +217,10 @@ export default function NewEmployeePage() {
                     placeholder="e.g., EMP-001" 
                     value={formData.employeeId}
                     onChange={handleChange}
-                    className="bg-background/50"
+                    className="bg-background/50 border-primary/20 focus:border-primary"
                   />
+                  <p className="text-[10px] text-muted-foreground">Auto-generated. You can overwrite this for manual entry.</p>
+
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name</Label>
@@ -286,20 +299,68 @@ export default function NewEmployeePage() {
               <CardContent className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="jobCenter">Job Center / Designation</Label>
+                  <div className="flex gap-2">
+                    <Select 
+                      value={formData.jobCenter} 
+                      onValueChange={(val) => {
+                        if (val === 'ADD_NEW') {
+                          setIsNewCenterDialogOpen(true);
+                        } else {
+                          handleSelectChange('jobCenter', val);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="bg-background/50 flex-1">
+                        <SelectValue placeholder="Select job center" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {jobCenters.map(center => (
+                          <SelectItem key={center} value={center}>{center}</SelectItem>
+                        ))}
+                        <div className="border-t my-1" />
+                        <SelectItem value="ADD_NEW" className="text-primary font-bold">
+                          <PlusCircle className="mr-2 h-4 w-4 inline" /> Add New Designation
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="departmentId">Department</Label>
                   <Select 
-                    value={formData.jobCenter} 
-                    onValueChange={(val) => handleSelectChange('jobCenter', val)}
+                    value={formData.departmentId?.toString() || ""} 
+                    onValueChange={(val) => handleSelectChange('departmentId', val === "" ? undefined : parseInt(val))}
                   >
+
                     <SelectTrigger className="bg-background/50">
-                      <SelectValue placeholder="Select job center" />
+                      <SelectValue placeholder="Select department" />
                     </SelectTrigger>
                     <SelectContent>
-                      {JOB_CENTERS.map(center => (
-                        <SelectItem key={center} value={center}>{center}</SelectItem>
+                      {departments.map(dept => (
+                        <SelectItem key={dept.id} value={dept.id.toString()}>{dept.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="managerId">Reporting Manager</Label>
+                  <Select 
+                    value={formData.managerId} 
+                    onValueChange={(val) => handleSelectChange('managerId', val)}
+                  >
+                    <SelectTrigger className="bg-background/50">
+                      <SelectValue placeholder="Select manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Manager (Top Level)</SelectItem>
+                      {employees.map(emp => (
+                        <SelectItem key={emp.employeeId} value={emp.employeeId}>{emp.name} ({emp.employeeId})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="joinedDate">Date of Joining</Label>
                   <Input 
@@ -446,6 +507,35 @@ export default function NewEmployeePage() {
             </Button>
          </div>
       </CardFooter>
+      <Dialog open={isNewCenterDialogOpen} onOpenChange={setIsNewCenterDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add New Designation</DialogTitle>
+            <DialogDescription>
+              Enter the name of the new Job Center/Designation to add it to the factory registry.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input 
+              placeholder="e.g., Quality Inspector" 
+              value={newCenterName} 
+              onChange={(e) => setNewCenterName(e.target.value)}
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewCenterDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => {
+              if (newCenterName.trim()) {
+                setJobCenters(prev => Array.from(new Set([...prev, newCenterName.trim()])));
+                handleSelectChange('jobCenter', newCenterName.trim());
+                setNewCenterName("");
+                setIsNewCenterDialogOpen(false);
+              }
+            }}>Add Designation</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

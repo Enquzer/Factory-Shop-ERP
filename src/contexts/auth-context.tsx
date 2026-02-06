@@ -53,9 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string) => {
     setIsLoggingIn(true); // Set login loading state
     try {
-      console.log('Attempting login for:', username);
       const result: AuthResult = await authUser(username, password);
-      console.log('Login result:', result);
       
       if (result.success && result.user) {
         // Store the token if it exists
@@ -67,11 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Use the user data directly from the response
         setUser(result.user);
         localStorage.setItem('user', JSON.stringify(result.user));
-        console.log('User set successfully:', result.user);
+        // User set successfully
         
         return { success: true };
       } else {
-        console.log('Login failed:', result.message);
+        // Login failed
         return { success: false, message: result.message };
       }
     } catch (error) {

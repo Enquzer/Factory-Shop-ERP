@@ -93,6 +93,7 @@ interface PlanningRow extends MarketingOrder {
   orderIndex: number;
   componentIndex?: number;
   isMock?: boolean;
+  hasIEOB?: boolean;
 }
 
 export default function OrderPlanningPage() {
@@ -141,7 +142,23 @@ export default function OrderPlanningPage() {
       // Filter out orders that are in Store, Delivery, or Completed status
       // These orders are no longer in active production planning
       const activeStatuses: MarketingOrderStatus[] = ['Store', 'Delivery', 'Completed'];
-      setOrders(data.filter(o => !activeStatuses.includes(o.status)));
+      const filteredOrders = data.filter(o => !activeStatuses.includes(o.status));
+      
+      // Check IE OB status for each order
+      const ordersWithIEStatus = await Promise.all(filteredOrders.map(async (order: any) => {
+        try {
+          const ieCheckResponse = await fetch(`/api/ie/ob/${order.id}`);
+          if (ieCheckResponse.ok) {
+            const ieData = await ieCheckResponse.json();
+            return { ...order, hasIEOB: ieData.source === 'IE' && ieData.items.length > 0 };
+          }
+        } catch (error) {
+          // Silent fail - continue without IE status
+        }
+        return { ...order, hasIEOB: false };
+      }));
+      
+      setOrders(ordersWithIEStatus);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
@@ -316,7 +333,7 @@ export default function OrderPlanningPage() {
           manpower: 0,
           sewingOutputPerDay: 0,
           operationDays: 0,
-          efficiency: order.efficiency || 70,
+          efficiency: order.efficiency || 70
         } as PlanningRow));
      }
 
@@ -507,6 +524,39 @@ export default function OrderPlanningPage() {
     }
     setSelectedOrder(order);
     setSelectedComponent(order.isComponent ? (order.componentName || null) : null);
+    
+    // Check if IE has created OB for this order
+    try {
+      const ieCheckResponse = await fetch(`/api/ie/ob/${order.id}`);
+      if (ieCheckResponse.ok) {
+        const ieData = await ieCheckResponse.json();
+        if (ieData.source === 'IE' && ieData.items.length > 0) {
+          // IE has created the OB - inform user they can sync to planning
+          if (user?.role === 'ie_admin' || user?.role === 'ie_user') {
+            if (confirm(`This OB was created by IE team.\n\nWould you like to view the IE-created Operation Bulletin? (Click Cancel to edit existing planning OB)`)) {
+              // Navigate to IE module instead
+              router.push(`/ie/ob-builder`);
+              toast({
+                title: "Redirecting to IE OB Builder",
+                description: "View and modify the IE-created Operation Bulletin in the IE module."
+              });
+              return;
+            }
+          } else {
+            // Show read-only version to other users
+            toast({
+              title: "Notice",
+              description: "This operation bulletin was created by the IE team. Some editing capabilities may be limited.",
+              variant: "default"
+            });
+          }
+        }
+      }
+    } catch (error) {
+      // Silent fail - proceed with normal planning OB loading
+      console.log('No IE OB found or service unavailable');
+    }
+    
     const items = await getOperationBulletin(order.id, order.productCode);
     setObItems(items);
     setIsOBDialogOpen(true);
@@ -814,18 +864,27 @@ export default function OrderPlanningPage() {
                       </TableCell>
                       <TableCell className="text-[10px]">{order.plannedDeliveryDate}</TableCell>
                       <TableCell className="text-right font-semibold text-[10px]">{order.quantity}</TableCell>
-                       <TableCell className="text-right">
+                       <TableCell className="text-right relative">
                         <div className="flex flex-col gap-1 items-end">
-                           <div className="flex items-center gap-1">
-                             <span className="text-[8px] text-muted-foreground">S:</span>
-                             <Input 
-                                type="number" 
-                                step="0.01" 
-                                className="w-10 h-5 text-right text-[9px] p-0 border-none bg-transparent hover:bg-muted/20"
-                                value={order.smv || 0}
-                                onChange={(e) => handleUpdatePlanning(order.displayId, { smv: parseFloat(e.target.value) }, order.isComponent, order.mainOrderId)}
-                              />
-                           </div>
+                          {/* IE OB Indicator */}
+                          <div className="absolute -top-1 -right-1">
+                            {order.hasIEOB && (
+                              <Badge className="bg-blue-500 text-white text-[8px] h-4 px-1">
+                                IE OB
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center gap-1">
+                            <span className="text-[8px] text-muted-foreground">S:</span>
+                            <Input 
+                               type="number" 
+                               step="0.01" 
+                               className="w-10 h-5 text-right text-[9px] p-0 border-none bg-transparent hover:bg-muted/20"
+                               value={order.smv || 0}
+                               onChange={(e) => handleUpdatePlanning(order.displayId, { smv: parseFloat(e.target.value) }, order.isComponent, order.mainOrderId)}
+                             />
+                          </div>
                            <div className="flex items-center gap-1">
                              <span className="text-[8px] text-muted-foreground">M:</span>
                              <Input 

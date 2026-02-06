@@ -39,22 +39,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 const isStoreRoute = pathname.startsWith('/store');
                 const isFinanceRoute = pathname.startsWith('/finance');
 
-                console.log('AppProvider Redirect Check:', { role: user.role, pathname, isShopRoute, isStoreRoute, isFinanceRoute });
+                // Authentication redirect check
 
                 if (user.role === 'shop' && !isShopRoute) {
-                    console.log('Redirecting Shop user to Dashboard');
                     setRedirecting(true);
                     router.push('/shop/dashboard');
                 } else if (user.role === 'factory' && (isShopRoute || isStoreRoute || isFinanceRoute)) {
-                    console.log('Redirecting Factory user to Dashboard');
                     setRedirecting(true);
                     router.push('/dashboard');
                 } else if (user.role === 'store' && !isStoreRoute) {
-                    console.log('Redirecting Store user to Dashboard');
                     setRedirecting(true);
                     router.push('/store/dashboard');
                 } else if (user.role === 'finance' && !isFinanceRoute) {
-                    console.log('Redirecting Finance user to Reports');
                     setRedirecting(true);
                     router.push('/finance/reports');
                 } else if (user.role === 'packing' && !pathname.startsWith('/packing')) {
@@ -67,11 +63,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                     setRedirecting(true);
                     router.push('/designer');
                 } else if (user.role === 'hr' && !pathname.startsWith('/hr') && !pathname.startsWith('/profile')) {
-                    console.log('Redirecting HR user to /hr');
                     setRedirecting(true);
                     router.push('/hr');
                 } else if (user.role === 'ecommerce' && !pathname.startsWith('/ecommerce-manager') && !pathname.startsWith('/profile')) {
-                    console.log('Redirecting eCommerce user to /ecommerce-manager');
                     setRedirecting(true);
                     router.push('/ecommerce-manager');
                 }

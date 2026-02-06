@@ -90,19 +90,9 @@ export function HelpCenter() {
           <span className="hidden sm:inline">Help</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 [&>button]:h-8 [&>button]:w-8 [&>button>svg]:h-5 [&>button>svg]:w-5">
         <DialogHeader className="p-6 pb-0">
-          <DialogTitle className="flex items-center justify-between">
-            <span>Help Center</span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => setIsDialogOpen(false)}
-              className="h-6 w-6"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </DialogTitle>
+          <DialogTitle>Help Center</DialogTitle>
           <DialogDescription>
             Find answers to common questions and learn how to use the system effectively.
           </DialogDescription>

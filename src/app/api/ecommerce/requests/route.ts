@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     });
 
     await createNotification({
-      userType: 'factory',
+      userType: 'ecommerce',
       title: 'Rare Product Request',
       description: `Item: ${productName}. Cust: ${authResult.username}. ${description}. Budget: ${budget || 'N/A'}`,
       href: `/ecommerce-manager/requests`

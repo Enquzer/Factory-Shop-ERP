@@ -38,6 +38,7 @@ export type Order = {
         attachments?: string[]; // Added attachments field
         padNumber?: string; // Added PAD number
         receiptNumber?: string; // Added Receipt number
+        comment?: string; // Added comment field
     };
     deliveryDate?: string;
     isClosed?: boolean;

@@ -1068,6 +1068,109 @@ export async function deleteMarketingOrderFromDB(id: string): Promise<boolean> {
   }
 }
 
+// Server-side function to get marketing orders that have started sewing but not completed
+export async function getMarketingOrdersStartedSewingNotCompleted(): Promise<MarketingOrder[]> {
+  try {
+    const db = await getDb();
+    
+    // Get marketing orders that have started the sewing process but not completed it
+    // This includes orders that are currently in the 'Sewing' status
+    // OR orders that have sewing production records but are not yet completed
+    const orders = await db.all(`
+      SELECT mo.*, s.components as styleComponents 
+      FROM marketing_orders mo
+      LEFT JOIN styles s ON mo.productCode = s.number
+      WHERE (mo.status = 'Sewing'  -- Currently in sewing stage
+             OR (mo.status IN ('Cutting', 'Sewing', 'Finishing', 'Quality Inspection', 'Packing') 
+                 AND EXISTS (SELECT 1 FROM daily_production_status dps 
+                             WHERE dps.orderId = mo.id 
+                             AND dps.processStage = 'Sewing' 
+                             AND dps.status != 'Completed')))
+        AND mo.sewingCompletionDate IS NULL  -- Make sure sewing isn't marked as completed
+      ORDER BY mo.createdAt DESC
+    `);
+
+    // Get items for each order
+    const ordersWithItems = await Promise.all(
+      orders.map(async (order: any) => {
+        const items = await db.all(`
+          SELECT * FROM marketing_order_items 
+          WHERE orderId = ?
+        `, order.id);
+        
+        return {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          productName: order.productName,
+          productCode: order.productCode,
+          description: order.description,
+          quantity: order.quantity,
+          status: order.status,
+          cuttingStatus: order.cuttingStatus,
+          sewingStatus: order.sewingStatus,
+          finishingStatus: order.finishingStatus,
+          qualityInspectionStatus: order.qualityInspectionStatus,
+          qualityInspectionStage: order.qualityInspectionStage,
+          packingStatus: order.packingStatus,
+          deliveryStatus: order.deliveryStatus,
+          assignedTo: order.assignedTo,
+          dueDate: order.dueDate,
+          completedDate: order.completedDate,
+          pdfUrl: order.pdfUrl,
+          imageUrl: order.imageUrl,
+          isCompleted: order.isCompleted === 1,
+          createdBy: order.createdBy,
+          createdAt: new Date(order.createdAt),
+          updatedAt: new Date(order.updatedAt),
+          orderPlacementDate: order.orderPlacementDate,
+          plannedDeliveryDate: order.plannedDeliveryDate,
+          sizeSetSampleApproved: order.sizeSetSampleApproved,
+          productionStartDate: order.productionStartDate,
+          productionFinishedDate: order.productionFinishedDate,
+          planningCompletionDate: order.planningCompletionDate,
+          sampleCompletionDate: order.sampleCompletionDate,
+          cuttingCompletionDate: order.cuttingCompletionDate,
+          sewingCompletionDate: order.sewingCompletionDate,
+          finishingCompletionDate: order.finishingCompletionDate,
+          qualityInspectionCompletionDate: order.qualityInspectionCompletionDate,
+          packingCompletionDate: order.packingCompletionDate,
+          deliveryCompletionDate: order.deliveryCompletionDate,
+          smv: order.smv,
+          manpower: order.manpower,
+          sewingOutputPerDay: order.sewingOutputPerDay,
+          operationDays: order.operationDays,
+          sewingStartDate: order.sewingStartDate,
+          sewingFinishDate: order.sewingFinishDate,
+          remarks: order.remarks,
+          piecesPerSet: order.piecesPerSet,
+          efficiency: order.efficiency,
+          cuttingStartDate: order.cuttingStartDate,
+          cuttingFinishDate: order.cuttingFinishDate,
+          packingStartDate: order.packingStartDate,
+          packingFinishDate: order.packingFinishDate,
+          isNewProduct: order.isNewProduct === 1,
+          isPlanningApproved: order.isPlanningApproved === 1,
+          isMaterialsConfirmed: order.isMaterialsConfirmed === 1,
+          styleComponents: order.styleComponents,
+          items: items.map((item: any) => ({
+            id: item.id,
+            orderId: item.orderId,
+            size: item.size,
+            color: item.color,
+            quantity: item.quantity
+          })),
+          components: await db.all(`SELECT * FROM marketing_order_components WHERE orderId = ?`, order.id)
+        };
+      })
+    );
+    
+    return ordersWithItems;
+  } catch (error) {
+    console.error('Error fetching marketing orders started sewing but not completed:', error);
+    return [];
+  }
+}
+
 // Server-side function to get total produced quantity for an order
 export async function getTotalProducedQuantity(orderId: string): Promise<number> {
   try {

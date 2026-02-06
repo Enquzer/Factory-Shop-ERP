@@ -30,8 +30,11 @@ import {
   TrendingUp,
   TrendingDown,
   Percent,
-  ClipboardList
+  ClipboardList,
+  Zap
 } from "lucide-react";
+
+
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -41,6 +44,8 @@ export default function HRSettingsPage() {
   const [taxBrackets, setTaxBrackets] = useState<any[]>([]);
   const [salaryHistory, setSalaryHistory] = useState<any[]>([]);
   const [leaveConfigs, setLeaveConfigs] = useState<any[]>([]);
+  const [incentiveSettings, setIncentiveSettings] = useState<any[]>([]);
+
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
@@ -51,17 +56,20 @@ export default function HRSettingsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [gsRes, taxRes, histRes, leaveRes] = await Promise.all([
+      const [gsRes, taxRes, histRes, leaveRes, incRes] = await Promise.all([
         fetch("/api/hr/settings"),
         fetch("/api/hr/settings/tax"),
         fetch("/api/hr/settings/salary-history"),
         fetch("/api/hr/settings/leaves"),
+        fetch("/api/hr/settings/incentives"),
       ]);
 
       if (gsRes.ok) setGlobalSettings(await gsRes.json());
       if (taxRes.ok) setTaxBrackets(await taxRes.json());
       if (histRes.ok) setSalaryHistory(await histRes.json());
       if (leaveRes.ok) setLeaveConfigs(await leaveRes.json());
+      if (incRes.ok) setIncentiveSettings(await incRes.json());
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -114,6 +122,22 @@ export default function HRSettingsPage() {
     }
   };
 
+  const handleUpdateIncentive = async (setting: any) => {
+    try {
+      const res = await fetch("/api/hr/settings/incentives", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(setting),
+      });
+      if (res.ok) {
+        toast({ title: "Updated", description: "Incentive multiplier updated." });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Update failed", variant: "destructive" });
+    }
+  };
+
+
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       <div>
@@ -128,6 +152,9 @@ export default function HRSettingsPage() {
           <TabsTrigger value="pension" className="rounded-lg gap-2">
             <Settings className="h-4 w-4" /> Global Rules
           </TabsTrigger>
+          <TabsTrigger value="incentives" className="rounded-lg gap-2">
+            <Zap className="h-4 w-4" /> Incentive Rules
+          </TabsTrigger>
           <TabsTrigger value="tax" className="rounded-lg gap-2">
             <Scale className="h-4 w-4" /> Tax Brackets
           </TabsTrigger>
@@ -138,6 +165,7 @@ export default function HRSettingsPage() {
             <History className="h-4 w-4" /> Salary Tracking
           </TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="pension">
           <Card className="border-none shadow-xl">
@@ -203,6 +231,79 @@ export default function HRSettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="incentives">
+          <Card className="border-none shadow-xl">
+            <CardHeader>
+              <CardTitle>Incentive Multipliers & Job Rates</CardTitle>
+              <CardDescription>
+                Configure how bonuses are calculated for indirect labor based on Sewing Operator performance.
+                <br/>
+                <span className="text-xs text-muted-foreground italic">
+                  Formula: Indirect Bonus = (Average Sewing Bonus) × (Job Center Multiplier)
+                </span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Job Center / Designation</TableHead>
+                    <TableHead>Multiplier Factor</TableHead>
+                    <TableHead>Effective Example</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {incentiveSettings.map((setting) => (
+                    <TableRow key={setting.jobCenter}>
+                      <TableCell className="font-medium text-primary">
+                        {setting.jobCenter}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.1"
+                            className="h-8 w-20"
+                            value={setting.multiplier}
+                            onChange={(e) => {
+                              const updated = incentiveSettings.map(s => 
+                                s.jobCenter === setting.jobCenter ? { ...s, multiplier: parseFloat(e.target.value) } : s
+                              );
+                              setIncentiveSettings(updated);
+                            }}
+                          />
+                          <span className="text-xs text-muted-foreground">x Base</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        If Base = 1000 Br, Bonus = <span className="font-bold text-foreground">{(1000 * setting.multiplier).toFixed(0)} Br</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleUpdateIncentive(setting)}
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {incentiveSettings.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        Loading configuration...
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
 
         <TabsContent value="tax">
           <Card className="border-none shadow-xl">

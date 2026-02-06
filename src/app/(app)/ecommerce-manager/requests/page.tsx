@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useAuth } from "@/contexts/auth-context";
 import {
   Dialog,
   DialogContent,
@@ -53,21 +54,43 @@ export default function RareRequestsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "reviewed" | "fulfilled" | "rejected">("all");
   const { toast } = useToast();
+  const { token } = useAuth();
   
   const [selectedRequest, setSelectedRequest] = useState<RareRequest | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchRequests = async () => {
+    if (!token) {
+      console.log('No token available, skipping fetch');
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch('/api/ecommerce-manager/requests', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
       if (response.ok) {
         const data = await response.json();
         setRequests(data.requests);
+      } else if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({ error: 'Unauthorized' }));
+        console.error('401 Unauthorized:', errorData);
+        toast({ 
+          title: "Authentication Failed", 
+          description: "Your session may have expired or you don't have permission. Please log in again.", 
+          variant: "destructive" 
+        });
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        toast({ 
+          title: "Error", 
+          description: `Failed to load requests: ${errorData.error}`, 
+          variant: "destructive" 
+        });
       }
     } catch (error) {
       console.error("Error fetching requests:", error);
@@ -78,15 +101,25 @@ export default function RareRequestsPage() {
   };
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    if (token) {
+      fetchRequests();
+    }
+  }, [token]);
 
   const handleStatusUpdate = async (newStatus: string) => {
     if (!selectedRequest) return;
     
+    if (!token) {
+      toast({ 
+        title: "Authentication Error", 
+        description: "No authentication token found. Please log in again.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     setIsUpdating(true);
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch('/api/ecommerce-manager/requests', {
         method: 'PATCH',
         headers: {
@@ -103,10 +136,24 @@ export default function RareRequestsPage() {
         toast({ title: "Updated", description: `Request marked as ${newStatus}.`, className: "bg-green-600 text-white" });
         setIsDialogOpen(false);
         fetchRequests();
+      } else if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({ error: 'Unauthorized' }));
+        console.error('401 Unauthorized:', errorData);
+        toast({ 
+          title: "Authentication Failed", 
+          description: "Your session may have expired. Please log in again.", 
+          variant: "destructive" 
+        });
       } else {
-        throw new Error("Failed to update status");
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        toast({ 
+          title: "Error", 
+          description: `Failed to update status: ${errorData.error}`, 
+          variant: "destructive" 
+        });
       }
     } catch (error) {
+      console.error('Update error:', error);
       toast({ title: "Error", description: "Failed to update status.", variant: "destructive" });
     } finally {
       setIsUpdating(false);

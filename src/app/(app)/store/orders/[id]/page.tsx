@@ -25,6 +25,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
 import { PadNumberDisplay } from "@/components/pad-number-display";
+import { DispatchDialog } from "@/components/dispatch-dialog";
 
 export default function StoreOrderDetailsPage() {
   const params = useParams();
@@ -34,6 +35,7 @@ export default function StoreOrderDetailsPage() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false);
 
   useEffect(() => {
     if (params.id) {
@@ -72,7 +74,7 @@ export default function StoreOrderDetailsPage() {
     }
   };
 
-  const handleDispatch = async () => {
+  const onDispatchSubmit = async (dispatchInfo: any) => {
     if (!order) return;
     
     try {
@@ -89,7 +91,7 @@ export default function StoreOrderDetailsPage() {
         headers,
         body: JSON.stringify({
           status: 'Dispatched',
-          actionBy: 'store'
+          dispatchInfo
         })
       });
 
@@ -117,6 +119,10 @@ export default function StoreOrderDetailsPage() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleDispatch = () => {
+    setIsDispatchDialogOpen(true);
   };
 
   const printDispatchNote = () => {
@@ -374,6 +380,13 @@ export default function StoreOrderDetailsPage() {
             )}
         </div>
       </div>
+
+      <DispatchDialog 
+        order={order}
+        open={isDispatchDialogOpen}
+        onOpenChange={setIsDispatchDialogOpen}
+        onDispatch={onDispatchSubmit}
+      />
 
       <style jsx global>{`
         @media print {

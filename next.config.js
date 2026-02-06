@@ -54,7 +54,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: '/((?!api|_next/static|_next/image|favicon.ico|.*\\.js$|.*\\.css$).*)',
         headers: [
           {
             key: 'X-DNS-Prefetch-Control',

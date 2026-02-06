@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import Link from "next/link";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/auth-context";
 import {
   Dialog,
   DialogContent,
@@ -55,6 +56,7 @@ export default function SupportManagementPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
   const { toast } = useToast();
+  const { token } = useAuth();
   
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -62,15 +64,41 @@ export default function SupportManagementPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const fetchTickets = async () => {
+    if (!token) {
+      console.log('No token available, skipping fetch');
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      console.log('Token retrieved:', token ? 'Token exists' : 'No token found');
+      
       const response = await fetch('/api/ecommerce-manager/support', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      console.log('Response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
         setTickets(data.tickets);
+      } else if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({ error: 'Unauthorized' }));
+        console.error('401 Unauthorized:', errorData);
+        toast({ 
+          title: "Authentication Failed", 
+          description: "Your session may have expired or you don't have permission. Please log in again.", 
+          variant: "destructive" 
+        });
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('API Error:', errorData);
+        toast({ 
+          title: "Error", 
+          description: `Failed to load support tickets: ${errorData.error}`, 
+          variant: "destructive" 
+        });
       }
     } catch (error) {
       console.error("Error fetching tickets:", error);
@@ -81,15 +109,25 @@ export default function SupportManagementPage() {
   };
 
   useEffect(() => {
-    fetchTickets();
-  }, []);
+    if (token) {
+      fetchTickets();
+    }
+  }, [token]);
 
   const handleReply = async () => {
     if (!selectedTicket || !replyText.trim()) return;
     
+    if (!token) {
+      toast({ 
+        title: "Authentication Error", 
+        description: "No authentication token found. Please log in again.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch('/api/ecommerce-manager/support', {
         method: 'PATCH',
         headers: {
@@ -108,10 +146,24 @@ export default function SupportManagementPage() {
         setIsDialogOpen(false);
         setReplyText("");
         fetchTickets();
+      } else if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({ error: 'Unauthorized' }));
+        console.error('401 Unauthorized:', errorData);
+        toast({ 
+          title: "Authentication Failed", 
+          description: "Your session may have expired. Please log in again.", 
+          variant: "destructive" 
+        });
       } else {
-        throw new Error("Failed to send reply");
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        toast({ 
+          title: "Error", 
+          description: `Failed to send reply: ${errorData.error}`, 
+          variant: "destructive" 
+        });
       }
     } catch (error) {
+      console.error('Reply error:', error);
       toast({ title: "Error", description: "Failed to send reply.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
