@@ -958,17 +958,17 @@ export default function LayoutDesignerPage() {
                 )}
               </div>
               <div>
-                <Label htmlFor="section">Process Section</Label>
+                <Label htmlFor="section" className="text-sm">Process Section</Label>
                 <Select value={selectedSection} onValueChange={setSelectedSection}>
-                  <SelectTrigger>
-                    <SelectValue />
+                  <SelectTrigger className="h-10">
+                    <SelectValue className="text-sm" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Cutting">Cutting</SelectItem>
-                    <SelectItem value="Sewing">Sewing</SelectItem>
-                    <SelectItem value="Finishing">Finishing</SelectItem>
-                    <SelectItem value="Packing">Packing</SelectItem>
-                    <SelectItem value="Quality Control">Quality Control</SelectItem>
+                    <SelectItem value="Cutting" className="text-sm">Cutting</SelectItem>
+                    <SelectItem value="Sewing" className="text-sm">Sewing</SelectItem>
+                    <SelectItem value="Finishing" className="text-sm">Finishing</SelectItem>
+                    <SelectItem value="Packing" className="text-sm">Packing</SelectItem>
+                    <SelectItem value="Quality Control" className="text-sm">Quality Control</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -977,31 +977,31 @@ export default function LayoutDesignerPage() {
               {operationBreakdown.length > 0 && (
                 <Card className="border-dashed border-blue-500/50 bg-blue-50/30">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Factory className="h-4 w-4 text-blue-600" />
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Factory className="h-5 w-5 text-blue-600" />
                       Operation Breakdown
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-[10px] uppercase font-bold text-blue-700">
+                      <div className="text-sm uppercase font-bold text-blue-700">
                         {operationBreakdown.length} Operations Loaded
                       </div>
                       <Badge 
                         variant="secondary" 
-                        className="text-[8px] h-4"
+                        className="text-xs h-6"
                       >
                         {obSource}
                       </Badge>
                     </div>
                     <div className="max-h-40 overflow-y-auto space-y-2">
                       {operationBreakdown.map((op: any, idx: number) => (
-                        <div key={idx} className="flex justify-between text-[10px] p-2 bg-white/50 rounded">
+                        <div key={idx} className="flex justify-between text-sm p-2 bg-white/50 rounded">
                           <div className="flex-1">
                             <div className="font-medium">
                               {op.sequence}. {op.operationName || op.opCode}
                             </div>
-                            <div className="text-[9px] text-muted-foreground mt-1">
+                            <div className="text-xs text-muted-foreground mt-1">
                               {op.componentName || 'General Operation'}
                             </div>
                           </div>
@@ -1009,7 +1009,7 @@ export default function LayoutDesignerPage() {
                             <div className="text-blue-600 font-mono">
                               {op.smv || op.standardSMV || 0} SMV
                             </div>
-                            <div className="text-[8px] text-muted-foreground">
+                            <div className="text-xs text-muted-foreground">
                               {op.machineType || 'Any Machine'}
                             </div>
                           </div>
@@ -1024,90 +1024,92 @@ export default function LayoutDesignerPage() {
               {orderId && (
                 <Card className="border-dashed border-yellow-500/50 bg-yellow-50/30">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4 text-yellow-600" />
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5 text-yellow-600" />
                       Production Requirements
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label htmlFor="orderQty" className="text-xs">Order Quantity</Label>
+                        <Label htmlFor="orderQty" className="text-sm">Order Quantity</Label>
                         <Input
                           id="orderQty"
                           type="number"
                           value={orderQuantity}
                           onChange={(e) => setOrderQuantity(parseInt(e.target.value) || 0)}
                           placeholder="Units"
-                          className="h-8 text-sm"
+                          className="h-10 text-base"
                         />
                       </div>
                       <div>
-                        <Label htmlFor="deliveryDays" className="text-xs">Delivery Days</Label>
+                        <Label htmlFor="deliveryDays" className="text-sm">Delivery Days</Label>
                         <Input
                           id="deliveryDays"
                           type="number"
                           value={deliveryDays}
                           onChange={(e) => setDeliveryDays(parseInt(e.target.value) || 0)}
                           placeholder="Days"
-                          className="h-8 text-sm"
+                          className="h-10 text-base"
                         />
                       </div>
                     </div>
                     
                     <div>
-                      <Label htmlFor="ieAllowance" className="text-xs">IE Allowance (%)</Label>
+                      <Label htmlFor="ieAllowance" className="text-sm">IE Allowance (%)</Label>
                       <Input
                         id="ieAllowance"
                         type="number"
                         value={ieAllowance}
                         onChange={(e) => setIeAllowance(parseInt(e.target.value) || 0)}
                         placeholder="Buffer %"
-                        className="h-8 text-sm"
+                        className="h-10 text-base"
                       />
                     </div>
                     
-                    <Button 
-                      onClick={calculateProductionFlow}
-                      className="w-full h-8 text-xs"
-                      disabled={!orderQuantity || !deliveryDays}
-                    >
-                      <BarChart3 className="mr-1 h-3 w-3" />
-                      Analyze Flow & Bottlenecks
-                    </Button>
-                    
-                    {operationBreakdown.length > 0 && (
+                    <div className="flex flex-col gap-2">
                       <Button 
-                        onClick={() => autoArrangeMachines(operationBreakdown)}
-                        className="w-full h-8 text-xs"
-                        variant="secondary"
+                        onClick={calculateProductionFlow}
+                        className="w-full h-10 text-base"
+                        disabled={!orderQuantity || !deliveryDays}
                       >
-                        <Layout className="mr-1 h-3 w-3" />
-                        Re-Arrange Machines
+                        <BarChart3 className="mr-1 h-4 w-4" />
+                        Analyze Flow & Bottlenecks
                       </Button>
-                    )}
-                    
-                    {machinePositions.length > 0 && operationBreakdown.length > 0 && (
-                      <Button 
-                        onClick={calculateLineBalance}
-                        className="w-full h-8 text-xs"
-                        variant="outline"
-                      >
-                        <BarChart3 className="mr-1 h-3 w-3" />
-                        Line Balance Analysis
-                      </Button>
-                    )}
+                      
+                      {operationBreakdown.length > 0 && (
+                        <Button 
+                          onClick={() => autoArrangeMachines(operationBreakdown)}
+                          className="w-full h-10 text-base"
+                          variant="secondary"
+                        >
+                          <Layout className="mr-1 h-4 w-4" />
+                          Re-Arrange Machines
+                        </Button>
+                      )}
+                      
+                      {machinePositions.length > 0 && operationBreakdown.length > 0 && (
+                        <Button 
+                          onClick={calculateLineBalance}
+                          className="w-full h-10 text-base"
+                          variant="outline"
+                        >
+                          <BarChart3 className="mr-1 h-4 w-4" />
+                          Line Balance Analysis
+                        </Button>
+                      )}
+                    </div>
                     
                     {productionAnalysis && (
                       <div className="pt-2 border-t border-yellow-200">
-                        <div className="text-[10px] uppercase font-bold text-yellow-700 mb-1">
+                        <div className="text-base uppercase font-bold text-yellow-700 mb-1">
                           Required Output: {productionAnalysis.requiredOutputPerHour.toFixed(1)} units/hour
                         </div>
-                        <div className="text-[9px] text-yellow-600">
+                        <div className="text-base text-yellow-600">
                           Total Working Hours: {productionAnalysis.totalWorkingHours}
                         </div>
                         {productionAnalysis.totalSMV > 0 && (
-                          <div className="text-[9px] text-yellow-600">
+                          <div className="text-base text-yellow-600">
                             Total SMV: {productionAnalysis.totalSMV.toFixed(2)}
                           </div>
                         )}
@@ -1117,10 +1119,10 @@ export default function LayoutDesignerPage() {
                     {/* Line Balance Results */}
                     {lineBalance && (
                       <div className="pt-3 border-t border-green-200">
-                        <div className="text-[10px] uppercase font-bold text-green-700 mb-2">
+                        <div className="text-base uppercase font-bold text-green-700 mb-2">
                           Line Balance Metrics
                         </div>
-                        <div className="space-y-1 text-[9px]">
+                        <div className="space-y-1 text-base">
                           <div className="flex justify-between">
                             <span>Line Efficiency:</span>
                             <span className={`font-bold ${lineBalance.lineEfficiency >= 80 ? 'text-green-600' : lineBalance.lineEfficiency >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
@@ -1303,7 +1305,7 @@ export default function LayoutDesignerPage() {
                   return (
                     <div
                       key={`${index}-${pos.machine.id}`}
-                      className={`absolute w-24 h-24 rounded-2xl flex flex-col items-center justify-center text-[11px] font-bold shadow-2xl transition-all hover:scale-105 active:cursor-grabbing border-2 ${
+                      className={`absolute w-24 h-24 rounded-2xl flex flex-col items-center justify-center text-sm font-bold shadow-2xl transition-all hover:scale-105 active:cursor-grabbing border-2 ${
                         selectedMachinePosition === index 
                           ? 'border-blue-500 bg-blue-100 text-blue-900 z-50 ring-4 ring-blue-500/20' 
                           : isBottleneck
@@ -1323,11 +1325,11 @@ export default function LayoutDesignerPage() {
                       onDragStart={(e) => handleDragStart(pos.machine, e, index)}
                     >
                       <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
-                        <div className="text-[10px] uppercase opacity-60 font-black mb-1 leading-none">
+                        <div className="text-xs uppercase opacity-60 font-black mb-1 leading-none">
                           {pos.machine.machineName}
                         </div>
                         {pos.matchingOperation && (
-                          <div className={`text-[8px] px-1 py-0.5 rounded mb-1 ${
+                          <div className={`text-xs px-1 py-0.5 rounded mb-1 ${
                             isBottleneck 
                               ? 'bg-red-200 text-red-800' 
                               : 'bg-blue-100 text-blue-800'
@@ -1336,7 +1338,7 @@ export default function LayoutDesignerPage() {
                           </div>
                         )}
                         {pos.operatorName ? (
-                          <div className={`px-2 py-1 rounded-md text-[10px] font-black shadow-sm flex items-center gap-1 border ${
+                          <div className={`px-2 py-1 rounded-md text-xs font-black shadow-sm flex items-center gap-1 border ${
                             isBottleneck 
                               ? 'bg-red-200 text-red-800 border-red-300' 
                               : 'bg-white/90 text-primary border-primary/20'
@@ -1352,7 +1354,7 @@ export default function LayoutDesignerPage() {
                         
                         {/* Utilization badge for bottlenecks */}
                         {isBottleneck && utilization > 0 && (
-                          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-red-500 text-white text-[8px] px-1 py-0.5 rounded-full whitespace-nowrap">
+                          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-red-500 text-white text-xs px-1 py-0.5 rounded-full whitespace-nowrap">
                             {utilization.toFixed(0)}%
                           </div>
                         )}
@@ -1388,19 +1390,19 @@ export default function LayoutDesignerPage() {
                   }}
                 >
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-bold text-sm">Machine Properties</h4>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMachinePosition(null)}>
-                      <Plus className="rotate-45 h-4 w-4" />
+                    <h4 className="font-bold text-base">Machine Properties</h4>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedMachinePosition(null)}>
+                      <Plus className="rotate-45 h-5 w-5" />
                     </Button>
                   </div>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <Label className="text-[10px] uppercase opacity-60">Sequence</Label>
+                        <Label className="text-xs uppercase opacity-60">Sequence</Label>
                         <Input
                           type="number"
                           size={1}
-                          className="h-8"
+                          className="h-10 text-base"
                           value={machinePositions[selectedMachinePosition].sequence}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
@@ -1413,10 +1415,10 @@ export default function LayoutDesignerPage() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] uppercase opacity-60">Rotation</Label>
+                        <Label className="text-xs uppercase opacity-60">Rotation</Label>
                         <Input
                           type="number"
-                          className="h-8"
+                          className="h-10 text-base"
                           value={machinePositions[selectedMachinePosition].rotation}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
@@ -1431,7 +1433,7 @@ export default function LayoutDesignerPage() {
                     </div>
                     
                     <div className="space-y-1">
-                      <Label className="text-[10px] uppercase opacity-60">Assign Operator</Label>
+                      <Label className="text-xs uppercase opacity-60">Assign Operator</Label>
                       <Select 
                         value={machinePositions[selectedMachinePosition].operatorId || "unassigned"}
                         onValueChange={(val) => {
@@ -1444,13 +1446,13 @@ export default function LayoutDesignerPage() {
                           });
                         }}
                       >
-                        <SelectTrigger className="h-8 text-xs">
+                        <SelectTrigger className="h-10 text-base">
                           <SelectValue placeholder="Select Operator" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          <SelectItem value="unassigned" className="text-base">Unassigned</SelectItem>
                           {operators.map(op => (
-                            <SelectItem key={op.employeeId} value={op.employeeId}>
+                            <SelectItem key={op.employeeId} value={op.employeeId} className="text-base">
                               {op.name} ({op.employeeId})
                             </SelectItem>
                           ))}
@@ -1459,15 +1461,15 @@ export default function LayoutDesignerPage() {
                     </div>
 
                     <div>
-                        <Label className="text-[10px] uppercase opacity-60">Coordinates</Label>
-                        <div className="text-[10px] font-mono mt-1 opacity-80">
+                        <Label className="text-xs uppercase opacity-60">Coordinates</Label>
+                        <div className="text-sm font-mono mt-1 opacity-80">
                           X: {Math.round(machinePositions[selectedMachinePosition].x)} | 
                           Y: {Math.round(machinePositions[selectedMachinePosition].y)}
                         </div>
                     </div>
                     <Button 
                       variant="destructive" 
-                      className="w-full h-8 text-xs rounded-lg"
+                      className="w-full h-10 text-base"
                       onClick={() => {
                         setMachinePositions(machinePositions.filter((_, i) => i !== selectedMachinePosition));
                         setSelectedMachinePosition(null);
