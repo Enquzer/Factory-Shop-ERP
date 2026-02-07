@@ -60,6 +60,7 @@ import {
   ChevronDown 
 } from "lucide-react";
 import { useAuth } from '@/contexts/auth-context';
+import { useSystemSettings } from '@/contexts/system-settings-context';
 import { 
   MarketingOrder, 
   MarketingOrderStatus,
@@ -98,6 +99,7 @@ interface PlanningRow extends MarketingOrder {
 
 export default function OrderPlanningPage() {
   const { user } = useAuth();
+  const { settings } = useSystemSettings();
   const { toast } = useToast();
   const router = useRouter();
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
@@ -374,7 +376,13 @@ export default function OrderPlanningPage() {
 
   const handleExportOrderPDF = async (order: MarketingOrder) => {
       try {
-          const pdfUrl = await generateOrderPDF(order);
+          const branding = {
+            companyName: settings.companyName,
+            logo: settings.logo || undefined,
+            primaryColor: settings.primaryColor,
+            secondaryColor: settings.secondaryColor
+          };
+          const pdfUrl = await generateOrderPDF(order, branding);
           downloadPDF(pdfUrl, `Order_${order.orderNumber}.pdf`);
           toast({ title: 'Success', description: 'Order PDF exported successfully' });
       } catch (error) {
@@ -667,7 +675,13 @@ export default function OrderPlanningPage() {
       }
 
       // Generate PDF using the established pattern
-      const pdfUrl = await generateProductionPlanningPDF(expandedOrders, ganttImageData, type, obData);
+      const branding = {
+          companyName: settings.companyName,
+          logo: settings.logo || undefined,
+          primaryColor: settings.primaryColor,
+          secondaryColor: settings.secondaryColor
+      };
+      const pdfUrl = await generateProductionPlanningPDF(expandedOrders, ganttImageData, type, obData, branding);
       downloadPDF(pdfUrl, `${type.charAt(0).toUpperCase() + type.slice(1)}_Planning_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
       
       toast({ title: "Success", description: `${type.charAt(0).toUpperCase() + type.slice(1)} report exported successfully` });

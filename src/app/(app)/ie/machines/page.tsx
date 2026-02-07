@@ -19,7 +19,13 @@ import {
   Pencil,
   Trash2,
   Download,
-  FileText
+  FileText,
+  Wrench,
+  Clock,
+  ClipboardCheck,
+  AlertCircle,
+  Calendar,
+  History
 } from 'lucide-react';
 import {
   Table,
@@ -100,6 +106,8 @@ export default function MachineManagementPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [layouts, setLayouts] = useState<MachineLayout[]>([]);
   const [operators, setOperators] = useState<OperatorAssignment[]>([]);
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [maintenanceStats, setMaintenanceStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -112,8 +120,16 @@ export default function MachineManagementPage() {
   const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
   const [isRegisterMachineDialogOpen, setIsRegisterMachineDialogOpen] = useState(false);
   const [isEditMachineDialogOpen, setIsEditMachineDialogOpen] = useState(false);
+  const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false);
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+  const [isEditMaintenanceDialogOpen, setIsEditMaintenanceDialogOpen] = useState(false);
+  const [isDeleteMaintenanceConfirmOpen, setIsDeleteMaintenanceConfirmOpen] = useState(false);
+  const [machineHistory, setMachineHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [machineToDelete, setMachineToDelete] = useState<Machine | null>(null);
+  const [maintenanceToDelete, setMaintenanceToDelete] = useState<any | null>(null);
+  const [selectedMaintenance, setSelectedMaintenance] = useState<any | null>(null);
   
   // Form states
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -153,6 +169,14 @@ export default function MachineManagementPage() {
     description: ''
   });
 
+  // Maintenance schedule form states
+  const [newSchedule, setNewSchedule] = useState({
+    machineId: '',
+    maintenanceType: 'Preventive' as any,
+    scheduledDate: '',
+    notes: ''
+  });
+
 
   useEffect(() => {
     fetchAllData();
@@ -189,6 +213,21 @@ export default function MachineManagementPage() {
       if (operatorsRes.ok) {
         const operatorsData = await operatorsRes.json();
         setOperators(operatorsData.data || []);
+      }
+
+      const [maintRes, statsRes] = await Promise.all([
+        fetch('/api/ie/machines/maintenance', { headers }),
+        fetch('/api/ie/machines/maintenance?type=stats', { headers })
+      ]);
+
+      if (maintRes.ok) {
+        const maintData = await maintRes.json();
+        setSchedules(maintData.data || []);
+      }
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setMaintenanceStats(statsData.data || null);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -343,6 +382,31 @@ export default function MachineManagementPage() {
     } catch (error) {
       console.error('Error updating machine:', error);
       toast({ title: 'Error', description: 'Failed to update machine', variant: 'destructive' });
+    }
+  };
+
+  const handleViewHistory = async (machine: Machine) => {
+    try {
+      setLoadingHistory(true);
+      setSelectedMachine(machine);
+      setIsHistoryDialogOpen(true);
+      
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const response = await fetch(`/api/ie/machines/maintenance?machineId=${machine.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setMachineHistory(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching machine history:', error);
+      toast({ title: 'Error', description: 'Failed to fetch maintenance history', variant: 'destructive' });
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -553,6 +617,10 @@ export default function MachineManagementPage() {
             <Layout className="h-4 w-4" />
             Production Layouts
           </TabsTrigger>
+          <TabsTrigger value="maintenance" className="flex items-center gap-2">
+            <Wrench className="h-4 w-4" />
+            Maintenance Scheduling
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="inventory" className="space-y-6">
@@ -673,6 +741,15 @@ export default function MachineManagementPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 w-8 p-0 text-slate-600 hover:text-blue-600" 
+                              onClick={() => handleViewHistory(machine)}
+                              title="View Maintenance History"
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600" onClick={() => { setSelectedMachine({...machine}); setIsEditMachineDialogOpen(true); }}>
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -743,6 +820,224 @@ export default function MachineManagementPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="border-none shadow-md bg-orange-50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-orange-600 uppercase tracking-wider">Scheduled Tasks</p>
+                    <h3 className="text-2xl font-bold text-orange-900">{maintenanceStats?.scheduled || 0}</h3>
+                  </div>
+                  <Clock className="h-8 w-8 text-orange-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-none shadow-md bg-blue-50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">In Progress</p>
+                    <h3 className="text-2xl font-bold text-blue-900">{maintenanceStats?.inProgress || 0}</h3>
+                  </div>
+                  <Wrench className="h-8 w-8 text-blue-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-none shadow-md bg-red-50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-red-600 uppercase tracking-wider">Overdue</p>
+                    <h3 className="text-2xl font-bold text-red-900">{maintenanceStats?.overdue || 0}</h3>
+                  </div>
+                  <AlertCircle className="h-8 w-8 text-red-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-none shadow-md bg-green-50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Completed</p>
+                    <h3 className="text-2xl font-bold text-green-900">{maintenanceStats?.completed || 0}</h3>
+                  </div>
+                  <ClipboardCheck className="h-8 w-8 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-blue-600" />
+              Service Schedule
+            </h2>
+            <Button onClick={() => setIsMaintenanceDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Schedule Maintenance
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-semibold">Active Schedules</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Machine</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {schedules.map((schedule) => {
+                        const scheduleDate = new Date(schedule.scheduledDate);
+                        const isOverdue = schedule.status !== 'Completed' && scheduleDate < new Date();
+                        const isUpcoming = schedule.status === 'Scheduled' && !isOverdue && 
+                          (scheduleDate.getTime() - new Date().getTime()) < (2 * 24 * 60 * 60 * 1000);
+                        
+                        return (
+                          <TableRow key={schedule.id}>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="font-bold">{schedule.machineCode}</span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[150px]">{schedule.machineName}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="bg-slate-50">{schedule.maintenanceType}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className={isOverdue ? "text-red-600 font-bold" : isUpcoming ? "text-amber-600 font-bold" : ""}>
+                                  {scheduleDate.toLocaleDateString()}
+                                </span>
+                                {isOverdue && <span className="text-[10px] text-red-500 uppercase font-black">Overdue</span>}
+                                {isUpcoming && <span className="text-[10px] text-amber-500 uppercase font-black animate-pulse">Upcoming</span>}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge 
+                                className={
+                                  schedule.status === 'Completed' ? 'bg-green-100 text-green-700' : 
+                                  schedule.status === 'In-Progress' ? 'bg-blue-100 text-blue-700' : 
+                                  isOverdue ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                                }
+                              >
+                                {schedule.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end items-center gap-2">
+                                <Select value={schedule.status} onValueChange={async (val) => {
+                                  const token = localStorage.getItem('authToken');
+                                  const res = await fetch(`/api/ie/machines/maintenance/${schedule.id}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                    body: JSON.stringify({ status: val })
+                                  });
+                                  if (res.ok) fetchAllData();
+                                }}>
+                                  <SelectTrigger className="h-8 w-[120px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Scheduled">Scheduled</SelectItem>
+                                    <SelectItem value="In-Progress">In-Progress</SelectItem>
+                                    <SelectItem value="Completed">Completed</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 w-8 p-0 text-blue-600" 
+                                  onClick={() => { setSelectedMaintenance({...schedule}); setIsEditMaintenanceDialogOpen(true); }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 w-8 p-0 text-red-600" 
+                                  onClick={() => { setMaintenanceToDelete(schedule); setIsDeleteMaintenanceConfirmOpen(true); }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {schedules.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">
+                            No maintenance records found.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-6">
+              <Card className="bg-slate-900 text-white border-none">
+                <CardHeader>
+                  <CardTitle className="text-sm font-black uppercase tracking-widest text-blue-400">Maintenance Health</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span>Service Compliance</span>
+                      <span>{maintenanceStats?.total ? Math.round((maintenanceStats.completed / maintenanceStats.total) * 100) : 0}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-blue-500" 
+                        style={{ width: `${maintenanceStats?.total ? (maintenanceStats.completed / maintenanceStats.total) * 100 : 0}%` }} 
+                      />
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t border-slate-800 grid grid-cols-2 gap-4">
+                    <div className="text-center">
+                       <p className="text-2xl font-black">{maintenanceStats?.overdue || 0}</p>
+                       <p className="text-[10px] text-slate-400 uppercase font-bold">Unresolved</p>
+                    </div>
+                    <div className="text-center">
+                       <p className="text-2xl font-black text-green-400">{maintenanceStats?.completed || 0}</p>
+                       <p className="text-[10px] text-slate-400 uppercase font-bold">Resolved</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Maintenance Help Card */}
+              <Card className="border-dashed border-2">
+                <CardContent className="p-4 flex gap-3 italic text-sm text-muted-foreground">
+                   <AlertCircle className="h-5 w-5 text-blue-500 shrink-0" />
+                   <div>
+                     <p className="font-bold text-foreground not-italic mb-1">Maintenance Guidelines</p>
+                     <ul className="list-disc pl-4 space-y-1">
+                       <li><b>Preventive:</b> Regular checks every 15 days.</li>
+                       <li><b>Full Overhaul:</b> Deep tech check every 6 months.</li>
+                       <li><b>Cleanup:</b> Daily or weekly lubrication.</li>
+                     </ul>
+                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -1192,6 +1487,269 @@ export default function MachineManagementPage() {
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteMachine}>Delete</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Maintenance Scheduling Dialog */}
+      <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Schedule Maintenance</DialogTitle>
+            <DialogDescription>Register a new maintenance event for a machine</DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Target Machine *</Label>
+              <Select value={newSchedule.machineId} onValueChange={(val) => setNewSchedule({...newSchedule, machineId: val})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a machine" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {machines.map(m => (
+                    <SelectItem key={m.id} value={m.id.toString()}>
+                      {m.machineCode} - {m.machineName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Maintenance Type *</Label>
+              <Select value={newSchedule.maintenanceType} onValueChange={(val) => setNewSchedule({...newSchedule, maintenanceType: val as any})}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Preventive">Preventive Maintenance</SelectItem>
+                  <SelectItem value="Full Overhaul">Full Overhaul</SelectItem>
+                  <SelectItem value="Regular Cleanup">Regular Cleanup</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Scheduled Date *</Label>
+              <Input 
+                type="date" 
+                value={newSchedule.scheduledDate} 
+                onChange={(e) => setNewSchedule({...newSchedule, scheduledDate: e.target.value})}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Instructions / Notes</Label>
+              <Textarea 
+                placeholder="Special maintenance instructions..."
+                value={newSchedule.notes}
+                onChange={(e) => setNewSchedule({...newSchedule, notes: e.target.value})}
+              />
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsMaintenanceDialogOpen(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              if (!newSchedule.machineId || !newSchedule.scheduledDate) {
+                toast({ title: "Validation Error", description: "Machine and Date are required", variant: "destructive" });
+                return;
+              }
+              const token = localStorage.getItem('authToken');
+              const res = await fetch('/api/ie/machines/maintenance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                  ...newSchedule,
+                  machineId: parseInt(newSchedule.machineId)
+                })
+              });
+              if (res.ok) {
+                toast({ title: "Success", description: "Maintenance scheduled" });
+                setIsMaintenanceDialogOpen(false);
+                setNewSchedule({ machineId: '', maintenanceType: 'Preventive', scheduledDate: '', notes: '' });
+                fetchAllData();
+              }
+            }}>
+              Schedule Service
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Maintenance History Dialog */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-blue-600" />
+              Maintenance History: {selectedMachine?.machineCode}
+            </DialogTitle>
+            <DialogDescription>
+              Chronological log of maintenance activities for {selectedMachine?.machineName}
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingHistory ? (
+            <div className="py-20 text-center text-muted-foreground flex flex-col items-center gap-2">
+              <RefreshCw className="h-8 w-8 animate-spin" />
+              Loading history...
+            </div>
+          ) : (
+            <div className="space-y-6 py-4">
+              {machineHistory.length > 0 ? (
+                <div className="relative border-l-2 border-slate-200 ml-4 pl-6 space-y-8">
+                  {machineHistory.map((entry, idx) => (
+                    <div key={entry.id} className="relative">
+                      <div className="absolute -left-[33px] top-1 h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-sm" />
+                      <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 shadow-sm space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-black text-slate-900">{entry.maintenanceType}</p>
+                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">{new Date(entry.scheduledDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                          </div>
+                          <Badge className={
+                            entry.status === 'Completed' ? 'bg-green-100 text-green-700' : 
+                            entry.status === 'In-Progress' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                          }>
+                            {entry.status}
+                          </Badge>
+                        </div>
+                        
+                        {entry.notes && (
+                          <div className="bg-white p-3 rounded border border-slate-200 text-sm italic text-slate-600">
+                             "{entry.notes}"
+                          </div>
+                        )}
+                        
+                        <div className="pt-2 flex justify-between items-center text-[10px] text-slate-400 font-black uppercase tracking-tighter">
+                          <span>Technician: {entry.performedBy || 'Unknown'}</span>
+                          {entry.completedDate && <span>Completed: {new Date(entry.completedDate).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-muted-foreground italic border-2 border-dashed rounded-xl">
+                  No maintenance records found for this machine.
+                </div>
+              )}
+            </div>
+          )}
+          
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>Close History</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Maintenance Dialog */}
+      <Dialog open={isEditMaintenanceDialogOpen} onOpenChange={setIsEditMaintenanceDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Maintenance Record</DialogTitle>
+            <DialogDescription>Modify the details of this service event</DialogDescription>
+          </DialogHeader>
+          
+          {selectedMaintenance && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Machine Code</Label>
+                <Input value={selectedMaintenance.machineCode} disabled className="bg-slate-50" />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Maintenance Type *</Label>
+                <Select value={selectedMaintenance.maintenanceType} onValueChange={(val) => setSelectedMaintenance({...selectedMaintenance, maintenanceType: val as any})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Preventive">Preventive Maintenance</SelectItem>
+                    <SelectItem value="Full Overhaul">Full Overhaul</SelectItem>
+                    <SelectItem value="Regular Cleanup">Regular Cleanup</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Scheduled Date *</Label>
+                <Input 
+                  type="date" 
+                  value={selectedMaintenance.scheduledDate.split('T')[0]} 
+                  onChange={(e) => setSelectedMaintenance({...selectedMaintenance, scheduledDate: e.target.value})}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Instructions / Notes</Label>
+                <Textarea 
+                  placeholder="Maintenance details..."
+                  value={selectedMaintenance.notes || ''}
+                  onChange={(e) => setSelectedMaintenance({...selectedMaintenance, notes: e.target.value})}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Current Status</Label>
+                <Select value={selectedMaintenance.status} onValueChange={(val) => setSelectedMaintenance({...selectedMaintenance, status: val as any})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Scheduled">Scheduled</SelectItem>
+                    <SelectItem value="In-Progress">In-Progress</SelectItem>
+                    <SelectItem value="Completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsEditMaintenanceDialogOpen(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              const token = localStorage.getItem('authToken');
+              const res = await fetch(`/api/ie/machines/maintenance/${selectedMaintenance.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(selectedMaintenance)
+              });
+              if (res.ok) {
+                toast({ title: "Success", description: "Service record updated" });
+                setIsEditMaintenanceDialogOpen(false);
+                fetchAllData();
+              }
+            }}>
+              Update Service
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Maintenance Confirmation */}
+      <Dialog open={isDeleteMaintenanceConfirmOpen} onOpenChange={setIsDeleteMaintenanceConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cancel Service?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this maintenance record for {maintenanceToDelete?.machineCode}? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setIsDeleteMaintenanceConfirmOpen(false)}>Back</Button>
+            <Button variant="destructive" onClick={async () => {
+              const token = localStorage.getItem('authToken');
+              const res = await fetch(`/api/ie/machines/maintenance/${maintenanceToDelete.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (res.ok) {
+                toast({ title: "Deleted", description: "Maintenance record removed" });
+                setIsDeleteMaintenanceConfirmOpen(false);
+                fetchAllData();
+              }
+            }}>
+              Delete Record
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

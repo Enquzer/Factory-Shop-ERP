@@ -7,7 +7,9 @@ export default function EcommerceLayout({
 }) {
   return (
     <CustomerAuthProvider>
-      {children}
+      <div className="theme-ecommerce min-h-screen">
+        {children}
+      </div>
     </CustomerAuthProvider>
   );
 }

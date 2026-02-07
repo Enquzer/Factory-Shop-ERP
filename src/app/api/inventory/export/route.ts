@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getProducts } from '@/lib/products-sqlite';
 import { generateInventoryReport } from '@/lib/pdf-generator';
+import { dbUtils } from '@/lib/db';
 
 export async function GET(request: Request) {
   try {
@@ -42,8 +43,21 @@ export async function GET(request: Request) {
       });
     }
     
+    // Fetch branding settings from database
+    const companyName = await dbUtils.getSetting('companyName');
+    const logo = await dbUtils.getSetting('logo');
+    const primaryColor = await dbUtils.getSetting('primaryColor');
+    const secondaryColor = await dbUtils.getSetting('secondaryColor');
+
+    const branding = {
+        companyName: companyName || undefined,
+        logo: logo || undefined,
+        primaryColor: primaryColor || undefined,
+        secondaryColor: secondaryColor || undefined
+    };
+
     // Generate the inventory report as a Blob
-    const pdfBlob = await generateInventoryReport(products);
+    const pdfBlob = await generateInventoryReport(products, branding);
     
     // Convert Blob to ArrayBuffer
     const arrayBuffer = await pdfBlob.arrayBuffer();
@@ -52,7 +66,7 @@ export async function GET(request: Request) {
     const buffer = Buffer.from(arrayBuffer);
     
     // Return the PDF as a downloadable file
-    return new NextResponse(buffer, {
+    return new NextResponse(buffer as any, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename=inventory-report.pdf',

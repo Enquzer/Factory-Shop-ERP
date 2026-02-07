@@ -3,7 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 import { useAuth } from "@/contexts/auth-context";
+import { useSystemSettings } from "@/contexts/system-settings-context";
 import {
   ArrowDownUp,
   Building2,
@@ -304,6 +306,7 @@ export function DashboardClientPage({
   );
   const { isMobile } = useResponsive();
   const { user } = useAuth();
+  const { settings } = useSystemSettings();
   const router = useRouter();
 
   useEffect(() => {
@@ -822,7 +825,15 @@ export function DashboardClientPage({
         category: selectedCategory,
         orderStatus: selectedOrderStatus,
       };
-      const pdfBlob = await generateOwnerKPIReport(currentKpis || {}, filters);
+      
+      const branding = {
+        companyName: settings.companyName,
+        logo: settings.logo || undefined,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor
+      };
+      
+      const pdfBlob = await generateOwnerKPIReport(currentKpis || {}, filters, branding);
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement("a");
       link.href = url;

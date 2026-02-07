@@ -13,9 +13,11 @@ import { generateOrderPDF, downloadPDF } from "@/lib/pdf-generator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductionTracking } from "@/components/marketing-orders/production-tracking";
 import { Receipt } from "lucide-react";
+import { useSystemSettings } from '@/contexts/system-settings-context';
 
 export default function MarketingOrderDetailPage({ params }: { params: { id: string } }) {
   const [order, setOrder] = useState<MarketingOrder | null>(null);
+  const { settings } = useSystemSettings();
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
@@ -99,7 +101,13 @@ export default function MarketingOrderDetailPage({ params }: { params: { id: str
   const generateAndDownloadPDF = async () => {
     try {
       if (!order) return;
-      const pdfUrl = await generateOrderPDF(order);
+      const branding = {
+        companyName: settings.companyName,
+        logo: settings.logo || undefined,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor
+      };
+      const pdfUrl = await generateOrderPDF(order, branding);
       downloadPDF(pdfUrl, `marketing-order-${order.orderNumber}.pdf`);
       toast({ title: "Success", description: "PDF generated and downloaded successfully." });
     } catch (error) {

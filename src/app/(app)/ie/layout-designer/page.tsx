@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { useSystemSettings } from '@/contexts/system-settings-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +52,7 @@ interface Machine {
 
 export default function LayoutDesignerPage() {
   const { user } = useAuth();
+  const { settings } = useSystemSettings();
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -365,7 +367,15 @@ export default function LayoutDesignerPage() {
         sequence: idx + 1
       }))
     };
-    const url = await generateMachineLayoutPDF(layoutData);
+    
+    const branding = {
+      companyName: settings.companyName,
+      logo: settings.logo || undefined,
+      primaryColor: settings.primaryColor,
+      secondaryColor: settings.secondaryColor
+    };
+
+    const url = await generateMachineLayoutPDF(layoutData, branding);
     window.open(url, '_blank');
   };
 

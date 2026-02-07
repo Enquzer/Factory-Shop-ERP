@@ -34,6 +34,7 @@ const factoryLinks = [
   { href: '/holiday-discounts', label: 'Holiday Discounts', icon: Tag },
   { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/settings/telegram', label: 'Telegram Channels', icon: Bell },
+  { href: '/settings/branding', label: 'System Branding', icon: Palette },
   { href: '/users', label: 'User Management', icon: User }, // Using User icon instead of Users
 
   { href: '/finance', label: 'Finance Management', icon: FileText },
@@ -279,7 +280,7 @@ export function Nav() {
                 {link.label}
               </span>
               {link.href === '/orders' && unreadCount > 0 && (
-                <Badge className="ml-auto flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs">
+                <Badge className="ml-auto flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs bg-notification text-white hover:bg-notification">
                   {unreadCount}
                 </Badge>
               )}
@@ -301,9 +302,9 @@ export function Nav() {
               Notifications
             </span>
             {unreadCount > 0 && (
-              <Badge className="ml-auto flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs">
-                {unreadCount}
-              </Badge>
+                <Badge className="ml-auto flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs bg-notification text-white hover:bg-notification">
+                  {unreadCount}
+                </Badge>
             )}
           </Link>
         </SidebarMenuButton>

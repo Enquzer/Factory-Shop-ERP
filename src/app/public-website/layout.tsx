@@ -13,7 +13,9 @@ export default function PublicWebsiteLayout({
 }>) {
   return (
     <>
+    <div className="theme-ecommerce min-h-screen font-sans">
       {children}
+    </div>
     </>
   );
 }

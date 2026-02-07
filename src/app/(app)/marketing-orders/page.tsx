@@ -33,6 +33,7 @@ import Image from "next/image";
 import { MarketingOrdersDashboard } from "./_components/marketing-orders-dashboard";
 import { CreateMarketingOrderDialog } from "@/components/create-marketing-order-dialog";
 import { useAuth } from "@/contexts/auth-context";
+import { useSystemSettings } from '@/contexts/system-settings-context';
 
 export default function MarketingOrdersPage() {
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
@@ -50,6 +51,7 @@ export default function MarketingOrdersPage() {
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { settings } = useSystemSettings();
   
   const canEdit = user?.role === 'factory' || user?.role === 'marketing';
   
@@ -242,7 +244,14 @@ export default function MarketingOrdersPage() {
       const order = orders.find(o => o.id === orderId);
       if (!order) return;
 
-      const pdfBlob = await generateOrderPDF(order);
+      const branding = {
+        companyName: settings.companyName,
+        logo: settings.logo || undefined,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor
+      };
+
+      const pdfBlob = await generateOrderPDF(order, branding);
       downloadPDF(pdfBlob, `${order.orderNumber}_details.pdf`);
       
       toast({
@@ -261,7 +270,14 @@ export default function MarketingOrdersPage() {
 
   const handleExportSummaryToPdf = async () => {
     try {
-      const pdfBlob = await generateSummaryReport(filteredOrders);
+      const branding = {
+        companyName: settings.companyName,
+        logo: settings.logo || undefined,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor
+      };
+
+      const pdfBlob = await generateSummaryReport(filteredOrders, branding);
       downloadPDF(pdfBlob, 'marketing_orders_summary.pdf');
       
       toast({
@@ -292,15 +308,29 @@ export default function MarketingOrdersPage() {
       
       const pageWidth = (doc as any).internal.pageSize.getWidth();
       
+      // Hex to RGB helper
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? [
+          parseInt(result[1], 16),
+          parseInt(result[2], 16),
+          parseInt(result[3], 16)
+        ] : [45, 55, 72]; // Default dark blue
+      };
+
+      const primaryColor = settings.primaryColor || '#2d3748';
+      const primaryRgb = hexToRgb(primaryColor);
+
       // Add header with company logo and title
-      doc.setFillColor(45, 55, 72); // Dark blue background
+      // @ts-ignore
+      doc.setFillColor(...primaryRgb);
       doc.rect(0, 0, pageWidth, 25, 'F');
       
       // Company name
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(18);
       doc.setFont('helvetica');
-      doc.text('Carement Fashion', 14, 15);
+      doc.text(settings.companyName || 'Carement Fashion', 14, 15);
       
       // Report title
       doc.setFontSize(14);
@@ -381,10 +411,9 @@ export default function MarketingOrdersPage() {
           cellPadding: 4,
         },
         headStyles: {
-          fillColor: [45, 55, 72],
+          fillColor: primaryRgb as any,
           textColor: [255, 255, 255],
           fontSize: 10,
-
         },
         bodyStyles: {
           textColor: [40, 40, 40],

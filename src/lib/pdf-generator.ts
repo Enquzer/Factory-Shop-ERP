@@ -6,6 +6,13 @@ import { Product } from './products';
 import { Order } from './orders';
 import { Shop } from './shops';
 
+export interface BrandingConfig {
+  companyName?: string;
+  logo?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+}
+
 // Function to decode HTML entities and fix text rendering issues
 function decodeHTMLEntities(text: string): string {
   if (!text) return text;
@@ -179,7 +186,8 @@ export async function generateProductionPlanningPDF(
   orders: MarketingOrder[], 
   ganttImageData?: string,
   reportType: 'full' | 'cutting' | 'sewing' | 'packing' = 'full',
-  operationBulletins?: Record<string, any[]>
+  operationBulletins?: Record<string, any[]>,
+  branding?: BrandingConfig
 ): Promise<string> {
   try {
     const doc = new jsPDF({
@@ -189,7 +197,7 @@ export async function generateProductionPlanningPDF(
     });
 
     const title = reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Planning Report';
-    await addHeaderAndLogo(doc, title);
+    await addHeaderAndLogo(doc, title, branding);
     
     // Fetch unique images first to avoid redundant requests
     const imageCache: Record<string, string | null> = {};
@@ -404,89 +412,121 @@ export async function generateProductionPlanningPDF(
 }
 
 // Function to add logo and header to PDF
-export async function addHeaderAndLogo(doc: jsPDF, title: string) {
+export async function addHeaderAndLogo(doc: jsPDF, title: string, branding?: BrandingConfig) {
   // Add company logo on top left
   try {
-    if (typeof window === 'undefined') {
-      // Server-side: Use Node.js file system
-      const fs = await import('fs');
-      const path = await import('path');
-      
-      // Try to read the base64 logo file first
+    let logoDataUri: string | null = null;
+    
+    // 1. Try to use branding logo if provided
+    if (branding?.logo) {
       try {
-        const logoBase64Path = path.join(process.cwd(), 'public', 'logo-base64.txt');
-        const logoBase64 = fs.readFileSync(logoBase64Path, 'utf8');
-        
-        // Clean up the base64 string (remove any whitespace)
-        let cleanLogoBase64 = logoBase64.trim();
-        
-        // Ensure the data URI prefix is present
-        let logoDataUri: string;
-        if (cleanLogoBase64.startsWith('data:image')) {
-          logoDataUri = cleanLogoBase64;
+        if (branding.logo.startsWith('data:')) {
+          logoDataUri = branding.logo;
         } else {
-          // Add the data URI prefix
-          logoDataUri = 'data:image/png;base64,' + cleanLogoBase64;
+          logoDataUri = await imageUrlToBase64(branding.logo);
         }
-        
-        doc.addImage(logoDataUri, 'PNG', 15, 10, 40, 20);
-        return;
-      } catch (base64Error) {
-        console.warn('Could not load base64 logo, trying PNG logo:', base64Error);
-        // Fallback: Try to load the actual logo.png file
-        try {
-          const logoPath = path.join(process.cwd(), 'public', 'logo.png');
-          const logoBuffer = fs.readFileSync(logoPath);
-          const logoBase64 = logoBuffer.toString('base64');
-          const logoDataUri = 'data:image/png;base64,' + logoBase64;
-          doc.addImage(logoDataUri, 'PNG', 15, 10, 40, 20);
-          return;
-        } catch (pngError) {
-          throw new Error(`Could not load either logo file: ${pngError instanceof Error ? pngError.message : String(pngError)}`);
-        }
+      } catch (e) {
+        console.warn('Failed to load branding logo:', e);
       }
-    } else {
-      // Client-side: Use fetch
-      // Try to read the base64 logo file first
-      const logoBase64Response = await fetch('/logo-base64.txt');
-      if (!logoBase64Response.ok) {
-        throw new Error(`Failed to fetch logo: ${logoBase64Response.status} ${logoBase64Response.statusText}`);
-      }
-      const logoBase64 = await logoBase64Response.text();
-      
-      // Clean up the base64 string (remove any whitespace)
-      let cleanLogoBase64 = logoBase64.trim();
-      
-      // Ensure the data URI prefix is present
-      let logoDataUri: string;
-      if (cleanLogoBase64.startsWith('data:image')) {
-        logoDataUri = cleanLogoBase64;
-      } else {
-        // Add the data URI prefix
-        logoDataUri = 'data:image/png;base64,' + cleanLogoBase64;
-      }
-      
-      doc.addImage(logoDataUri, 'PNG', 15, 10, 40, 20);
     }
+
+    // 2. If no branding logo, use defaults
+    if (!logoDataUri) {
+      if (typeof window === 'undefined') {
+        // Server-side: Use Node.js file system
+        const fs = await import('fs');
+        const path = await import('path');
+        
+        // Try to read the base64 logo file first
+        try {
+          const logoBase64Path = path.join(process.cwd(), 'public', 'logo-base64.txt');
+          const logoBase64 = fs.readFileSync(logoBase64Path, 'utf8');
+          
+          // Clean up the base64 string (remove any whitespace)
+          let cleanLogoBase64 = logoBase64.trim();
+          
+          if (cleanLogoBase64.startsWith('data:image')) {
+            logoDataUri = cleanLogoBase64;
+          } else {
+            logoDataUri = 'data:image/png;base64,' + cleanLogoBase64;
+          }
+        } catch (base64Error) {
+          // Fallback: Try to load the actual logo.png file
+          try {
+            const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+            const logoBuffer = fs.readFileSync(logoPath);
+            const logoBase64 = logoBuffer.toString('base64');
+            logoDataUri = 'data:image/png;base64,' + logoBase64;
+          } catch (pngError) {
+             // throw new Error(`Could not load either logo file: ${pngError instanceof Error ? pngError.message : String(pngError)}`);
+             console.warn('Could not load default logo files');
+          }
+        }
+      } else {
+        // Client-side: Use fetch
+        try {
+          const logoBase64Response = await fetch('/logo-base64.txt');
+          if (logoBase64Response.ok) {
+             const logoBase64 = await logoBase64Response.text();
+             let cleanLogoBase64 = logoBase64.trim();
+             if (cleanLogoBase64.startsWith('data:image')) {
+               logoDataUri = cleanLogoBase64;
+             } else {
+               logoDataUri = 'data:image/png;base64,' + cleanLogoBase64;
+             }
+          }
+        } catch (e) {
+           console.warn('Failed to fetch default logo');
+        }
+      }
+    }
+
+    if (logoDataUri) {
+      doc.addImage(logoDataUri, 'PNG', 15, 10, 40, 20);
+    } else {
+       throw new Error("No logo available");
+    }
+
   } catch (error) {
     console.warn('Could not load logo, using placeholder:', error);
     // Fallback to placeholder if logo can't be loaded
     doc.setDrawColor(0);
-    doc.setFillColor(22, 160, 133); // Carement green color
+    if (branding?.primaryColor) {
+       const r = parseInt(branding.primaryColor.slice(1, 3), 16);
+       const g = parseInt(branding.primaryColor.slice(3, 5), 16);
+       const b = parseInt(branding.primaryColor.slice(5, 7), 16);
+       doc.setFillColor(r, g, b);
+    } else {
+       doc.setFillColor(22, 160, 133); // Carement green color
+    }
     doc.rect(15, 10, 40, 20, 'F'); // Logo placeholder
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
     doc.text('LOGO', 35, 22, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
   }
   
   // Add company header
   doc.setFontSize(22);
-  doc.setTextColor(0, 0, 0);
-  doc.text(decodeHTMLEntities('Carement Fashion'), 105, 20, { align: 'center' });
   
+  // Use custom primary color for header if available
+  if (branding?.primaryColor) {
+     const r = parseInt(branding.primaryColor.slice(1, 3), 16);
+     const g = parseInt(branding.primaryColor.slice(3, 5), 16);
+     const b = parseInt(branding.primaryColor.slice(5, 7), 16);
+     doc.setTextColor(r, g, b);
+  } else {
+     doc.setTextColor(0, 0, 0);
+  }
+
+  const companyName = branding?.companyName || 'Carement Fashion';
+  doc.text(decodeHTMLEntities(companyName), 105, 20, { align: 'center' });
+  
+  doc.setTextColor(0, 0, 0); // Reset for others
   doc.setFontSize(12);
   doc.text(decodeHTMLEntities('Addis Ababa, Ethiopia'), 105, 27, { align: 'center' });
+  
+  // Use company name in email if custom? No, keep it simple or generic for now unless requested.
+  // Assuming contact info is static for now as user only requested name/logo/colors
   doc.text(decodeHTMLEntities('Phone: +251 11 123 4567 | Email: info@carementfashion.com'), 105, 33, { align: 'center' });
   
   // Add document title
@@ -508,7 +548,7 @@ export function addFooter(doc: jsPDF, finalY: number) {
   doc.setTextColor(0, 0, 0); // Reset to black
 }
 
-export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
+export async function generateOrderPDF(order: MarketingOrder, branding?: BrandingConfig): Promise<string> {
   try {
     console.log('Starting PDF generation for order:', order.orderNumber);
     
@@ -523,7 +563,7 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
     
     // Add header and logo
     try {
-      await addHeaderAndLogo(doc, 'Production Order');
+      await addHeaderAndLogo(doc, 'Production Order', branding);
       console.log('Header and logo added successfully');
     } catch (headerError) {
       console.warn('Error adding header/logo, continuing without it:', headerError);
@@ -655,7 +695,7 @@ export async function generateOrderPDF(order: MarketingOrder): Promise<string> {
 }
 
 // Function to generate a shop order PDF with logo and product images (returns Blob for server-side use)
-export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
+export async function generateShopOrderPDFBlob(order: Order, branding?: BrandingConfig): Promise<Blob> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -665,7 +705,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Shop Order Receipt');
+    await addHeaderAndLogo(doc, 'Shop Order Receipt', branding);
     
     // Add order information
     doc.setFontSize(12);
@@ -985,7 +1025,7 @@ export async function generateShopOrderPDFBlob(order: Order): Promise<Blob> {
 }
 
 // Function to generate a shop order PDF with logo and product images (returns URL for client-side use)
-export async function generateShopOrderPDF(order: Order): Promise<string> {
+export async function generateShopOrderPDF(order: Order, branding?: BrandingConfig): Promise<string> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -995,7 +1035,7 @@ export async function generateShopOrderPDF(order: Order): Promise<string> {
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Shop Order Receipt');
+    await addHeaderAndLogo(doc, 'Shop Order Receipt', branding);
     
     // Add order information
     doc.setFontSize(12);
@@ -1304,7 +1344,7 @@ export function downloadPDF(pdfUrl: string, filename: string) {
 }
 
 // Function to generate a summary report PDF
-export async function generateSummaryReport(orders: MarketingOrder[]): Promise<string> {
+export async function generateSummaryReport(orders: MarketingOrder[], branding?: BrandingConfig): Promise<string> {
   try {
     console.log('Starting summary report generation for', orders.length, 'orders');
     
@@ -1319,7 +1359,7 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
     
     // Add header and logo
     try {
-      await addHeaderAndLogo(doc, 'Production Summary Report');
+      await addHeaderAndLogo(doc, 'Production Summary Report', branding);
       console.log('Header and logo added successfully');
     } catch (headerError) {
       console.warn('Error adding header/logo, continuing without it:', headerError);
@@ -1432,7 +1472,7 @@ export async function generateSummaryReport(orders: MarketingOrder[]): Promise<s
 }
 
 // Function to generate an inventory report PDF
-export async function generateInventoryReport(products: Product[]): Promise<Blob> {
+export async function generateInventoryReport(products: Product[], branding?: BrandingConfig): Promise<Blob> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -1442,7 +1482,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Inventory Report');
+    await addHeaderAndLogo(doc, 'Inventory Report', branding);
     
     // Add report date
     doc.setFontSize(12);
@@ -1585,7 +1625,7 @@ export async function generateInventoryReport(products: Product[]): Promise<Blob
 }
 
 // Function to generate a products report PDF
-export async function generateProductsReport(products: Product[]): Promise<Blob> {
+export async function generateProductsReport(products: Product[], branding?: BrandingConfig): Promise<Blob> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -1595,7 +1635,7 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Products Report');
+    await addHeaderAndLogo(doc, 'Products Report', branding);
     
     // Add report date
     doc.setFontSize(12);
@@ -1732,7 +1772,7 @@ export async function generateProductsReport(products: Product[]): Promise<Blob>
 }
 
 // Function to generate an orders report PDF
-export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
+export async function generateOrdersReport(orders: Order[], branding?: BrandingConfig): Promise<Blob> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -1742,7 +1782,7 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Orders Report');
+    await addHeaderAndLogo(doc, 'Orders Report', branding);
     
     // Add report date
     doc.setFontSize(12);
@@ -1924,7 +1964,7 @@ export async function generateOrdersReport(orders: Order[]): Promise<Blob> {
 }
 
 // Function to generate a shops report PDF
-export async function generateShopsReport(shops: Shop[]): Promise<Blob> {
+export async function generateShopsReport(shops: Shop[], branding?: BrandingConfig): Promise<Blob> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -1934,7 +1974,7 @@ export async function generateShopsReport(shops: Shop[]): Promise<Blob> {
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Shops Report');
+    await addHeaderAndLogo(doc, 'Shops Report', branding);
     
     // Add report date
     doc.setFontSize(12);
@@ -2007,7 +2047,7 @@ export async function generateShopsReport(shops: Shop[]): Promise<Blob> {
 }
 
 // Function to generate owner KPI dashboard PDF report
-export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<Blob> {
+export async function generateOwnerKPIReport(kpis: any, filters: any, branding?: BrandingConfig): Promise<Blob> {
   try {
     // Create a new PDF document
     const doc = new jsPDF({
@@ -2017,7 +2057,7 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
     });
 
     // Add header and logo
-    await addHeaderAndLogo(doc, 'Owner KPI Dashboard Report');
+    await addHeaderAndLogo(doc, 'Owner KPI Dashboard Report', branding);
     
     // Add report generation date and filters
     const generationDate = new Date().toLocaleDateString();
@@ -2262,7 +2302,7 @@ export async function generateOwnerKPIReport(kpis: any, filters: any): Promise<B
 /**
  * Generates a professional PDF for a machine layout configuration
  */
-export async function generateMachineLayoutPDF(layout: any): Promise<string> {
+export async function generateMachineLayoutPDF(layout: any, branding?: BrandingConfig): Promise<string> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -2271,7 +2311,7 @@ export async function generateMachineLayoutPDF(layout: any): Promise<string> {
   });
 
   const title = `Production Layout: ${layout.layoutName}`;
-  await (addHeaderAndLogo as any)(doc, title);
+  await (addHeaderAndLogo as any)(doc, title, branding);
 
   let currentY = 55;
 

@@ -5,7 +5,8 @@ import {
   convertPlanningToIEOB, 
   syncIEOBToPlanning,
   getOrdersWithOB,
-  createIEOBFromLibrary
+  createIEOBFromLibrary,
+  updateIEOB
 } from '@/lib/ie-ob-integration';
 
 // GET /api/ie/ob/[orderId] - Get combined OB (IE priority, fallback to Planning)
@@ -26,7 +27,7 @@ export const GET = withRoleAuth(async (request, user, { params }: { params: { or
   }
 }, ['ie_admin', 'ie_user']);
 
-// POST /api/ie/ob/[orderId]/convert - Convert Planning OB to IE OB for editing
+// POST /api/ie/ob/[orderId] - Convert Planning OB to IE OB for editing
 export const POST = withRoleAuth(async (request, user, { params }: { params: { orderId: string } }) => {
   try {
     const { orderId } = params;
@@ -49,7 +50,7 @@ export const POST = withRoleAuth(async (request, user, { params }: { params: { o
   }
 }, 'ie_admin');
 
-// PUT /api/ie/ob/[orderId]/sync - Sync IE OB back to Planning system
+// PUT /api/ie/ob/[orderId] - Sync IE OB back to Planning system
 export const PUT = withRoleAuth(async (request, user, { params }: { params: { orderId: string } }) => {
   try {
     const { orderId } = params;
@@ -68,5 +69,28 @@ export const PUT = withRoleAuth(async (request, user, { params }: { params: { or
   } catch (error) {
     console.error('Error syncing IE OB:', error);
     return NextResponse.json({ error: 'Failed to sync operation bulletin' }, { status: 500 });
+  }
+}, 'ie_admin');
+
+// PATCH /api/ie/ob/[orderId] - Update IE OB items
+export const PATCH = withRoleAuth(async (request, user, { params }: { params: { orderId: string } }) => {
+  try {
+    const { orderId } = params;
+    const { items } = await request.json();
+    
+    if (!orderId || !items || !Array.isArray(items)) {
+      return NextResponse.json({ error: 'Order ID and items array are required' }, { status: 400 });
+    }
+    
+    const result = await updateIEOB(orderId, items, user.username);
+    
+    if (result.success) {
+      return NextResponse.json({ message: result.message });
+    } else {
+      return NextResponse.json({ error: result.message }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Error updating IE OB:', error);
+    return NextResponse.json({ error: 'Failed to update operation bulletin' }, { status: 500 });
   }
 }, 'ie_admin');

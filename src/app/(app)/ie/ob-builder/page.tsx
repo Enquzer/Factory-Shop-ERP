@@ -15,7 +15,10 @@ import {
   Edit3,
   Eye,
   Download,
-  Upload
+  Upload,
+  Trash2,
+  Save,
+  X
 } from 'lucide-react';
 import {
   Table,
@@ -61,7 +64,8 @@ export default function OBBuilderPage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithOB | null>(null);
   const [obItems, setObItems] = useState<OBItem[]>([]);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchOrders();
@@ -130,13 +134,13 @@ export default function OBBuilderPage() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const res = await fetch(`/api/ie/ob/${order.id}/convert`, {
+      const res = await fetch(`/api/ie/ob/${order.id}`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ productCode: order.productCode })
       });
       
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
       
       if (res.ok) {
         toast({
@@ -170,12 +174,12 @@ export default function OBBuilderPage() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const res = await fetch(`/api/ie/ob/${order.id}/sync`, {
+      const res = await fetch(`/api/ie/ob/${order.id}`, {
         method: 'PUT',
         headers
       });
       
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
       
       if (res.ok) {
         toast({
@@ -198,6 +202,65 @@ export default function OBBuilderPage() {
         variant: "destructive"
       });
     }
+  };
+
+  const saveIEOB = async () => {
+    if (!selectedOrder) return;
+    try {
+      setSaving(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const res = await fetch(`/api/ie/ob/${selectedOrder.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ items: obItems })
+      });
+      
+      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
+      
+      if (res.ok) {
+        toast({
+          title: "Success",
+          description: data.message || "IE OB updated successfully"
+        });
+        setIsEditing(false);
+        fetchOrders(); // Refresh the list
+      } else {
+        toast({
+          title: "Error",
+          description: data.error,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error saving IE OB:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save operation bulletin",
+        variant: "destructive"
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addRow = () => {
+    const nextSeq = obItems.length > 0 ? Math.max(...obItems.map(i => i.sequence)) + 1 : 1;
+    setObItems([...obItems, { sequence: nextSeq, operationName: '', machineType: '', smv: 0, manpower: 1 }]);
+  };
+
+  const removeRow = (index: number) => {
+    setObItems(obItems.filter((_, i) => i !== index));
+  };
+
+  const updateItem = (index: number, field: keyof OBItem, value: any) => {
+    const newItems = [...obItems];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setObItems(newItems);
   };
 
   const filteredOrders = orders.filter(order =>
@@ -347,7 +410,10 @@ export default function OBBuilderPage() {
       </Card>
 
       {/* View OB Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+      <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
+        setIsViewDialogOpen(open);
+        if (!open) setIsEditing(false);
+      }}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
@@ -374,35 +440,113 @@ export default function OBBuilderPage() {
               <TableBody>
                 {obItems.map((item, index) => (
                   <TableRow key={index}>
-                    <TableCell className="font-medium">{item.sequence}</TableCell>
-                    <TableCell>{item.componentName || '-'}</TableCell>
-                    <TableCell>{item.operationName}</TableCell>
-                    <TableCell>{item.machineType}</TableCell>
-                    <TableCell className="text-right">{item.smv?.toFixed(3) || '0.000'}</TableCell>
-                    <TableCell className="text-right">{item.manpower || 1}</TableCell>
+                    <TableCell className="font-medium">
+                      {isEditing ? (
+                        <Input 
+                          type="number" 
+                          value={item.sequence} 
+                          onChange={(e) => updateItem(index, 'sequence', parseInt(e.target.value) || 0)}
+                          className="w-16 h-8 text-xs"
+                        />
+                      ) : item.sequence}
+                    </TableCell>
+                    <TableCell>
+                      {isEditing ? (
+                        <Input 
+                          value={item.componentName || ''} 
+                          onChange={(e) => updateItem(index, 'componentName', e.target.value)}
+                          className="h-8 text-xs"
+                          placeholder="e.g. Front"
+                        />
+                      ) : (item.componentName || '-')}
+                    </TableCell>
+                    <TableCell>
+                      {isEditing ? (
+                        <Input 
+                          value={item.operationName} 
+                          onChange={(e) => updateItem(index, 'operationName', e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      ) : item.operationName}
+                    </TableCell>
+                    <TableCell>
+                      {isEditing ? (
+                        <Input 
+                          value={item.machineType} 
+                          onChange={(e) => updateItem(index, 'machineType', e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      ) : item.machineType}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <Input 
+                          type="number" 
+                          step="0.001"
+                          value={item.smv} 
+                          onChange={(e) => updateItem(index, 'smv', parseFloat(e.target.value) || 0)}
+                          className="w-20 h-8 text-xs text-right"
+                        />
+                      ) : (item.smv?.toFixed(3) || '0.000')}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <Input 
+                          type="number" 
+                          value={item.manpower} 
+                          onChange={(e) => updateItem(index, 'manpower', parseInt(e.target.value) || 1)}
+                          className="w-16 h-8 text-xs text-right"
+                        />
+                      ) : (item.manpower || 1)}
+                    </TableCell>
+                    {isEditing && (
+                      <TableCell>
+                        <Button variant="ghost" size="sm" onClick={() => removeRow(index)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
           
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-              Close
-            </Button>
-            {selectedOrder?.source === 'IE' && user?.role === 'ie_admin' && (
-              <Button onClick={() => {
+          <div className="flex justify-between items-center pt-4 border-t">
+            <div>
+              {isEditing && (
+                <Button variant="outline" size="sm" onClick={addRow}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Operation
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => {
                 setIsViewDialogOpen(false);
-                // TODO: Implement edit functionality
-                toast({
-                  title: "Edit Feature",
-                  description: "Edit functionality will be implemented in next phase"
-                });
+                setIsEditing(false);
               }}>
-                <Edit3 className="mr-2 h-4 w-4" />
-                Edit OB
+                Cancel
               </Button>
-            )}
+              
+              {selectedOrder?.source === 'IE' && user?.role === 'ie_admin' && (
+                isEditing ? (
+                  <Button onClick={saveIEOB} disabled={saving}>
+                    {saving ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save Changes
+                  </Button>
+                ) : (
+                  <Button onClick={() => setIsEditing(true)}>
+                    <Edit3 className="mr-2 h-4 w-4" />
+                    Edit OB
+                  </Button>
+                )
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

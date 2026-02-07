@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: 'Factory and Shop Management Tool',
 };
 
+import { SystemSettingsProvider } from '@/contexts/system-settings-context';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -22,7 +24,9 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased">
         <AuthProvider>
-          {children}
+          <SystemSettingsProvider>
+            {children}
+          </SystemSettingsProvider>
         </AuthProvider>
         <Toaster />
       </body>

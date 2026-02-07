@@ -184,6 +184,58 @@ export async function syncIEOBToPlanning(orderId: string) {
 }
 
 /**
+ * Update/Save IE OB items
+ */
+export async function updateIEOB(orderId: string, items: any[], updatedBy: string) {
+  try {
+    const db = await getDb();
+    
+    // Get product code from first existing item or search in marketing_orders
+    let productCode = items[0]?.productCode;
+    if (!productCode) {
+      const order = await db.get('SELECT productCode FROM marketing_orders WHERE id = ?', [orderId]);
+      productCode = order?.productCode;
+    }
+
+    await db.run('BEGIN TRANSACTION');
+    
+    try {
+      // Delete existing IE OB items
+      await db.run('DELETE FROM tbl_IE_OB_Master WHERE orderId = ?', [orderId]);
+      
+      // Insert new items
+      for (const item of items) {
+        await db.run(
+          `INSERT INTO tbl_IE_OB_Master 
+           (orderId, productCode, sequence, opCode, componentName, machineType, smv, manpower, createdBy)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            orderId,
+            productCode,
+            item.sequence,
+            item.opCode || item.operationName,
+            item.componentName || null,
+            item.machineType,
+            item.smv || 0,
+            item.manpower || 1,
+            updatedBy
+          ]
+        );
+      }
+      
+      await db.run('COMMIT');
+      return { success: true, message: 'IE OB updated successfully' };
+    } catch (err) {
+      await db.run('ROLLBACK');
+      throw err;
+    }
+  } catch (error) {
+    console.error('Error updating IE OB:', error);
+    return { success: false, message: 'Failed to update OB: ' + (error as Error).message };
+  }
+}
+
+/**
  * Get all orders that have OB (from either IE or Planning)
  */
 export async function getOrdersWithOB() {

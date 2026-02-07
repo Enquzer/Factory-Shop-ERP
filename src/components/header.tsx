@@ -26,6 +26,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useResponsive } from '@/contexts/responsive-context';
 import { HelpCenter } from '@/components/help-center';
 import { DynamicBreadcrumbs } from '@/components/dynamic-breadcrumbs';
+import { SystemSettingsSheet } from './system-settings-sheet';
 
 type Notification = {
   id: string;
@@ -175,6 +176,8 @@ export function Header() {
       </Button>
 
       <HelpCenter />
+      
+      <SystemSettingsSheet />
 
       <Popover>
         <PopoverTrigger asChild>

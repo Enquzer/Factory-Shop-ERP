@@ -38,7 +38,7 @@ export default function Home() {
   const backgroundImages = products.slice(0, 8);
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen theme-ecommerce">
       <LoadingBar isLoading={isLoading} variant="erp" message="Loading..." />
        <div className="absolute inset-0 h-full w-full grid grid-cols-2 md:grid-cols-4">
         {isLoading ? (
