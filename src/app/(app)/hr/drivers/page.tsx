@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 import { 
   Plus, 
   Trash2, 
@@ -54,14 +55,29 @@ export default function DriversPage() {
   
   const { toast } = useToast();
 
+  interface Employee {
+    id: number;
+    employeeId: string;
+    name: string;
+    phone: string;
+    userId?: string;
+  }
+
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
+  const [vehicleType, setVehicleType] = useState<'motorbike' | 'car' | 'van' | 'truck'>('car');
+
   useEffect(() => {
     fetchDrivers();
+    fetchEmployees();
   }, []);
 
   const fetchDrivers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/hr/drivers");
+      const response = await fetch("/api/hr/drivers", {
+        headers: createAuthHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
         setDrivers(data);
@@ -79,19 +95,50 @@ export default function DriversPage() {
     }
   };
 
+  const fetchEmployees = async () => {
+    try {
+      const response = await fetch("/api/hr/employees", {
+        headers: createAuthHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEmployees(data);
+      }
+    } catch (error) {
+       console.error("Error fetching employees:", error);
+    }
+  };
+
+  const handleEmployeeChange = (employeeId: string) => {
+    setSelectedEmployeeId(employeeId);
+    const emp = employees.find(e => e.employeeId === employeeId);
+    if (emp) {
+      setName(emp.name);
+      setContact(emp.phone);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const method = editingDriver ? "PUT" : "POST";
     const url = editingDriver ? `/api/hr/drivers/${editingDriver.id}` : "/api/hr/drivers";
 
+    const emp = employees.find(e => e.employeeId === selectedEmployeeId);
+
     try {
       const response = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...createAuthHeaders()
+        },
         body: JSON.stringify({
           name,
           contact,
           license_plate: licensePlate,
+          employeeId: selectedEmployeeId,
+          userId: emp?.userId,
+          vehicleType
         }),
       });
 
@@ -122,6 +169,7 @@ export default function DriversPage() {
     try {
       const response = await fetch(`/api/hr/drivers/${id}`, {
         method: "DELETE",
+        headers: createAuthHeaders()
       });
 
       if (response.ok) {
@@ -282,6 +330,22 @@ export default function DriversPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
+                <Label htmlFor="employee">Link to Employee</Label>
+                <select 
+                  id="employee"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={selectedEmployeeId}
+                  onChange={(e) => handleEmployeeChange(e.target.value)}
+                >
+                  <option value="">-- Select Employee (Optional) --</option>
+                  {employees.map(emp => (
+                    <option key={emp.employeeId} value={emp.employeeId}>
+                      {emp.name} ({emp.employeeId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="name">Full Name</Label>
                 <Input
                   id="name"
@@ -300,6 +364,20 @@ export default function DriversPage() {
                   placeholder="e.g. +251 911 223344"
                   required
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="vehicleType">Vehicle Type</Label>
+                <select 
+                  id="vehicleType"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={vehicleType}
+                  onChange={(e) => setVehicleType(e.target.value as any)}
+                >
+                  <option value="motorbike">Motorbike</option>
+                  <option value="car">Car</option>
+                  <option value="van">Van</option>
+                  <option value="truck">Truck</option>
+                </select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="license">License Plate (Optional)</Label>

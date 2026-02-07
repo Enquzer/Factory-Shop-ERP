@@ -117,6 +117,36 @@ export async function removeItemsFromShopInventory(shopId: string, productVarian
   }
 }
 
+// Reduce stock in a shop's inventory
+export async function reduceShopInventoryStock(shopId: string, productVariantId: string, quantity: number): Promise<boolean> {
+  try {
+    const db = await getDb();
+    
+    // First check if item exists and has enough stock
+    const item = await getShopInventoryItem(shopId, productVariantId);
+    if (!item || item.stock < quantity) {
+      console.warn(`Insufficient stock for item ${productVariantId} in shop ${shopId}. Stock: ${item?.stock || 0}, Requested: ${quantity}`);
+      // Even if insufficient, we might still want to reduce it to 0 or allow negative stock if configuration permits
+      // For now, let's just reduce it by the amount, but cap at 0
+    }
+
+    const result = await db.run(`
+      UPDATE shop_inventory 
+      SET stock = MAX(0, stock - ?) 
+      WHERE shopId = ? AND productVariantId = ?
+    `, quantity, shopId, productVariantId);
+    
+    const updated = (result.changes || 0) > 0;
+    if (updated) {
+      resetDbCache();
+    }
+    return updated;
+  } catch (error) {
+    console.error('Error reducing shop inventory stock:', error);
+    return false;
+  }
+}
+
 // Get a specific item from a shop's inventory
 export async function getShopInventoryItem(shopId: string, productVariantId: string): Promise<ShopInventoryItem | null> {
   try {

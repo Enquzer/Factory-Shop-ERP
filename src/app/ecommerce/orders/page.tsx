@@ -368,17 +368,29 @@ export default function MyOrdersPage() {
                               Cancel Order
                            </Button>
                          )}
-                         {order.status === 'shipped' && (
-                           <Button 
-                             variant="default" 
-                             size="sm" 
-                             className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium"
-                             onClick={() => confirmDelivery(order.id)}
-                           >
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Confirm Delivery
-                           </Button>
-                         )}
+                          {order.status === 'shipped' && (
+                            <div className="flex gap-2">
+                               <Link href={`/track-order/${order.id}`}>
+                                  <Button 
+                                    variant="default" 
+                                    size="sm" 
+                                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                                  >
+                                     <MapPin className="h-3 w-3 mr-1" />
+                                     Track Location
+                                  </Button>
+                               </Link>
+                               <Button 
+                                 variant="default" 
+                                 size="sm" 
+                                 className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium"
+                                 onClick={() => confirmDelivery(order.id)}
+                               >
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Confirm Delivery
+                               </Button>
+                            </div>
+                          )}
                          {order.status === 'delivered' && (
                            <Button 
                              variant="outline" 

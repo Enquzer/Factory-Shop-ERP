@@ -23,8 +23,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const shopId = searchParams.get('shopId');
     
+    const status = searchParams.get('status');
+    
     let orders;
-    if (shopId) {
+    if (status) {
+       // Filter by status if provided (comma separated)
+       const statuses = status.split(',');
+       const allOrders = await getAllEcommerceOrders();
+       orders = allOrders.filter((o: any) => statuses.includes(o.status));
+    } else if (shopId) {
       orders = await getEcommerceOrdersByShop(shopId);
     } else {
       orders = await getAllEcommerceOrders();

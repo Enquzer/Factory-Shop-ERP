@@ -45,7 +45,10 @@ import {
   Plane,
   DollarSign,
   AlertTriangle,
-  Send
+  Send,
+  User,
+  Clock,
+  Hash
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -56,10 +59,14 @@ export default function DispatchCenterPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [drivers, setDrivers] = useState<any[]>([]);
   const [dispatchData, setDispatchData] = useState({
     shopId: "",
+    driverId: "",
     transportationCost: 0,
     trackingNumber: "",
+    estimatedDeliveryTime: "",
+    notes: ""
   });
   const { token } = useAuth();
   const { toast } = useToast();
@@ -86,6 +93,27 @@ export default function DispatchCenterPage() {
         const shopsData = await shopsRes.json();
         const allShops = Array.isArray(shopsData) ? shopsData : (shopsData.shops || []);
         
+        // Fetch drivers too
+        const driversRes = await fetch('/api/drivers', { headers: authHeaders });
+        if (driversRes.ok) {
+          const { drivers: allDrivers } = await driversRes.json();
+          console.log('[DISPATCH PAGE] Received drivers:', allDrivers);
+          console.log('[DISPATCH PAGE] Total drivers:', allDrivers?.length || 0);
+                
+          if (allDrivers) {
+            const availableDrivers = allDrivers.filter((d: any) => d.status === 'available');
+            console.log('[DISPATCH PAGE] Available drivers:', availableDrivers.length);
+            console.log('[DISPATCH PAGE] Available driver details:', availableDrivers.map((d: any) => ({
+              id: d.id,
+              name: `${d.first_name} ${d.last_name}`,
+              status: d.status,
+              vehicle: d.vehicle_type
+            })));
+          }
+                
+          setDrivers(allDrivers || []);
+        }
+
         // Filter orders that are ready for dispatch (confirmed or processing)
         const dispatchable = allOrders.filter((o: any) => 
           ['confirmed', 'processing'].includes(o.status)
@@ -106,43 +134,83 @@ export default function DispatchCenterPage() {
     }
   };
 
+  const generateTrackingNumber = () => {
+    const random = Math.floor(100000 + Math.random() * 900000); // 6 digits
+    return `TRX-${random}`;
+  };
+
+  const calculateTransportCost = (order: any) => {
+    if (order.transportationCost && order.transportationCost > 0) return order.transportationCost;
+    if (order.transportation_cost && order.transportation_cost > 0) return order.transportation_cost;
+    
+    // Basic calculation if not preset
+    const baseCost = 100;
+    const itemCost = (order.orderItems?.length || 0) * 50;
+    return baseCost + itemCost;
+  };
+
+  const handleOrderSelect = (order: any) => {
+    setSelectedOrder(order);
+    const trackingNumber = generateTrackingNumber();
+    const transportCost = calculateTransportCost(order);
+    
+    setDispatchData({
+      shopId: order.shopId || "",
+      driverId: "",
+      transportationCost: transportCost,
+      trackingNumber: trackingNumber,
+      estimatedDeliveryTime: "",
+      notes: ""
+    });
+  };
+
   const handleDispatch = async () => {
-    if (!selectedOrder || !dispatchData.shopId) return;
+    if (!selectedOrder || !dispatchData.shopId || !dispatchData.driverId) {
+      toast({
+        title: "Missing Information",
+        description: "Please select both a shop and a driver.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     try {
       setIsUpdating(true);
-      const res = await fetch('/api/ecommerce-manager/orders', {
-        method: 'PUT',
+      // Use the consolidated assignment API
+      const res = await fetch('/api/ecommerce/dispatch/assign', {
+        method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           orderId: selectedOrder.id,
-          status: 'shipped',
-          dispatchedFromShopId: dispatchData.shopId,
-          transportationCost: dispatchData.transportationCost,
+          driverId: dispatchData.driverId,
+          shopId: dispatchData.shopId,
           trackingNumber: dispatchData.trackingNumber,
-          dispatchDate: new Date().toISOString()
+          transportCost: dispatchData.transportationCost,
+          estimatedDeliveryTime: dispatchData.estimatedDeliveryTime,
+          notes: dispatchData.notes
         })
       });
 
       if (res.ok) {
         toast({
           title: "Dispatch Successful",
-          description: `Order ${selectedOrder.id} has been shipped. Shop inventory updated.`,
+          description: `Order ${selectedOrder.id} has been dispatched.`,
           className: "bg-green-600 text-white"
         });
         fetchData();
         setSelectedOrder(null);
-        setDispatchData({ shopId: "", transportationCost: 0, trackingNumber: "" });
+        setDispatchData({ shopId: "", driverId: "", transportationCost: 0, trackingNumber: "", estimatedDeliveryTime: "", notes: "" });
       } else {
-        throw new Error('Failed to dispatch order');
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to dispatch order');
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to process dispatch",
+        description: error.message || "Failed to process dispatch",
         variant: "destructive"
       });
     } finally {
@@ -231,7 +299,7 @@ export default function DispatchCenterPage() {
                         <DialogTrigger asChild>
                           <Button 
                             className="bg-indigo-600 hover:bg-indigo-700 h-8" 
-                            onClick={() => setSelectedOrder(order)}
+                            onClick={() => handleOrderSelect(order)}
                           >
                             <Send className="mr-2 h-3.5 w-3.5" />
                             Dispatch Now
@@ -280,7 +348,15 @@ export default function DispatchCenterPage() {
 
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                  <Label htmlFor="cost">Transport Cost (ETB)</Label>
+                                  <Label htmlFor="cost" className="flex justify-between">
+                                    Transport Cost (ETB)
+                                    <button 
+                                      onClick={() => setDispatchData({...dispatchData, transportationCost: calculateTransportCost(selectedOrder)})}
+                                      className="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5"
+                                    >
+                                      <RefreshCcw className="h-2.5 w-2.5" /> Re-calculate
+                                    </button>
+                                  </Label>
                                   <div className="relative">
                                     <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input 
@@ -294,17 +370,74 @@ export default function DispatchCenterPage() {
                                   </div>
                                 </div>
                                 <div className="space-y-2">
-                                  <Label htmlFor="tracking">Tracking Number</Label>
+                                  <Label htmlFor="tracking" className="flex justify-between">
+                                    Tracking Number
+                                    <button 
+                                      onClick={() => setDispatchData({...dispatchData, trackingNumber: generateTrackingNumber()})}
+                                      className="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5"
+                                    >
+                                      <RefreshCcw className="h-2.5 w-2.5" /> New
+                                    </button>
+                                  </Label>
                                   <div className="relative">
-                                    <Plane className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Hash className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input 
                                       id="tracking"
                                       className="pl-8"
-                                      placeholder="TRX-XXXXXX"
                                       value={dispatchData.trackingNumber}
                                       onChange={(e) => setDispatchData({...dispatchData, trackingNumber: e.target.value})}
                                     />
                                   </div>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="driver">Select Driver *</Label>
+                                <Select 
+                                  value={dispatchData.driverId} 
+                                  onValueChange={(v) => setDispatchData({...dispatchData, driverId: v})}
+                                >
+                                  <SelectTrigger id="driver">
+                                    <SelectValue placeholder="Assign a driver" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {drivers.filter(d => d.status === 'available').map((driver) => (
+                                      <SelectItem key={driver.id} value={driver.id.toString()}>
+                                        <div className="flex flex-col">
+                                          <div className="font-medium">{driver.first_name} {driver.last_name}</div>
+                                          <div className="text-xs text-muted-foreground">{driver.vehicle_type}</div>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                    {drivers.filter(d => d.status === 'available').length === 0 && (
+                                      <SelectItem value="none" disabled>No available drivers</SelectItem>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="deliveryTime">Estimated Delivery</Label>
+                                  <div className="relative">
+                                    <Clock className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input 
+                                      id="deliveryTime"
+                                      type="datetime-local"
+                                      className="pl-8"
+                                      value={dispatchData.estimatedDeliveryTime}
+                                      onChange={(e) => setDispatchData({...dispatchData, estimatedDeliveryTime: e.target.value})}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="notes">Delivery Notes</Label>
+                                  <Input 
+                                    id="notes"
+                                    placeholder="Instructions..."
+                                    value={dispatchData.notes}
+                                    onChange={(e) => setDispatchData({...dispatchData, notes: e.target.value})}
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -314,7 +447,7 @@ export default function DispatchCenterPage() {
                             <Button variant="outline" onClick={() => setSelectedOrder(null)}>Cancel</Button>
                             <Button 
                               onClick={handleDispatch} 
-                              disabled={!dispatchData.shopId || isUpdating}
+                              disabled={!dispatchData.shopId || !dispatchData.driverId || isUpdating}
                               className="bg-indigo-600 hover:bg-indigo-700"
                             >
                               {isUpdating ? "Processing..." : "Confirm Shipment"}

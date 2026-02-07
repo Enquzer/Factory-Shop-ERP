@@ -68,6 +68,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 } else if (user.role === 'ecommerce' && !pathname.startsWith('/ecommerce-manager') && !pathname.startsWith('/profile')) {
                     setRedirecting(true);
                     router.push('/ecommerce-manager');
+                } else if (user.role === 'driver' && !pathname.startsWith('/driver') && !pathname.startsWith('/profile')) {
+                    setRedirecting(true);
+                    router.push('/driver/dashboard');
+                } else if (user.role === 'ie_admin' || user.role === 'ie_user') {
+                    if (!pathname.startsWith('/ie') && !pathname.startsWith('/profile')) {
+                        setRedirecting(true);
+                        router.push('/ie');
+                    }
                 }
             }
             setCheckedAuth(true);

@@ -1,7 +1,7 @@
 export type User = {
   id: number;
   username: string;
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin' | 'ie_admin' | 'ie_user' | 'designer' | 'customer' | 'hr' | 'ecommerce';
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin' | 'ie_admin' | 'ie_user' | 'designer' | 'customer' | 'hr' | 'ecommerce' | 'driver';
   profilePictureUrl?: string;
   createdAt: Date;
 };
@@ -17,7 +17,7 @@ export type AuthResult = {
 export const registerUser = async (
   username: string,
   password: string,
-  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin'
+  role: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'marketing' | 'admin' | 'driver'
 ): Promise<AuthResult> => {
   try {
     const response = await fetch('/api/auth/register', {

@@ -30,7 +30,7 @@ import { SystemSettingsSheet } from './system-settings-sheet';
 
 type Notification = {
   id: string;
-  userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce';
+  userType: 'factory' | 'shop' | 'store' | 'finance' | 'planning' | 'sample_maker' | 'cutting' | 'sewing' | 'finishing' | 'packing' | 'quality_inspection' | 'designer' | 'marketing' | 'ecommerce' | 'driver';
   shopId?: string;
   title: string;
   description: string;

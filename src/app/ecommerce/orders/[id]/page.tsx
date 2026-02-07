@@ -404,6 +404,12 @@ export default function OrderDetailPage() {
               <p className="text-gray-500 text-sm">Placed on {format(new Date(order.createdAt), 'MMMM d, yyyy • h:mm a')}</p>
             </div>
             <div className="flex gap-2">
+               <Link href={`/track-order/${order.id}`}>
+                  <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Track My Order
+                  </Button>
+               </Link>
                <Dialog open={isSupportDialogOpen} onOpenChange={setIsSupportDialogOpen}>
                  <DialogTrigger asChild>
                     <Button variant="outline" className="border-green-700 text-green-800 hover:bg-green-50">

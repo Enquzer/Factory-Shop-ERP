@@ -154,6 +154,9 @@ export function HomepageLoginForm() {
       case 'ie_user':
         router.push("/ie");
         break;
+      case 'driver':
+        router.push("/driver/dashboard");
+        break;
       default:
         router.push("/");
         break;

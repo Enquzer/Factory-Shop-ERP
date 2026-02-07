@@ -15,16 +15,20 @@ export const GET = withRoleAuth(async (request: NextRequest) => {
 
 export const POST = withRoleAuth(async (request: NextRequest) => {
   try {
-    const { name, contact, license_plate } = await request.json();
+    const { name, contact, license_plate, employeeId, userId, vehicleType } = await request.json();
 
     if (!name || !contact) {
       return NextResponse.json({ error: 'Name and contact are required' }, { status: 400 });
     }
 
     const db = await getDb();
+    // Generate proper integer ID
+    const maxIdResult = await db.get('SELECT MAX(id) as maxId FROM drivers');
+    const id = maxIdResult?.maxId ? maxIdResult.maxId + 1 : Math.floor(Date.now() / 1000);
+    
     const result = await db.run(
-      'INSERT INTO drivers (name, contact, license_plate) VALUES (?, ?, ?)',
-      [name, contact, license_plate || null]
+      'INSERT INTO drivers (id, name, phone, contact, licensePlate, employeeId, userId, vehicleType, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, name, contact, contact, license_plate || null, employeeId || null, userId || null, vehicleType || 'car', 'available']
     );
 
     return NextResponse.json({ 

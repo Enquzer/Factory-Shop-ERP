@@ -17,16 +17,25 @@ export const DELETE = withRoleAuth(async (request: NextRequest, user: any, { par
 export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params }: { params: { id: string } }) => {
   try {
     const { id } = params;
-    const { name, contact, license_plate } = await request.json();
+    const { name, contact, phone, license_plate, licensePlate, employeeId, userId, vehicleType, status } = await request.json();
 
-    if (!name || !contact) {
+    if (!name || (!contact && !phone)) {
       return NextResponse.json({ error: 'Name and contact are required' }, { status: 400 });
     }
 
     const db = await getDb();
     await db.run(
-      'UPDATE drivers SET name = ?, contact = ?, license_plate = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [name, contact, license_plate || null, id]
+      'UPDATE drivers SET name = ?, phone = ?, licensePlate = ?, employeeId = ?, userId = ?, vehicleType = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [
+        name, 
+        phone || contact, 
+        licensePlate || license_plate || null, 
+        employeeId || null, 
+        userId || null, 
+        vehicleType || 'car', 
+        status || 'available',
+        id
+      ]
     );
 
     return NextResponse.json({ message: 'Driver updated successfully' });

@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
+import Link from "next/link";
 
 export default function OrderManagementPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -330,8 +331,8 @@ export default function OrderManagementPage() {
                                   </div>
                                 </div>
 
-                                <div className="space-y-3">
-                                  <h4 className="font-semibold">Update Order Status</h4>
+                                <div className="space-y-3 pt-4 border-t">
+                                  <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Update Order Status</h4>
                                   <div className="flex flex-wrap gap-2">
                                     {['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map(s => (
                                       <Button 
@@ -346,6 +347,17 @@ export default function OrderManagementPage() {
                                     ))}
                                   </div>
                                 </div>
+
+                                {selectedOrder.status === 'shipped' && (
+                                  <div className="pt-4 border-t">
+                                     <Link href={`/track-order/${selectedOrder.id}`} target="_blank">
+                                        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-6">
+                                            <Truck className="h-5 w-5 mr-3" />
+                                            TRACK SHIPMENT LOCATION
+                                        </Button>
+                                     </Link>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </DialogContent>

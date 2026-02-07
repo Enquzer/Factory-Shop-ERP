@@ -31,11 +31,16 @@ export default function LocationMap({
   const shopMarkerRef = useRef<L.Marker | null>(null);
   const polylineRef = useRef<L.Polyline | null>(null);
   const mapKey = useRef<string>('map-' + Date.now());
+  const isUnmounted = useRef(false);
 
   // Reset map key on unmount to ensure clean state
   useEffect(() => {
+    // Generate a new key when component mounts
+    mapKey.current = 'map-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    
     return () => {
-      mapKey.current = 'map-' + Date.now();
+      // Clean up when component unmounts
+      mapKey.current = 'map-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     };
   }, []);
 
@@ -52,8 +57,10 @@ export default function LocationMap({
       return;
     }
 
+    let map: L.Map | null = null;
+    
     try {
-      const map = L.map(containerRef.current, {
+      map = L.map(containerRef.current, {
           zoomControl: true,
           attributionControl: true
       }).setView([9.0192, 38.7525], 13);
@@ -78,31 +85,56 @@ export default function LocationMap({
           resizeObserver.observe(containerRef.current);
       }
 
+      // Cleanup function
       return () => {
+        // Mark as unmounted to prevent any pending operations
+        isUnmounted.current = true;
+        
+        // Clean up resize observer
         if (containerRef.current) {
           resizeObserver.unobserve(containerRef.current);
         }
         resizeObserver.disconnect();
         
+        // Clean up map
         if (mapRef.current) {
+          try {
             const mapInstance = mapRef.current;
             mapRef.current = null; // Clear ref immediately
             
-            // Use setTimeout to ensure we're not in the middle of a render cycle
-            setTimeout(() => {
-              try {
-                mapInstance.off();
-                mapInstance.remove();
-              } catch (e) {
-                console.warn("Error during map removal:", e);
-              }
-            }, 0);
+            // Remove all layers and controls first
+            mapInstance.eachLayer(layer => {
+              mapInstance.removeLayer(layer);
+            });
+            
+            // Remove all event listeners
+            mapInstance.off();
+            
+            // Remove the map from the DOM
+            mapInstance.remove();
+            
+            // Clear the container
+            if (containerRef.current) {
+              containerRef.current.innerHTML = '';
+            }
+          } catch (e) {
+            console.warn("Error during map cleanup:", e);
+          }
         }
+        
+        // Clear all marker references
+        userMarkerRef.current = null;
+        shopMarkerRef.current = null;
+        polylineRef.current = null;
       };
     } catch (error) {
       console.error('Error initializing map:', error);
       // Clear the ref if initialization failed
       mapRef.current = null;
+      // Also clear the container to prevent future conflicts
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
     }
   }, [onLocationSelect]);
 
@@ -113,15 +145,15 @@ export default function LocationMap({
 
     // --- BOLD ICONS AT PATH ENDPOINTS ---
     
-    // BOLD SHOP ICON (Red Square with Shop/Factory)
+    // BOLD SHOP ICON (Company Logo in Red Square)
     // Dynamic color based on isSelected
     const shopBGColor = isSelected ? '#be123c' : '#f97316'; // rose-700 : orange-500
     
     const boldShopIcon = L.divIcon({
       html: `
         <div class="flex flex-col items-center">
-            <div class="relative w-12 h-12 rounded-xl border-[4px] border-white shadow-[0_8px_20px_rgba(0,0,0,0.3)] flex items-center justify-center z-50 transition-colors duration-300" style="background-color: ${shopBGColor}">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <div class="relative w-12 h-12 rounded-xl border-[4px] border-white shadow-[0_8px_20px_rgba(0,0,0,0.3)] flex items-center justify-center z-50 transition-colors duration-300 overflow-hidden" style="background-color: ${shopBGColor}">
+                <img src="/logo.png" alt="Shop Location" class="w-8 h-8 object-contain" />
             </div>
             <div class="w-3 h-3 rotate-45 -mt-2 border-r-[4px] border-b-[4px] border-white z-40 transition-colors duration-300" style="background-color: ${shopBGColor}"></div>
         </div>
@@ -165,6 +197,8 @@ export default function LocationMap({
       }
     }
 
+    // Always show the user marker, even when userLocation is null
+    // This ensures the blue pin is always visible for interaction
     if (userLocation) {
       const userPos: L.LatLngExpression = [userLocation.lat, userLocation.lng];
       if (!userMarkerRef.current) {
@@ -180,6 +214,27 @@ export default function LocationMap({
         });
       } else {
         userMarkerRef.current.setLatLng(userPos).setIcon(boldCustomerIcon);
+      }
+    } else {
+      // If no user location, create a default marker that can be dragged
+      // Position it near the center of the map or shop location
+      const defaultCenter: L.LatLngExpression = shopLocation ? 
+        [shopLocation.lat, shopLocation.lng] : 
+        [9.0192, 38.7525]; // Default Addis Ababa coordinates
+      
+      if (!userMarkerRef.current) {
+        userMarkerRef.current = L.marker(defaultCenter, { 
+          icon: boldCustomerIcon,
+          draggable: true,
+          zIndexOffset: 1000
+        }).addTo(map);
+        
+        userMarkerRef.current.on('dragend', (e) => {
+          const { lat, lng } = e.target.getLatLng();
+          onLocationSelect(lat, lng);
+        });
+      } else {
+        userMarkerRef.current.setLatLng(defaultCenter).setIcon(boldCustomerIcon);
       }
     }
 
@@ -206,12 +261,37 @@ export default function LocationMap({
         dashArray: routingStatus === 'road' ? '' : '10, 10'
       }).addTo(map);
 
+      // Enhanced fitBounds with multiple safety checks to prevent _leaflet_pos error
       try {
         const bounds = L.latLngBounds(points);
-        if (bounds.isValid() && mapRef.current) {
-            // Disable animation for fitBounds to avoid the "Cannot read properties of undefined (reading '_leaflet_pos')" error
-            // This error typically happens during zoom transitions when the map is undergoing rapid updates or removal
-            map.fitBounds(bounds, { padding: [80, 80], animate: false });
+        if (bounds.isValid() && mapRef.current && map) {
+          // Additional safety: check if map container still exists and is valid
+          if (containerRef.current && document.body.contains(containerRef.current)) {
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+              try {
+                // Extra defensive check before calling fitBounds
+                if (map && mapRef.current && containerRef.current && document.body.contains(containerRef.current) && !isUnmounted.current) {
+                  map.fitBounds(bounds, { 
+                    padding: [80, 80], 
+                    animate: false,
+                    duration: 0 // Ensure no animation duration
+                  });
+                }
+              } catch (innerError) {
+                console.warn("Safe fitBounds failed:", innerError);
+                // Fallback to simple panTo center if fitBounds fails
+                try {
+                  const center = bounds.getCenter();
+                  if (map && !isUnmounted.current) {
+                    map.setView(center, 13, { animate: false });
+                  }
+                } catch (panError) {
+                  console.warn("Fallback panTo also failed:", panError);
+                }
+              }
+            });
+          }
         }
       } catch (e) {
         console.error("FitBounds error:", e);

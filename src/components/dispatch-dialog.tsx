@@ -18,8 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Order } from "@/lib/orders";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 interface Driver {
   id: number;
@@ -57,7 +59,9 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
 
   const fetchDrivers = async () => {
     try {
-      const response = await fetch("/api/hr/drivers");
+      const response = await fetch("/api/hr/drivers", {
+        headers: createAuthHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
         setDrivers(data);
@@ -80,6 +84,43 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!order) return;
+
+    // Validate required fields
+    if (!driverName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Driver name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!contactPerson.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Driver contact is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!padNumber.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "PAD number is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!receiptNumber.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Receipt number is required",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     
@@ -142,7 +183,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Dispatch Order</DialogTitle>
           <DialogDescription>
@@ -150,7 +191,12 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6 py-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+            <p className="text-sm text-blue-800">
+              <span className="font-medium">Required fields:</span> Driver Name, Driver Contact, PAD Number, and Receipt Number
+            </p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="orderNumber">Order Number</Label>
@@ -189,7 +235,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="driverName">Driver Name</Label>
+              <Label htmlFor="driverName">Driver Name <span className="text-destructive">*</span></Label>
               <Input 
                 id="driverName" 
                 value={driverName}
@@ -208,7 +254,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="contactPerson">Driver Contact</Label>
+              <Label htmlFor="contactPerson">Driver Contact <span className="text-destructive">*</span></Label>
               <Input 
                 id="contactPerson" 
                 value={contactPerson}
@@ -229,7 +275,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="padNumber">PAD Number</Label>
+              <Label htmlFor="padNumber">PAD Number <span className="text-destructive">*</span></Label>
               <Input 
                 id="padNumber" 
                 value={padNumber}
@@ -240,7 +286,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="receiptNumber">Receipt Number</Label>
+              <Label htmlFor="receiptNumber">Receipt Number <span className="text-destructive">*</span></Label>
               <Input 
                 id="receiptNumber" 
                 value={receiptNumber}

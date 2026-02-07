@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Layout, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap, MessageSquare, GitBranch } from 'lucide-react';
+import { Building2, LayoutDashboard, Layout, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap, MessageSquare, GitBranch, Key, Bug, Truck } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -74,6 +74,13 @@ const shopLinks = [
 const hrLinks = [
   { href: '/hr', label: 'HR Dashboard', icon: LayoutDashboard },
   { href: '/hr/employees', label: 'Employee Directory', icon: User },
+  { href: '/hr/employee-credentials', label: 'Credential Management', icon: Key },
+  { href: '/hr/credentials', label: 'Assign Credentials', icon: Key },
+  { href: '/hr/driver-registration', label: 'Driver Registration', icon: Truck },
+  { href: '/hr/driver-debug', label: 'Driver Login Debug', icon: Bug },
+  { href: '/hr/driver-auth-debug', label: 'Driver Auth Debug', icon: Bug },
+  { href: '/hr/driver-data-debug', label: 'Driver Data Debug', icon: Bug },
+  { href: '/hr/debug', label: 'HR Debug', icon: Bug },
   { href: '/hr/skills', label: 'Skill Matrix', icon: Award },
   { href: '/hr/actions', label: 'Reward & Discipline', icon: ShieldCheck },
   { href: '/hr/leaves', label: 'Leave Management', icon: ClipboardList },
@@ -89,6 +96,7 @@ const ecommerceLinks = [
   { href: '/ecommerce-manager', label: 'eCommerce Dashboard', icon: LayoutDashboard },
   { href: '/ecommerce-manager/orders', label: 'Order Management', icon: ShoppingCart },
   { href: '/ecommerce-manager/dispatch', label: 'Dispatch Center', icon: Rocket },
+  { href: '/ecommerce-manager/dispatch-preparation', label: 'Dispatch Preparation', icon: Package },
   { href: '/ecommerce-manager/support', label: 'Support Claims', icon: MessageSquare },
   { href: '/ecommerce-manager/analytics', label: 'Analytics & Reports', icon: BarChart3 },
   { href: '/ecommerce-manager/settings', label: 'Website Config', icon: Settings },
@@ -107,6 +115,13 @@ const ieLinks = [
   { href: '/ie/resource-planning', label: 'Resource Planning', icon: ClipboardList },
   { href: '/ie/reports', label: 'IE Reports', icon: FileText },
   { href: '/profile', label: 'Profile', icon: User },
+];
+
+const driverLinks = [
+  { href: '/driver/dashboard', label: 'Driver Dashboard', icon: LayoutDashboard },
+  { href: '/driver/assignments', label: 'My Assignments', icon: Package },
+  { href: '/driver/tracking', label: 'Live Tracking', icon: Truck },
+  { href: '/driver/profile', label: 'My Profile', icon: User },
 ];
 
 export function Nav() {
@@ -231,6 +246,10 @@ export function Nav() {
     case 'ie_user':
       currentLinks = ieLinks;
       userType = 'ie_admin'; // or 'ie_user' - using ie_admin for consistency
+      break;
+    case 'driver':
+      currentLinks = driverLinks;
+      userType = 'driver';
       break;
     case 'factory':
     default:

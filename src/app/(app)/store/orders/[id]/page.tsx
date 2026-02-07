@@ -20,12 +20,15 @@ import {
   Building,
   Info,
   Clock,
-  Printer
+  Printer,
+  Download,
+  FileText
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
 import { PadNumberDisplay } from "@/components/pad-number-display";
 import { DispatchDialog } from "@/components/dispatch-dialog";
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 export default function StoreOrderDetailsPage() {
   const params = useParams();
@@ -129,6 +132,171 @@ export default function StoreOrderDetailsPage() {
     window.print();
   };
 
+  const generateDispatchPDF = async () => {
+    if (!order) return;
+    
+    try {
+      setProcessing(true);
+      
+      const response = await fetch(`/api/dispatch/${order.id}/pdf/dispatch`, {
+        headers: createAuthHeaders()
+      });
+      
+      if (response.ok) {
+        // Create a blob from the response
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        // Create download link
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Dispatch_Document_${order.id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the blob URL after a delay
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+        }, 1000);
+        
+        toast({
+          title: "Success",
+          description: "Dispatch document downloaded successfully.",
+        });
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate dispatch document");
+      }
+    } catch (error: any) {
+      console.error("Error generating dispatch PDF:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate dispatch document. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const generatePackingList = async () => {
+    if (!order) return;
+    
+    try {
+      setProcessing(true);
+      
+      const response = await fetch(`/api/dispatch/${order.id}/pdf/packing-list`, {
+        headers: createAuthHeaders()
+      });
+      
+      if (response.ok) {
+        // Create a blob from the response
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        // Create download link
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Packing_List_${order.id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the blob URL after a delay
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+        }, 1000);
+        
+        toast({
+          title: "Success",
+          description: "Packing list downloaded successfully.",
+        });
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate packing list");
+      }
+    } catch (error: any) {
+      console.error("Error generating packing list:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate packing list. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const generateAllDocuments = async () => {
+    if (!order) return;
+    
+    try {
+      setProcessing(true);
+      
+      // Generate documents
+      const dispatchResponse = await fetch(`/api/dispatch/${order.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...createAuthHeaders()
+        },
+        body: JSON.stringify({ includePackingList: true })
+      });
+      
+      if (dispatchResponse.ok) {
+        const data = await dispatchResponse.json();
+        
+        // Download both files
+        const downloadPromises = [
+          fetch(data.dispatchPdfUrl, { headers: createAuthHeaders() })
+            .then(res => res.blob())
+            .then(blob => {
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `Dispatch_Document_${order.id}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            }),
+          fetch(data.packingListPdfUrl, { headers: createAuthHeaders() })
+            .then(res => res.blob())
+            .then(blob => {
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `Packing_List_${order.id}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            })
+        ];
+        
+        await Promise.all(downloadPromises);
+        
+        toast({
+          title: "Success",
+          description: "All dispatch documents downloaded successfully.",
+        });
+      } else {
+        const errorData = await dispatchResponse.json();
+        throw new Error(errorData.error || "Failed to generate dispatch documents");
+      }
+    } catch (error: any) {
+      console.error("Error generating all documents:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate dispatch documents. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -170,8 +338,17 @@ export default function StoreOrderDetailsPage() {
           </div>
         </div>
         <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" onClick={printDispatchNote}>
-                <Printer className="mr-2 h-4 w-4" /> Print Dispatch Note
+            <Button variant="outline" size="sm" onClick={generateDispatchPDF} disabled={processing}>
+                <Download className="mr-2 h-4 w-4" /> 
+                {processing ? "Generating..." : "Dispatch Document"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={generatePackingList} disabled={processing}>
+                <FileText className="mr-2 h-4 w-4" /> 
+                {processing ? "Generating..." : "Packing List"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={generateAllDocuments} disabled={processing}>
+                <Printer className="mr-2 h-4 w-4" /> 
+                {processing ? "Generating..." : "All Documents"}
             </Button>
             {order.status === 'Released' || order.status === 'Paid' ? (
                 <Button 

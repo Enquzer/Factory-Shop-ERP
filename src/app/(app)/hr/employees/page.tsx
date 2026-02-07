@@ -24,7 +24,12 @@ import {
   User,
   Camera,
   Upload,
-  PlusCircle
+  PlusCircle,
+  Key,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -115,8 +120,9 @@ export default function EmployeesPage() {
                 <TableHead className="w-[80px] pl-6">Profile</TableHead>
                 <TableHead>Employee</TableHead>
                 <TableHead>Job Center</TableHead>
+                <TableHead>Department</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead>Credentials</TableHead>
                 <TableHead>Join Date</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
               </TableRow>
