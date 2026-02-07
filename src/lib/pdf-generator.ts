@@ -1337,6 +1337,15 @@ export function downloadPDF(pdfUrl: string, filename: string) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    // Clean up the blob URL after a delay to allow the download to start
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(pdfUrl);
+      } catch (error) {
+        // URL might already be revoked or invalid, ignore the error
+      }
+    }, 1000);
   } catch (error) {
     console.error('Error downloading PDF:', error);
     throw new Error('Failed to download PDF');

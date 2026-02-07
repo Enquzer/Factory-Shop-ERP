@@ -81,6 +81,12 @@ export default function LayoutDesignerPage() {
     sequence: number;
     operatorId?: string;
     operatorName?: string;
+    matchingOperation?: {
+      sequence: number;
+      opCode: string;
+      operationName: string;
+      smv: number;
+    } | null;
   }>>([]);
   
   const [operators, setOperators] = useState<any[]>([]);
@@ -91,6 +97,18 @@ export default function LayoutDesignerPage() {
     toId: number;
     label?: string;
   }>>([]);
+  
+  // Production calculation state
+  const [orderQuantity, setOrderQuantity] = useState<number>(0);
+  const [deliveryDays, setDeliveryDays] = useState<number>(0);
+  const [ieAllowance, setIeAllowance] = useState<number>(10); // percentage
+  const [productionAnalysis, setProductionAnalysis] = useState<any>(null);
+  const [bottlenecks, setBottlenecks] = useState<number[]>([]);
+  const [lineBalance, setLineBalance] = useState<any>(null);
+  
+  // Operation breakdown state
+  const [operationBreakdown, setOperationBreakdown] = useState<any[]>([]);
+  const [obSource, setObSource] = useState<string>(''); // 'IE' or 'Planning'
 
   useEffect(() => {
     fetchMachines();
@@ -116,19 +134,69 @@ export default function LayoutDesignerPage() {
         setProductCode(data.productCode || '');
         setSelectedSection(data.section || 'Sewing');
         
-        // Reconstruct machine positions with full machine objects
-        // We might need to wait for machines to be fetched first
-        // or join the data here if machines are already available
-        if (data.machinePositions) {
-          // We'll handle matching machine objects in a separate effect or after current machines fetch
-          setMachinePositions(data.machinePositions.map((p: any) => ({
-            ...p,
-            machine: machines.find(m => m.id === p.machineId) || { id: p.machineId, machineName: 'Loading...' }
+        // Set order quantity and delivery days if available
+        if (data.orderId) {
+          // First get the order details to get the internal ID
+          const orderResponse = await fetch('/api/marketing-orders', { headers });
+          if (orderResponse.ok) {
+            const orders = await orderResponse.json();
+            const order = orders.find((o: any) => o.orderNumber === data.orderId);
+            if (order) {
+              setOrderQuantity(order.quantity || 0);
+              // Calculate delivery days from planning module
+              if (order.plannedDeliveryDate || order.deliveryDate) {
+                const deliveryDate = new Date(order.plannedDeliveryDate || order.deliveryDate);
+                const today = new Date();
+                const diffTime = deliveryDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                setDeliveryDays(Math.max(1, diffDays)); // Minimum 1 day
+              }
+              
+              // Fetch operation breakdown using the internal order ID
+              fetchOperationBreakdown(order.id);
+            }
+          }
+        }
+        
+        // Process machine positions with full machine objects
+        if (data.machinePositions && machines.length > 0) {
+          const positionsWithMachines = data.machinePositions.map((pos: any) => {
+            const machine = machines.find(m => m.id === pos.machineId);
+            return {
+              ...pos,
+              machine: machine || { 
+                id: pos.machineId, 
+                machineName: `Machine ${pos.machineId}`,
+                machineCode: `M${pos.machineId}`,
+                category: 'Unknown',
+                capacity: 0,
+                unit: 'units/hour'
+              }
+            };
+          });
+          setMachinePositions(positionsWithMachines);
+        } else if (data.machinePositions) {
+          // Store raw positions to be processed when machines load
+          setMachinePositions(data.machinePositions.map((pos: any) => ({
+            ...pos,
+            machine: { 
+              id: pos.machineId, 
+              machineName: `Loading...`,
+              machineCode: `M${pos.machineId}`,
+              category: 'Loading...',
+              capacity: 0,
+              unit: 'units/hour'
+            }
           })));
         }
       }
     } catch (error) {
       console.error('Error fetching layout:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load layout",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -151,6 +219,165 @@ export default function LayoutDesignerPage() {
     } catch (error) {
       console.error('Error fetching active orders:', error);
     }
+  };
+
+  const fetchOperationBreakdown = async (orderId: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(`/api/ie/ob/${orderId}`, { headers });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setOperationBreakdown(result.items || []);
+        setObSource(result.source || '');
+        
+        // Auto-arrange machines based on operation breakdown
+        if (result.items && result.items.length > 0) {
+          await autoArrangeMachines(result.items);
+        }
+        
+        toast({
+          title: "Operation Breakdown Loaded",
+          description: `Loaded ${result.items?.length || 0} operations from ${result.source || 'unknown'} module`
+        });
+      } else {
+        const errorText = await response.text();
+        toast({
+          title: "Warning",
+          description: `Could not load operation breakdown: ${response.status}`,
+          variant: "default"
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching operation breakdown:', error);
+      toast({
+        title: "Warning",
+        description: "Could not load operation breakdown for this order",
+        variant: "default"
+      });
+    }
+  };
+
+  // Auto-arrange machines based on operation breakdown sequence
+  const autoArrangeMachines = async (operations: any[]) => {
+    // Clear existing machine positions
+    setMachinePositions([]);
+    
+    // Get available machines that match the operation requirements
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    try {
+      const machineResponse = await fetch('/api/ie/machines', { headers });
+      if (!machineResponse.ok) return;
+      
+      const machineResult = await machineResponse.json();
+      const availableMachines = machineResult.data || [];
+      
+      // Create machine positions based on operations
+      const newPositions = operations.map((op, index) => {
+        // Find matching machine for this operation
+        let matchingMachine = availableMachines.find((machine: any) => 
+          machine.machineType.toLowerCase().includes(op.machineType?.toLowerCase() || '') ||
+          machine.category.toLowerCase().includes(op.componentName?.toLowerCase() || '')
+        );
+        
+        // If no exact match, use first available machine as fallback
+        if (!matchingMachine && availableMachines.length > 0) {
+          matchingMachine = availableMachines[0];
+        }
+        
+        if (matchingMachine) {
+          return {
+            machine: matchingMachine,
+            x: index * 120, // Horizontal spacing
+            y: 100, // Fixed vertical position
+            rotation: 0,
+            sequence: index + 1,
+            operatorId: undefined,
+            operatorName: undefined,
+            matchingOperation: {
+              sequence: op.sequence,
+              opCode: op.opCode || op.operationName,
+              operationName: op.operationName,
+              smv: op.smv || op.standardSMV || 0
+            }
+          };
+        }
+        return null;
+      }).filter(pos => pos !== null) as typeof machinePositions;
+      
+      setMachinePositions(newPositions);
+      
+      toast({
+        title: "Auto-Arrangement Complete",
+        description: `Arranged ${newPositions.length} machines based on operation sequence`
+      });
+      
+    } catch (error) {
+      console.error('Error auto-arranging machines:', error);
+    }
+  };
+
+  // Calculate line balance metrics
+  const calculateLineBalance = () => {
+    if (machinePositions.length === 0 || operationBreakdown.length === 0) return;
+    
+    const workingHoursPerDay = 8;
+    const totalWorkingHours = deliveryDays * workingHoursPerDay;
+    const requiredOutputPerHour = orderQuantity / totalWorkingHours;
+    const adjustedRequiredOutput = requiredOutputPerHour * (1 + ieAllowance / 100);
+    
+    // Calculate cycle time and takt time
+    const taktTime = (workingHoursPerDay * 60 * 60) / requiredOutputPerHour; // seconds per unit
+    
+    // Analyze each workstation
+    const workstations = machinePositions.map((pos, index) => {
+      const operation = pos.matchingOperation;
+      const smv = operation?.smv || 0;
+      const cycleTime = smv * 60; // Convert SMV to seconds
+      
+      return {
+        workstationId: index + 1,
+        machineName: pos.machine.machineName,
+        operationName: operation?.operationName || 'Unknown',
+        smv,
+        cycleTime,
+        taktTime,
+        idleTime: Math.max(0, taktTime - cycleTime),
+        efficiency: cycleTime > 0 ? (taktTime / cycleTime) * 100 : 0,
+        isBottleneck: cycleTime > taktTime
+      };
+    });
+    
+    // Calculate overall line metrics
+    const totalCycleTime = workstations.reduce((sum, ws) => sum + ws.cycleTime, 0);
+    const lineEfficiency = (taktTime / (totalCycleTime / workstations.length)) * 100;
+    const bottleneckWorkstation = workstations.find(ws => ws.isBottleneck);
+    
+    const balanceData = {
+      taktTime,
+      totalCycleTime,
+      lineEfficiency,
+      workstations,
+      bottleneckWorkstation,
+      numberOfWorkstations: workstations.length
+    };
+    
+    setLineBalance(balanceData);
+    
+    toast({
+      title: "Line Balance Analysis Complete",
+      description: `Line efficiency: ${lineEfficiency.toFixed(1)}% | Bottleneck: ${bottleneckWorkstation ? bottleneckWorkstation.operationName : 'None'}`
+    });
   };
 
   useEffect(() => {
@@ -228,6 +455,45 @@ export default function LayoutDesignerPage() {
     e.preventDefault();
   };
 
+  // Grid snapping configuration
+  const GRID_SIZE = 30; // pixels
+  const ALIGN_SPACING = 120; // pixels between aligned machines
+  
+  const snapToGrid = (coord: number) => {
+    return Math.round(coord / GRID_SIZE) * GRID_SIZE;
+  };
+  
+  const checkOverlap = (newX: number, newY: number, currentIndex?: number) => {
+    const machineSize = 96;
+    return machinePositions.some((pos, index) => {
+      if (currentIndex !== undefined && index === currentIndex) return false;
+      
+      const existingRight = pos.x + machineSize;
+      const existingBottom = pos.y + machineSize;
+      const newRight = newX + machineSize;
+      const newBottom = newY + machineSize;
+      
+      return (
+        newX < existingRight &&
+        newRight > pos.x &&
+        newY < existingBottom &&
+        newBottom > pos.y
+      );
+    });
+  };
+  
+  const alignMachinesHorizontally = (positions: typeof machinePositions) => {
+    // Sort by x position first
+    const sorted = [...positions].sort((a, b) => a.x - b.x);
+    
+    // Align machines horizontally with fixed spacing
+    return sorted.map((pos, index) => ({
+      ...pos,
+      x: index * ALIGN_SPACING,
+      y: 100 // Fixed Y position for alignment
+    }));
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!layoutAreaRef) return;
@@ -236,8 +502,29 @@ export default function LayoutDesignerPage() {
     if (!draggedMachine && movingMachineIndex === null) return;
     
     const rect = layoutAreaRef.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    
+    // Snap to grid
+    x = snapToGrid(x);
+    y = snapToGrid(y);
+    
+    // Ensure machine stays within canvas bounds
+    const machineSize = 96; // 24 * 4 (w-24 h-24 in pixels)
+    x = Math.max(0, Math.min(x, rect.width - machineSize));
+    y = Math.max(0, Math.min(y, rect.height - machineSize));
+    
+    // Check for overlap
+    if (checkOverlap(x - 48, y - 48, movingMachineIndex ?? undefined)) {
+      toast({
+        title: "Overlap Detected",
+        description: "Cannot place machine here - would overlap with existing machine",
+        variant: "destructive"
+      });
+      setDraggedMachine(null);
+      setMovingMachineIndex(null);
+      return;
+    }
     
     if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
       if (movingMachineIndex !== null) {
@@ -249,22 +536,36 @@ export default function LayoutDesignerPage() {
             x: x - 48,
             y: y - 48
           };
+          
+          // Auto-align if Ctrl key is pressed
+          if (e.ctrlKey) {
+            return alignMachinesHorizontally(updated);
+          }
+          
           return updated;
         });
         setMovingMachineIndex(null);
       } else if (draggedMachine) {
         // Handle adding a new machine
         const newSequence = machinePositions.length + 1;
-        setMachinePositions(prev => [
-          ...prev,
-          {
-            machine: draggedMachine,
-            x: x - 48,
-            y: y - 48,
-            rotation: 0,
-            sequence: newSequence
+        const newPosition = {
+          machine: draggedMachine,
+          x: x - 48,
+          y: y - 48,
+          rotation: 0,
+          sequence: newSequence
+        };
+        
+        setMachinePositions(prev => {
+          const updated = [...prev, newPosition];
+          
+          // Auto-align if Shift key is pressed
+          if (e.shiftKey) {
+            return alignMachinesHorizontally(updated);
           }
-        ]);
+          
+          return updated;
+        });
         setDraggedMachine(null);
       }
     }
@@ -377,6 +678,146 @@ export default function LayoutDesignerPage() {
 
     const url = await generateMachineLayoutPDF(layoutData, branding);
     window.open(url, '_blank');
+    
+    // Clean up the blob URL after a delay to allow the browser to open it
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        // URL might already be revoked or invalid, ignore the error
+      }
+    }, 1000);
+  };
+
+  // Calculate production requirements and identify bottlenecks
+  const calculateProductionFlow = async () => {
+    if (!orderQuantity || !deliveryDays || machinePositions.length === 0) {
+      toast({
+        title: "Missing Data",
+        description: "Please select an order and set quantity/delivery timeline",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const workingHoursPerDay = 8;
+      const totalWorkingHours = deliveryDays * workingHoursPerDay;
+      const requiredOutputPerHour = orderQuantity / totalWorkingHours;
+      
+      // Apply IE allowance (buffer)
+      const adjustedRequiredOutput = requiredOutputPerHour * (1 + ieAllowance / 100);
+      
+      // Calculate total SMV from operation breakdown if available
+      let totalSMV = 0;
+      if (operationBreakdown.length > 0) {
+        totalSMV = operationBreakdown.reduce((sum: number, op: any) => 
+          sum + (op.smv || op.standardSMV || 0), 0
+        );
+      }
+      
+      // Fetch operator skill data
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const operatorSkillsResponse = await fetch('/api/ie/operators/skills', { headers });
+      const operatorSkills = operatorSkillsResponse.ok ? await operatorSkillsResponse.json() : { data: [] };
+      
+      // Analyze each machine in the flow
+      const analysis = machinePositions.map((pos, index) => {
+        const machine = pos.machine;
+        const operator = operatorSkills.data?.find((op: any) => op.employeeId === pos.operatorId);
+        
+        // Base capacity from machine specs
+        let effectiveCapacity = machine.capacity;
+        
+        // Adjust for operator skill (if assigned)
+        if (operator) {
+          const skillFactor = operator.skillLevel === 'expert' ? 1.2 : 
+                             operator.skillLevel === 'intermediate' ? 1.0 : 
+                             operator.skillLevel === 'beginner' ? 0.7 : 1.0;
+          effectiveCapacity *= skillFactor;
+        }
+        
+        // Find matching operation for this machine (if operation breakdown exists)
+        let matchingOperation = null;
+        if (operationBreakdown.length > 0) {
+          // Try to match by machine type or component
+          matchingOperation = operationBreakdown.find((op: any) => {
+            const machineTypeMatch = op.machineType && 
+              machine.machineType.toLowerCase().includes(op.machineType.toLowerCase());
+            const componentMatch = op.componentName && 
+              machine.category.toLowerCase().includes(op.componentName.toLowerCase());
+            return machineTypeMatch || componentMatch;
+          });
+        }
+        
+        // Calculate utilization
+        const requiredOutput = matchingOperation 
+          ? (adjustedRequiredOutput * (matchingOperation.smv || matchingOperation.standardSMV || 0)) / (totalSMV || 1)
+          : adjustedRequiredOutput;
+          
+        const utilization = (requiredOutput / effectiveCapacity) * 100;
+        
+        return {
+          index,
+          machineId: machine.id,
+          machineName: machine.machineName,
+          machineCode: machine.machineCode,
+          baseCapacity: machine.capacity,
+          effectiveCapacity,
+          requiredOutput,
+          utilization,
+          operatorAssigned: !!pos.operatorId,
+          operatorName: pos.operatorName,
+          operatorSkill: operator?.skillLevel || 'unassigned',
+          isBottleneck: utilization > 100, // Over 100% utilization = bottleneck
+          matchingOperation: matchingOperation ? {
+            sequence: matchingOperation.sequence,
+            opCode: matchingOperation.opCode,
+            operationName: matchingOperation.operationName,
+            smv: matchingOperation.smv || matchingOperation.standardSMV
+          } : null
+        };
+      });
+      
+      setProductionAnalysis({
+        requiredOutputPerHour: adjustedRequiredOutput,
+        totalWorkingHours,
+        totalSMV,
+        analysis
+      });
+      
+      // Update machine positions with matching operations
+      setMachinePositions(prev => prev.map((pos, index) => {
+        const analysisItem = analysis.find((a: any) => a.index === index);
+        return {
+          ...pos,
+          matchingOperation: analysisItem?.matchingOperation || null
+        };
+      }));
+      
+      // Identify bottlenecks (machines with >100% utilization)
+      const bottleneckIndices = analysis
+        .map((item, index) => item.isBottleneck ? index : -1)
+        .filter(index => index !== -1);
+      
+      setBottlenecks(bottleneckIndices);
+      
+      toast({
+        title: "Analysis Complete",
+        description: `Identified ${bottleneckIndices.length} bottleneck(s) in the production flow`
+      });
+      
+    } catch (error) {
+      console.error('Error calculating production flow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to calculate production requirements",
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -388,7 +829,7 @@ export default function LayoutDesignerPage() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
+    <div className="space-y-6 animate-in fade-in duration-700 w-full max-w-full overflow-x-hidden">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
@@ -448,7 +889,30 @@ export default function LayoutDesignerPage() {
                         if (order) {
                           setOrderId(order.orderNumber || order.id);
                           setProductCode(order.productCode);
-                          setProductImage(order.imageUrl);
+                          // Auto-populate order quantity
+                          setOrderQuantity(order.quantity || 0);
+                          
+                          // Calculate delivery days from planning module
+                          if (order.plannedDeliveryDate || order.deliveryDate) {
+                            const deliveryDate = new Date(order.plannedDeliveryDate || order.deliveryDate);
+                            const today = new Date();
+                            const diffTime = deliveryDate.getTime() - today.getTime();
+                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                            setDeliveryDays(Math.max(1, diffDays)); // Minimum 1 day
+                          }
+                          
+                          // Fetch operation breakdown for this order
+                          const orderIdToFetch = order.id; // Use internal ID, not orderNumber
+                          fetchOperationBreakdown(orderIdToFetch);
+                          
+                          // Sanitize image URL: If it's a blob URL from the server, it's likely invalid/revoked.
+                          // Only allow real paths (e.g. /uploads/...) or data URIs.
+                          const imgUrl = order.imageUrl;
+                          if (imgUrl && !imgUrl.startsWith('blob:')) {
+                            setProductImage(imgUrl);
+                          } else {
+                            setProductImage(null);
+                          }
                           // Auto-fill layout name if empty
                           if (!layoutName) {
                             setLayoutName(`${order.orderNumber} - ${order.productName}`);
@@ -508,6 +972,181 @@ export default function LayoutDesignerPage() {
                   </SelectContent>
                 </Select>
               </div>
+              
+              {/* Operation Breakdown Preview - Always visible when operations loaded */}
+              {operationBreakdown.length > 0 && (
+                <Card className="border-dashed border-blue-500/50 bg-blue-50/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Factory className="h-4 w-4 text-blue-600" />
+                      Operation Breakdown
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-[10px] uppercase font-bold text-blue-700">
+                        {operationBreakdown.length} Operations Loaded
+                      </div>
+                      <Badge 
+                        variant="secondary" 
+                        className="text-[8px] h-4"
+                      >
+                        {obSource}
+                      </Badge>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-2">
+                      {operationBreakdown.map((op: any, idx: number) => (
+                        <div key={idx} className="flex justify-between text-[10px] p-2 bg-white/50 rounded">
+                          <div className="flex-1">
+                            <div className="font-medium">
+                              {op.sequence}. {op.operationName || op.opCode}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground mt-1">
+                              {op.componentName || 'General Operation'}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-blue-600 font-mono">
+                              {op.smv || op.standardSMV || 0} SMV
+                            </div>
+                            <div className="text-[8px] text-muted-foreground">
+                              {op.machineType || 'Any Machine'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Production Requirements */}
+              {orderId && (
+                <Card className="border-dashed border-yellow-500/50 bg-yellow-50/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4 text-yellow-600" />
+                      Production Requirements
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="orderQty" className="text-xs">Order Quantity</Label>
+                        <Input
+                          id="orderQty"
+                          type="number"
+                          value={orderQuantity}
+                          onChange={(e) => setOrderQuantity(parseInt(e.target.value) || 0)}
+                          placeholder="Units"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="deliveryDays" className="text-xs">Delivery Days</Label>
+                        <Input
+                          id="deliveryDays"
+                          type="number"
+                          value={deliveryDays}
+                          onChange={(e) => setDeliveryDays(parseInt(e.target.value) || 0)}
+                          placeholder="Days"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="ieAllowance" className="text-xs">IE Allowance (%)</Label>
+                      <Input
+                        id="ieAllowance"
+                        type="number"
+                        value={ieAllowance}
+                        onChange={(e) => setIeAllowance(parseInt(e.target.value) || 0)}
+                        placeholder="Buffer %"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    
+                    <Button 
+                      onClick={calculateProductionFlow}
+                      className="w-full h-8 text-xs"
+                      disabled={!orderQuantity || !deliveryDays}
+                    >
+                      <BarChart3 className="mr-1 h-3 w-3" />
+                      Analyze Flow & Bottlenecks
+                    </Button>
+                    
+                    {operationBreakdown.length > 0 && (
+                      <Button 
+                        onClick={() => autoArrangeMachines(operationBreakdown)}
+                        className="w-full h-8 text-xs"
+                        variant="secondary"
+                      >
+                        <Layout className="mr-1 h-3 w-3" />
+                        Re-Arrange Machines
+                      </Button>
+                    )}
+                    
+                    {machinePositions.length > 0 && operationBreakdown.length > 0 && (
+                      <Button 
+                        onClick={calculateLineBalance}
+                        className="w-full h-8 text-xs"
+                        variant="outline"
+                      >
+                        <BarChart3 className="mr-1 h-3 w-3" />
+                        Line Balance Analysis
+                      </Button>
+                    )}
+                    
+                    {productionAnalysis && (
+                      <div className="pt-2 border-t border-yellow-200">
+                        <div className="text-[10px] uppercase font-bold text-yellow-700 mb-1">
+                          Required Output: {productionAnalysis.requiredOutputPerHour.toFixed(1)} units/hour
+                        </div>
+                        <div className="text-[9px] text-yellow-600">
+                          Total Working Hours: {productionAnalysis.totalWorkingHours}
+                        </div>
+                        {productionAnalysis.totalSMV > 0 && (
+                          <div className="text-[9px] text-yellow-600">
+                            Total SMV: {productionAnalysis.totalSMV.toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Line Balance Results */}
+                    {lineBalance && (
+                      <div className="pt-3 border-t border-green-200">
+                        <div className="text-[10px] uppercase font-bold text-green-700 mb-2">
+                          Line Balance Metrics
+                        </div>
+                        <div className="space-y-1 text-[9px]">
+                          <div className="flex justify-between">
+                            <span>Line Efficiency:</span>
+                            <span className={`font-bold ${lineBalance.lineEfficiency >= 80 ? 'text-green-600' : lineBalance.lineEfficiency >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {lineBalance.lineEfficiency.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Takt Time:</span>
+                            <span className="text-green-600">{lineBalance.taktTime.toFixed(1)}s</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Workstations:</span>
+                            <span className="text-green-600">{lineBalance.numberOfWorkstations}</span>
+                          </div>
+                          {lineBalance.bottleneckWorkstation && (
+                            <div className="flex justify-between text-red-600">
+                              <span>Bottleneck:</span>
+                              <span className="font-medium">{lineBalance.bottleneckWorkstation.operationName}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </CardContent>
           </Card>
 
@@ -561,7 +1200,7 @@ export default function LayoutDesignerPage() {
 
         {/* Main Canvas Area */}
         <div className="lg:col-span-3">
-          <Card className="h-full min-h-[700px] flex flex-col shadow-xl border-dashed border-2">
+          <Card className="h-full min-h-[700px] flex flex-col shadow-xl border-dashed border-2 w-full">
             <CardHeader className="bg-muted/50 py-3 flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-base">Design Canvas</CardTitle>
@@ -573,7 +1212,7 @@ export default function LayoutDesignerPage() {
                  </Button>
               </div>
             </CardHeader>
-            <CardContent className="flex-1 p-0 relative overflow-hidden bg-dot-pattern">
+            <CardContent className="flex-1 p-0 relative overflow-hidden bg-dot-pattern w-full">
               <div 
                 ref={setLayoutAreaRef}
                 className="absolute inset-0 w-full h-full cursor-crosshair"
@@ -657,46 +1296,75 @@ export default function LayoutDesignerPage() {
                 </svg>
 
                 {/* Machines on canvas */}
-                {machinePositions.map((pos, index) => (
-                  <div
-                    key={`${index}-${pos.machine.id}`}
-                    className={`absolute w-24 h-24 rounded-2xl flex flex-col items-center justify-center text-[11px] font-bold shadow-2xl transition-all hover:scale-105 active:cursor-grabbing border-2 ${
-                      selectedMachinePosition === index 
-                        ? 'border-blue-500 bg-blue-100 text-blue-900 z-50 ring-4 ring-blue-500/20' 
-                        : 'border-white bg-primary text-primary-foreground'
-                    }`}
-                    style={{
-                      left: `${pos.x}px`,
-                      top: `${pos.y}px`,
-                      transform: `rotate(${pos.rotation}deg)`
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedMachinePosition(index);
-                    }}
-                    draggable
-                    onDragStart={(e) => handleDragStart(pos.machine, e, index)}
-                  >
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
-                      <div className="text-[10px] uppercase opacity-60 font-black mb-1 leading-none">
-                        {pos.machine.machineName}
+                {machinePositions.map((pos, index) => {
+                  const isBottleneck = bottlenecks.includes(index);
+                  const utilization = productionAnalysis?.analysis?.find((a: any) => a.index === index)?.utilization || 0;
+                  
+                  return (
+                    <div
+                      key={`${index}-${pos.machine.id}`}
+                      className={`absolute w-24 h-24 rounded-2xl flex flex-col items-center justify-center text-[11px] font-bold shadow-2xl transition-all hover:scale-105 active:cursor-grabbing border-2 ${
+                        selectedMachinePosition === index 
+                          ? 'border-blue-500 bg-blue-100 text-blue-900 z-50 ring-4 ring-blue-500/20' 
+                          : isBottleneck
+                            ? 'border-red-500 bg-red-100 text-red-900 animate-pulse ring-4 ring-red-500/30'
+                            : 'border-white bg-primary text-primary-foreground'
+                      }`}
+                      style={{
+                        left: `${pos.x}px`,
+                        top: `${pos.y}px`,
+                        transform: `rotate(${pos.rotation}deg)`
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedMachinePosition(index);
+                      }}
+                      draggable
+                      onDragStart={(e) => handleDragStart(pos.machine, e, index)}
+                    >
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
+                        <div className="text-[10px] uppercase opacity-60 font-black mb-1 leading-none">
+                          {pos.machine.machineName}
+                        </div>
+                        {pos.matchingOperation && (
+                          <div className={`text-[8px] px-1 py-0.5 rounded mb-1 ${
+                            isBottleneck 
+                              ? 'bg-red-200 text-red-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            Op {pos.matchingOperation.sequence}: {pos.matchingOperation.operationName}
+                          </div>
+                        )}
+                        {pos.operatorName ? (
+                          <div className={`px-2 py-1 rounded-md text-[10px] font-black shadow-sm flex items-center gap-1 border ${
+                            isBottleneck 
+                              ? 'bg-red-200 text-red-800 border-red-300' 
+                              : 'bg-white/90 text-primary border-primary/20'
+                          }`}>
+                            <Users className="h-3 w-3" />
+                            {pos.operatorName.split(' ')[0]}
+                          </div>
+                        ) : (
+                          <div className="text-[8px] opacity-40 font-normal italic">
+                            No Operator
+                          </div>
+                        )}
+                        
+                        {/* Utilization badge for bottlenecks */}
+                        {isBottleneck && utilization > 0 && (
+                          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-red-500 text-white text-[8px] px-1 py-0.5 rounded-full whitespace-nowrap">
+                            {utilization.toFixed(0)}%
+                          </div>
+                        )}
                       </div>
-                      {pos.operatorName ? (
-                        <div className="bg-white/90 text-primary px-2 py-1 rounded-md text-[10px] font-black shadow-sm flex items-center gap-1 border border-primary/20">
-                          <Users className="h-3 w-3" />
-                          {pos.operatorName.split(' ')[0]}
-                        </div>
-                      ) : (
-                        <div className="text-[8px] opacity-40 font-normal italic">
-                          No Operator
-                        </div>
-                      )}
+                      <div className={`absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center text-xs shadow-md border-2 border-background font-black ${
+                        isBottleneck ? 'bg-red-500 text-white' : 'bg-accent text-accent-foreground'
+                      }`}>
+                        {pos.sequence}
+                      </div>
                     </div>
-                    <div className="absolute -top-3 -right-3 w-8 h-8 bg-accent text-accent-foreground rounded-full flex items-center justify-center text-xs shadow-md border-2 border-background font-black">
-                      {pos.sequence}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {machinePositions.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
@@ -709,9 +1377,16 @@ export default function LayoutDesignerPage() {
                 )}
               </div>
 
-              {/* Float Toolbar for selected machine */}
-              {selectedMachinePosition !== null && (
-                <div className="absolute bottom-6 right-6 bg-background/80 backdrop-blur-md border shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-right duration-300">
+              {/* Float Toolbar for selected machine - positioned near the machine */}
+              {selectedMachinePosition !== null && machinePositions[selectedMachinePosition] && layoutAreaRef && (
+                <div 
+                  className="absolute bg-background/90 backdrop-blur-md border shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-right duration-300 z-50"
+                  style={{
+                    left: `${Math.min(machinePositions[selectedMachinePosition].x + 120, (layoutAreaRef?.clientWidth || 800) - 280)}px`,
+                    top: `${Math.min(machinePositions[selectedMachinePosition].y, (layoutAreaRef?.clientHeight || 600) - 200)}px`,
+                    maxWidth: '256px'
+                  }}
+                >
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="font-bold text-sm">Machine Properties</h4>
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMachinePosition(null)}>

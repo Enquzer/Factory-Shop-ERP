@@ -34,6 +34,7 @@ import { MarketingOrdersDashboard } from "./_components/marketing-orders-dashboa
 import { CreateMarketingOrderDialog } from "@/components/create-marketing-order-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useSystemSettings } from '@/contexts/system-settings-context';
+import { createAuthHeaders } from "@/lib/auth-helpers";
 
 export default function MarketingOrdersPage() {
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
@@ -73,7 +74,12 @@ export default function MarketingOrdersPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('/api/users');
+      const response = await fetch('/api/users', {
+        headers: {
+          ...createAuthHeaders(),
+          'Content-Type': 'application/json',
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         const pUsers = data.filter((u: any) => 

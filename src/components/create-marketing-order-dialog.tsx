@@ -357,8 +357,16 @@ export function CreateMarketingOrderDialog({
       resetForm();
       onOpenChange(false);
       
-      // Clean up object URLs
-      if (mainImagePreview) URL.revokeObjectURL(mainImagePreview);
+      // Clean up object URLs after a delay to ensure React has time to render
+      if (mainImagePreview) {
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(mainImagePreview);
+          } catch (error) {
+            console.warn('Failed to revoke blob URL:', error);
+          }
+        }, 2000); // 2 second delay
+      }
       
     } catch (error: any) {
       console.error("Error creating order:", error);

@@ -26,6 +26,15 @@ export function TechPackTab({ style }: TechPackTabProps) {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        
+        // Clean up the blob URL after a delay to allow the download to start
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            // URL might already be revoked or invalid, ignore the error
+          }
+        }, 1000);
     } catch (error) {
         console.error("PDF Fail", error);
         alert("Failed to generate PDF");

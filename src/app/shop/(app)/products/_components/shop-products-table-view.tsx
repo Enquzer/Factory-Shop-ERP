@@ -119,6 +119,15 @@ export function ShopProductsTableView({
       link.click();
       document.body.removeChild(link);
       
+      // Clean up the blob URL after a delay to allow the download to start
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          // URL might already be revoked or invalid, ignore the error
+        }
+      }, 1000);
+      
       toast({
         title: "Export Successful",
         description: "Products data exported to CSV successfully.",

@@ -235,7 +235,15 @@ export function EditProductDialog({ product, open, onOpenChange, onProductUpdate
     }
 
     const newPreviewUrl = URL.createObjectURL(file);
-    if (mainImagePreview) URL.revokeObjectURL(mainImagePreview); // Revoke previous URL
+    if (mainImagePreview) {
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(mainImagePreview);
+        } catch (error) {
+          console.warn('Failed to revoke blob URL:', error);
+        }
+      }, 1000);
+    }
     setMainImagePreview(newPreviewUrl);
     form.setValue("imageUrl", file);
   };

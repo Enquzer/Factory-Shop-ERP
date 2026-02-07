@@ -29,6 +29,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -55,12 +62,22 @@ interface OBItem {
   componentName?: string;
 }
 
+interface Machine {
+  id: number;
+  machineCode: string;
+  machineName: string;
+  machineType: string;
+  category: string;
+}
+
 export default function OBBuilderPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [orders, setOrders] = useState<OrderWithOB[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [machinesLoading, setMachinesLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<OrderWithOB | null>(null);
   const [obItems, setObItems] = useState<OBItem[]>([]);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -69,7 +86,34 @@ export default function OBBuilderPage() {
 
   useEffect(() => {
     fetchOrders();
+    fetchMachines();
   }, []);
+
+  const fetchMachines = async () => {
+    try {
+      setMachinesLoading(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch('/api/ie/machines', { headers });
+      if (response.ok) {
+        const result = await response.json();
+        setMachines(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching machines:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch machine list",
+        variant: "destructive"
+      });
+    } finally {
+      setMachinesLoading(false);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -83,11 +127,36 @@ export default function OBBuilderPage() {
       }
       
       const res = await fetch('/api/ie/ob/orders', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
+      
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast({
+            title: "Unauthorized",
+            description: "You are not authorized to perform this action. Please log in again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        const errorData = await res.json().catch(() => ({ error: 'Server error: ' + res.statusText }));
+        toast({
+          title: "Error",
+          description: errorData.error || 'Failed to fetch orders with OB',
+          variant: "destructive"
+        });
+        return;
       }
-    } catch (error) {
+      
+      const data = await res.json();
+      setOrders(data);
+    } catch (error: any) {
+      if (error.message && error.message.includes('Unauthorized')) {
+        toast({
+          title: "Unauthorized",
+          description: "You are not authorized to perform this action. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
       console.error('Error fetching orders:', error);
       toast({
         title: "Error",
@@ -109,13 +178,38 @@ export default function OBBuilderPage() {
       }
       
       const res = await fetch(`/api/ie/ob/${order.id}`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedOrder(order);
-        setObItems(data.items || []);
-        setIsViewDialogOpen(true);
+      
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast({
+            title: "Unauthorized",
+            description: "You are not authorized to perform this action. Please log in again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        const errorData = await res.json().catch(() => ({ error: 'Server error: ' + res.statusText }));
+        toast({
+          title: "Error",
+          description: errorData.error || 'Failed to load operation bulletin',
+          variant: "destructive"
+        });
+        return;
       }
-    } catch (error) {
+      
+      const data = await res.json();
+      setSelectedOrder(order);
+      setObItems(data.items || []);
+      setIsViewDialogOpen(true);
+    } catch (error: any) {
+      if (error.message && error.message.includes('Unauthorized')) {
+        toast({
+          title: "Unauthorized",
+          description: "You are not authorized to perform this action. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
       console.error('Error viewing OB:', error);
       toast({
         title: "Error",
@@ -140,22 +234,40 @@ export default function OBBuilderPage() {
         body: JSON.stringify({ productCode: order.productCode })
       });
       
-      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
-      
-      if (res.ok) {
-        toast({
-          title: "Success",
-          description: data.message
-        });
-        fetchOrders(); // Refresh the list
-      } else {
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast({
+            title: "Unauthorized",
+            description: "You are not authorized to perform this action. Please log in again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        const errorData = await res.json().catch(() => ({ error: 'Server error: ' + res.statusText }));
         toast({
           title: "Error",
-          description: data.error,
+          description: errorData.error || 'An error occurred',
           variant: "destructive"
         });
+        return;
       }
-    } catch (error) {
+      
+      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
+      
+      toast({
+        title: "Success",
+        description: data.message
+      });
+      fetchOrders(); // Refresh the list
+    } catch (error: any) {
+      if (error.message && error.message.includes('Unauthorized')) {
+        toast({
+          title: "Unauthorized",
+          description: "You are not authorized to perform this action. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
       console.error('Error converting OB:', error);
       toast({
         title: "Error",
@@ -179,22 +291,40 @@ export default function OBBuilderPage() {
         headers
       });
       
-      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
-      
-      if (res.ok) {
-        toast({
-          title: "Success",
-          description: data.message
-        });
-        fetchOrders(); // Refresh the list
-      } else {
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast({
+            title: "Unauthorized",
+            description: "You are not authorized to perform this action. Please log in again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        const errorData = await res.json().catch(() => ({ error: 'Server error: ' + res.statusText }));
         toast({
           title: "Error",
-          description: data.error,
+          description: errorData.error || 'An error occurred',
           variant: "destructive"
         });
+        return;
       }
-    } catch (error) {
+      
+      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
+      
+      toast({
+        title: "Success",
+        description: data.message
+      });
+      fetchOrders(); // Refresh the list
+    } catch (error: any) {
+      if (error.message && error.message.includes('Unauthorized')) {
+        toast({
+          title: "Unauthorized",
+          description: "You are not authorized to perform this action. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
       console.error('Error syncing OB:', error);
       toast({
         title: "Error",
@@ -220,23 +350,41 @@ export default function OBBuilderPage() {
         body: JSON.stringify({ items: obItems })
       });
       
-      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
-      
-      if (res.ok) {
-        toast({
-          title: "Success",
-          description: data.message || "IE OB updated successfully"
-        });
-        setIsEditing(false);
-        fetchOrders(); // Refresh the list
-      } else {
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast({
+            title: "Unauthorized",
+            description: "You are not authorized to perform this action. Please log in again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        const errorData = await res.json().catch(() => ({ error: 'Server error: ' + res.statusText }));
         toast({
           title: "Error",
-          description: data.error,
+          description: errorData.error || 'An error occurred',
           variant: "destructive"
         });
+        return;
       }
-    } catch (error) {
+      
+      const data = await res.json().catch(() => ({ error: 'Invalid response from server' }));
+      
+      toast({
+        title: "Success",
+        description: data.message || "IE OB updated successfully"
+      });
+      setIsEditing(false);
+      fetchOrders(); // Refresh the list
+    } catch (error: any) {
+      if (error.message && error.message.includes('Unauthorized')) {
+        toast({
+          title: "Unauthorized",
+          description: "You are not authorized to perform this action. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
       console.error('Error saving IE OB:', error);
       toast({
         title: "Error",
@@ -298,9 +446,17 @@ export default function OBBuilderPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchMachines} disabled={machinesLoading}>
+            {machinesLoading ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Refresh Machines
+          </Button>
           <Button variant="outline" onClick={fetchOrders}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            Refresh Orders
           </Button>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
@@ -444,11 +600,11 @@ export default function OBBuilderPage() {
                       {isEditing ? (
                         <Input 
                           type="number" 
-                          value={item.sequence} 
+                          value={item.sequence || 0} 
                           onChange={(e) => updateItem(index, 'sequence', parseInt(e.target.value) || 0)}
                           className="w-16 h-8 text-xs"
                         />
-                      ) : item.sequence}
+                      ) : item.sequence || 0}
                     </TableCell>
                     <TableCell>
                       {isEditing ? (
@@ -463,27 +619,50 @@ export default function OBBuilderPage() {
                     <TableCell>
                       {isEditing ? (
                         <Input 
-                          value={item.operationName} 
+                          value={item.operationName || ''} 
                           onChange={(e) => updateItem(index, 'operationName', e.target.value)}
                           className="h-8 text-xs"
                         />
-                      ) : item.operationName}
+                      ) : item.operationName || ''}
                     </TableCell>
                     <TableCell>
                       {isEditing ? (
-                        <Input 
-                          value={item.machineType} 
-                          onChange={(e) => updateItem(index, 'machineType', e.target.value)}
-                          className="h-8 text-xs"
-                        />
-                      ) : item.machineType}
+                        <Select 
+                          value={item.machineType || "none"} 
+                          onValueChange={(value) => updateItem(index, 'machineType', value === "none" ? "" : value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Select machine type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {machinesLoading ? (
+                              <SelectItem value="loading" disabled>
+                                Loading machines...
+                              </SelectItem>
+                            ) : (
+                              <>
+                                <SelectItem value="none">None/General</SelectItem>
+                                {Array.from(new Set(machines.map(m => m.machineType)))
+                                  .filter(type => type)
+                                  .sort()
+                                  .map(type => (
+                                    <SelectItem key={type} value={type}>
+                                      {type}
+                                    </SelectItem>
+                                  ))
+                                }
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      ) : item.machineType || '-'}
                     </TableCell>
                     <TableCell className="text-right">
                       {isEditing ? (
                         <Input 
                           type="number" 
                           step="0.001"
-                          value={item.smv} 
+                          value={item.smv || 0} 
                           onChange={(e) => updateItem(index, 'smv', parseFloat(e.target.value) || 0)}
                           className="w-20 h-8 text-xs text-right"
                         />
@@ -493,7 +672,7 @@ export default function OBBuilderPage() {
                       {isEditing ? (
                         <Input 
                           type="number" 
-                          value={item.manpower} 
+                          value={item.manpower || 1} 
                           onChange={(e) => updateItem(index, 'manpower', parseInt(e.target.value) || 1)}
                           className="w-16 h-8 text-xs text-right"
                         />

@@ -56,11 +56,13 @@ export function EnhancedImageUpload({
     // Create preview
     const newPreviewUrl = URL.createObjectURL(file);
     if (preview && preview.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(preview);
-      } catch (error) {
-        console.warn('Failed to revoke previous blob URL:', error);
-      }
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(preview);
+        } catch (error) {
+          console.warn('Failed to revoke previous blob URL:', error);
+        }
+      }, 1000);
     }
     setPreview(newPreviewUrl);
     onImageChange(file);

@@ -418,6 +418,15 @@ export default function CuttingPage() {
       link.click();
       link.remove();
       
+      // Clean up the blob URL after a delay to allow the download to start
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          // URL might already be revoked or invalid, ignore the error
+        }
+      }, 1000);
+      
       toast({
         title: "Success",
         description: "PDF downloaded successfully"

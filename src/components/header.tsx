@@ -66,13 +66,23 @@ export function Header() {
         });
         
         const response = await fetch(`/api/notifications?${queryParams}`);
-        if (response.ok) {
-          const newNotifications = await response.json();
-          setNotifications(newNotifications);
-          setUnreadCount(newNotifications.filter((n: Notification) => !n.isRead).length);
+        
+        if (!response.ok) {
+          // Don't show error for unauthorized or network issues in console
+          if (response.status !== 401 && response.status !== 0) {
+            console.error('Failed to fetch notifications:', response.status, response.statusText);
+          }
+          return; // Exit early if request fails
         }
+        
+        const newNotifications = await response.json();
+        setNotifications(newNotifications);
+        setUnreadCount(newNotifications.filter((n: Notification) => !n.isRead).length);
       } catch (error) {
-        console.error("Error fetching notifications:", error);
+        // Catch network errors (like ERR_NETWORK_IO_SUSPENDED) without logging them
+        if (!(error instanceof TypeError && error.message.includes('Failed to fetch'))) {
+          console.error("Error fetching notifications:", error);
+        }
       }
     };
 
@@ -110,10 +120,11 @@ export function Header() {
       });
       
       if (response.ok) {
-        // Refresh notifications after marking as read
-        const response = await fetch('/api/notifications?userType=factory');
-        if (response.ok) {
-          const updatedNotifications = await response.json();
+        // Refresh notifications after marking as read using the same userType
+        const refreshQueryParams = new URLSearchParams({ userType });
+        const refreshResponse = await fetch(`/api/notifications?${refreshQueryParams}`);
+        if (refreshResponse.ok) {
+          const updatedNotifications = await refreshResponse.json();
           setNotifications(updatedNotifications);
           setUnreadCount(0);
         }

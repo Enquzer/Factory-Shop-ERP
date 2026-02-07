@@ -181,7 +181,7 @@ export default function ReceiveGoodsPage() {
                       <div className="flex items-center gap-4">
                         {order.imageUrl ? (
                             <div className="relative h-16 w-16 rounded-lg overflow-hidden border shadow-sm">
-                                <Image src={order.imageUrl} alt={order.productName} width={64} height={64} className="object-cover w-full h-full" />
+                                <Image src={order.imageUrl} alt={order.productName} width={64} height={64} className="w-full h-full object-cover" style={{ width: '64px', height: '64px', objectFit: 'cover' }} />
                             </div>
                         ) : (
                             <div className="h-16 w-16 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">
@@ -419,7 +419,7 @@ export default function ReceiveGoodsPage() {
                 <div className="flex justify-center mb-4">
                     {selectedOrder.imageUrl ? (
                         <div className="relative h-48 w-full rounded-lg overflow-hidden border shadow-sm">
-                            <Image src={selectedOrder.imageUrl} alt={selectedOrder.productName} width={400} height={400} className="object-cover w-full h-full" />
+                            <Image src={selectedOrder.imageUrl} alt={selectedOrder.productName} width={400} height={400} className="w-full h-full object-cover" style={{ width: '400px', height: '400px', objectFit: 'cover' }} />
                         </div>
                     ) : (
                         <div className="h-48 w-full rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">

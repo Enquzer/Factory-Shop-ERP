@@ -376,6 +376,15 @@ export default function NestingDialog({ isOpen, onClose, canvas }: NestingDialog
         link.href = url;
         link.download = `marker_${fabricWidth}.dxf`;
         link.click();
+        
+        // Clean up the blob URL after a delay to allow the download to start
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            // URL might already be revoked or invalid, ignore the error
+          }
+        }, 1000);
     };
 
     if (!isOpen) return null;

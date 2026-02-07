@@ -498,6 +498,15 @@ export default function MachineManagementPage() {
     // Fetch order details if needed, for now use layout data
     const url = await generateMachineLayoutPDF(layout);
     window.open(url, '_blank');
+    
+    // Clean up the blob URL after a delay to allow the browser to open it
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        // URL might already be revoked or invalid, ignore the error
+      }
+    }, 1000);
   };
 
   const handleRegisterMachine = async () => {
@@ -591,6 +600,10 @@ export default function MachineManagementPage() {
               <Button onClick={() => router.push('/ie/layout-designer')}>
                 <Layout className="mr-2 h-4 w-4" />
                 Layout Designer
+              </Button>
+              <Button onClick={() => router.push('/ie/layouts')} variant="outline">
+                <Layout className="mr-2 h-4 w-4" />
+                View Layouts
               </Button>
               <Button onClick={() => setIsMachineDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
