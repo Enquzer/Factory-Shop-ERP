@@ -42,7 +42,7 @@ export default function HRPage() {
           }));
         }
       } catch (err) {
-        console.error(err);
+        // Error occurred
       }
     };
     fetchStats();
@@ -155,6 +155,13 @@ export default function HRPage() {
           icon={<Users className="h-8 w-8 text-red-500" />}
           href="/hr/drivers"
           badge="Logistics"
+        />
+        <MenuCard 
+          title="Debug Tools" 
+          description="Unified debugging tools for HR and driver authentication." 
+          icon={<ShieldCheck className="h-8 w-8 text-indigo-500" />}
+          href="/hr/debug-all"
+          badge="Debug"
         />
       </div>
 

@@ -17,7 +17,8 @@ import {
   AlertCircle,
   MessageSquare,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  Route
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -310,17 +311,17 @@ export default function EcommerceManagerDashboard() {
           </Card>
         </Link>
 
-        <Link href="/ecommerce-manager/analytics">
+        <Link href="/ecommerce-manager/route-optimization">
           <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                View Analytics
+                <Route className="h-4 w-4" />
+                Route Optimization
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">
-                Detailed reports and performance metrics
+                Optimize delivery routes and consolidate orders
               </p>
             </CardContent>
           </Card>

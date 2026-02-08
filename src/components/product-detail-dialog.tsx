@@ -233,6 +233,15 @@ export function ProductDetailDialog({ product, open, onOpenChange, userRole }: P
         p.productCode.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    // Cleanup marketing image preview
+    useEffect(() => {
+        return () => {
+            if (marketingMainImagePreview && marketingMainImagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(marketingMainImagePreview);
+            }
+        };
+    }, [marketingMainImagePreview]);
+
     const handleMarketingImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;

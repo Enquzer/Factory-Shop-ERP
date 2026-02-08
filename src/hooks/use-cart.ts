@@ -1,8 +1,8 @@
-"use client";
-
 import { useState, useEffect, useCallback } from 'react';
 import { useCustomerAuth } from '@/contexts/customer-auth-context';
+import { useCartContext } from '@/contexts/cart-context';
 
+// Export the CartItem type from here as well to avoid duplication
 export type CartItem = {
   id: string;
   customerId: string;
@@ -31,22 +31,20 @@ type CartHook = {
 };
 
 export function useCart(): CartHook {
-  const { user } = useCustomerAuth();
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { state, dispatch } = useCartContext();
+  const { user } = useCustomerAuth(); // This will only be available in ecommerce contexts
 
-  const itemCount = items.reduce((total, item) => total + item.quantity, 0);
-  const totalPrice = items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  const itemCount = state.items.reduce((total, item) => total + item.quantity, 0);
+  const totalPrice = state.items.reduce((total, item) => total + (item.price * item.quantity), 0);
 
   const fetchCartItems = useCallback(async () => {
     if (!user) {
-      setItems([]);
+      dispatch({ type: 'SET_ITEMS', payload: [] });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
     
     try {
       const token = localStorage.getItem('customerAuthToken');
@@ -61,23 +59,22 @@ export function useCart(): CartHook {
       }
       
       const data = await response.json();
-      setItems(data.items || []);
+      dispatch({ type: 'SET_ITEMS', payload: data.items || [] });
     } catch (err) {
-      console.error('Error fetching cart items:', err);
-      setError('Failed to load cart items');
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load cart items' });
     } finally {
-      setIsLoading(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [user]);
+  }, [user, dispatch]);
 
   const addItem = async (item: Omit<CartItem, 'id' | 'customerId' | 'createdAt'>) => {
     if (!user) {
-      setError('You must be logged in to add items to cart');
+      dispatch({ type: 'SET_ERROR', payload: 'You must be logged in to add items to cart' });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
     
     try {
       const token = localStorage.getItem('customerAuthToken');
@@ -97,16 +94,18 @@ export function useCart(): CartHook {
       
       await fetchCartItems(); // Refresh cart
     } catch (err) {
-      console.error('Error adding item to cart:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add item to cart');
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: err instanceof Error ? err.message : 'Failed to add item to cart' 
+      });
     } finally {
-      setIsLoading(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   const updateQuantity = async (itemId: string, quantity: number) => {
     if (!user) {
-      setError('You must be logged in to update cart items');
+      dispatch({ type: 'SET_ERROR', payload: 'You must be logged in to update cart items' });
       return;
     }
 
@@ -115,8 +114,8 @@ export function useCart(): CartHook {
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
     
     try {
       const token = localStorage.getItem('customerAuthToken');
@@ -135,21 +134,20 @@ export function useCart(): CartHook {
       
       await fetchCartItems(); // Refresh cart
     } catch (err) {
-      console.error('Error updating cart item quantity:', err);
-      setError('Failed to update item quantity');
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to update item quantity' });
     } finally {
-      setIsLoading(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   const removeItem = async (itemId: string) => {
     if (!user) {
-      setError('You must be logged in to remove items from cart');
+      dispatch({ type: 'SET_ERROR', payload: 'You must be logged in to remove items from cart' });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
     
     try {
       const token = localStorage.getItem('customerAuthToken');
@@ -166,21 +164,20 @@ export function useCart(): CartHook {
       
       await fetchCartItems(); // Refresh cart
     } catch (err) {
-      console.error('Error removing item from cart:', err);
-      setError('Failed to remove item from cart');
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to remove item from cart' });
     } finally {
-      setIsLoading(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   const clearCartItems = async () => {
     if (!user) {
-      setError('You must be logged in to clear cart');
+      dispatch({ type: 'SET_ERROR', payload: 'You must be logged in to clear cart' });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
     
     try {
       const token = localStorage.getItem('customerAuthToken');
@@ -195,25 +192,31 @@ export function useCart(): CartHook {
         throw new Error('Failed to clear cart');
       }
       
-      setItems([]);
+      dispatch({ type: 'CLEAR_CART' });
     } catch (err) {
-      console.error('Error clearing cart:', err);
-      setError('Failed to clear cart');
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to clear cart' });
     } finally {
-      setIsLoading(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
+
+  // Handle user logout by clearing cart
+  useEffect(() => {
+    if (!user) {
+      dispatch({ type: 'CLEAR_CART' });
+    }
+  }, [user, dispatch]);
 
   useEffect(() => {
     fetchCartItems();
   }, [fetchCartItems]);
 
   return {
-    items,
+    items: state.items,
     itemCount,
     totalPrice,
-    isLoading,
-    error,
+    isLoading: state.isLoading,
+    error: state.error,
     addItem,
     updateQuantity,
     removeItem,

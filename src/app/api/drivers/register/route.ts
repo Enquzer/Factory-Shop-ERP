@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth-middleware';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated) {
+    if (!authResult) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -15,34 +15,46 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { username, employeeId, vehicleType, licensePlate, contactPhone } = body;
+    const { employeeId, vehicleType, licensePlate, contactPhone } = body;
 
-    if (!username || !employeeId) {
-      return NextResponse.json({ error: 'Username and employee ID are required' }, { status: 400 });
+    if (!employeeId) {
+      return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
     }
 
     // Check if employee exists
-    const employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(employeeId);
+    const db = await getDb();
+    const employee = await db.get('SELECT * FROM employees WHERE id = ?', [employeeId]);
     if (!employee) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     }
 
-    // Check if driver already exists
-    const existingDriver = db.prepare('SELECT * FROM drivers WHERE username = ?').get(username);
+    // Check if driver already exists (by name or employee ID)
+    const existingDriver = await db.get('SELECT * FROM drivers WHERE name = ? OR employeeId = ?', [employee.name, employeeId.toString()]);
     if (existingDriver) {
-      return NextResponse.json({ error: 'Driver with this username already exists' }, { status: 409 });
+      return NextResponse.json({ 
+        error: existingDriver.name === employee.name ? 
+          'Driver with this name already exists' : 
+          'This employee is already registered as a driver',
+        existingDriver: {
+          id: existingDriver.id,
+          name: existingDriver.name,
+          status: existingDriver.status
+        }
+      }, { status: 409 });
     }
 
     // Create driver record
-    const result = db.prepare(`
-      INSERT INTO drivers (username, employee_id, vehicle_type, license_plate, contact_phone, status, created_by)
-      VALUES (?, ?, ?, ?, ?, 'active', ?)
-    `).run(username, employeeId, vehicleType || 'motorcycle', licensePlate || '', contactPhone || employee.phone, authResult.username);
+    // Based on the actual database schema
+    const result = await db.run(`
+      INSERT INTO drivers (name, phone, contact, license_plate, vehicleType, status, employeeId)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [employee.name, contactPhone || employee.phone, contactPhone || employee.phone, licensePlate || '', vehicleType || 'motorbike', 'available', employeeId.toString()]);
 
-    // Update employee department to Drivers if not already
-    db.prepare('UPDATE employees SET department = ? WHERE id = ?').run('Drivers', employeeId);
+    // TODO: Update employee department to Drivers department
+    // Need to find the correct departmentId for "Drivers" department
+    // await db.run('UPDATE employees SET departmentId = ? WHERE id = ?', [driversDepartmentId, employeeId]);
 
-    const newDriver = db.prepare('SELECT * FROM drivers WHERE id = ?').get(result.lastInsertRowid);
+    const newDriver = await db.get('SELECT * FROM drivers WHERE rowid = ?', [result.lastID]);
 
     return NextResponse.json({ 
       success: true, 
@@ -59,7 +71,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated) {
+    if (!authResult) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -68,12 +80,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const drivers = db.prepare(`
-      SELECT d.*, e.first_name, e.last_name, e.phone, e.department
+    const db = await getDb();
+    const drivers = await db.all(`
+      SELECT d.*, e.name as employeeName, e.phone as employeePhone, e.jobCenter
       FROM drivers d
-      JOIN employees e ON d.employee_id = e.id
-      ORDER BY d.created_at DESC
-    `).all();
+      JOIN employees e ON d.employeeId = e.id
+      ORDER BY d.name DESC
+    `);
 
     return NextResponse.json({ drivers });
 

@@ -428,7 +428,7 @@ export async function getCartItems(customerId: string): Promise<CartItem[]> {
       createdAt: new Date(item.createdAt)
     }));
   } catch (error) {
-    console.error('Error fetching cart items:', error);
+    // Error occurred
     return [];
   }
 }
@@ -460,7 +460,7 @@ export async function addCartItem(customerId: string, item: Omit<CartItem, 'id' 
       createdAt: new Date(cartItem.createdAt)
     };
   } catch (error) {
-    console.error('Error adding cart item:', error);
+    // Error occurred
     throw error;
   }
 }
@@ -473,7 +473,7 @@ export async function updateCartItemQuantity(id: string, quantity: number): Prom
     `, [quantity, id]);
     return true;
   } catch (error) {
-    console.error('Error updating cart item quantity:', error);
+    // Error occurred
     return false;
   }
 }
@@ -484,7 +484,7 @@ export async function removeCartItem(id: string): Promise<boolean> {
     await db.run(`DELETE FROM cart_items WHERE id = ?`, [id]);
     return true;
   } catch (error) {
-    console.error('Error removing cart item:', error);
+    // Error occurred
     return false;
   }
 }
@@ -495,7 +495,7 @@ export async function clearCart(customerId: string): Promise<boolean> {
     await db.run(`DELETE FROM cart_items WHERE customerId = ?`, [customerId]);
     return true;
   } catch (error) {
-    console.error('Error clearing cart:', error);
+    // Error occurred
     return false;
   }
 }

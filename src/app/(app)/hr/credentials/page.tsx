@@ -51,7 +51,7 @@ export default function HRCredentialsPage() {
         setEmployees(data);
       }
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      // Error fetching employees
       toast({
         title: "Error",
         description: "Failed to load employees",

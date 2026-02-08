@@ -22,6 +22,8 @@ export type Driver = {
   departmentName?: string;
   profilePicture?: string;
   username?: string;
+  maxCapacity?: number;
+  activeOrderCount?: number;
 };
 
 export type DriverAssignment = {
@@ -227,11 +229,11 @@ export async function getDriverById(id: string): Promise<Driver> {
     
     // Get assigned orders
     const assignments = await db.all(`
-      SELECT orderId FROM driver_assignments 
-      WHERE driverId = ? AND status != 'delivered' AND status != 'cancelled'
+      SELECT order_id FROM driver_assignments 
+      WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
     `, [driver.id || driver.employeeId]);
     
-    const assignedOrders = assignments.map((a: any) => a.orderId);
+    const assignedOrders = assignments.map((a: any) => a.order_id);
     
     // Format current location
     let currentLocation = undefined;
@@ -243,6 +245,28 @@ export async function getDriverById(id: string): Promise<Driver> {
       };
     }
     
+    // Get capacity limits from system settings
+    let motorbikeLimit = 3;
+    let carLimit = 5;
+    let vanLimit = 10;
+    let truckLimit = 20;
+    try {
+      const motorbikeSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_motorbike']);
+      const carSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_car']);
+      const vanSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_van']);
+      const truckSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_truck']);
+      if (motorbikeSetting) motorbikeLimit = parseInt(motorbikeSetting.value);
+      if (carSetting) carLimit = parseInt(carSetting.value);
+      if (vanSetting) vanLimit = parseInt(vanSetting.value);
+      if (truckSetting) truckLimit = parseInt(truckSetting.value);
+    } catch (e) {}
+
+    const vType = (driver.vehicleType as any) || 'car';
+    const maxCapacity = vType === 'motorbike' ? motorbikeLimit : 
+                       vType === 'car' ? carLimit :
+                       vType === 'van' ? vanLimit :
+                       vType === 'truck' ? truckLimit : 1;
+    
     return {
       id: driver.id || driver.employeeId,
       userId: driver.userId,
@@ -250,7 +274,7 @@ export async function getDriverById(id: string): Promise<Driver> {
       name: driver.name,
       phone: driver.phone,
       licensePlate: driver.licensePlate || driver.license_plate || 'N/A',
-      vehicleType: (driver.vehicleType as any) || 'car',
+      vehicleType: vType,
       status: (driver.status as any) || 'available',
       currentLocation,
       assignedOrders,
@@ -258,7 +282,9 @@ export async function getDriverById(id: string): Promise<Driver> {
       updatedAt: driver.updatedAt ? new Date(driver.updatedAt) : new Date(),
       jobCenter: driver.jobCenter || 'Driver',
       departmentName: driver.departmentName,
-      profilePicture: driver.profilePicture
+      profilePicture: driver.profilePicture,
+      maxCapacity,
+      activeOrderCount: assignedOrders.length
     };
   } catch (error) {
     console.error('Error fetching driver:', error);
@@ -297,8 +323,23 @@ export async function getAllDrivers(): Promise<Driver[]> {
     `);
     
     console.log(`[LIB] getAllDrivers: Query returned ${drivers.length} raw records`);
-    console.log('[LIB] getAllDrivers: Raw driver data:', JSON.stringify(drivers, null, 2));
     
+    // Fetch capacity settings once
+    let motorbikeLimit = 3;
+    let carLimit = 5;
+    let vanLimit = 10;
+    let truckLimit = 20;
+    try {
+      const motorbikeSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_motorbike']);
+      const carSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_car']);
+      const vanSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_van']);
+      const truckSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_truck']);
+      if (motorbikeSetting) motorbikeLimit = parseInt(motorbikeSetting.value);
+      if (carSetting) carLimit = parseInt(carSetting.value);
+      if (vanSetting) vanLimit = parseInt(vanSetting.value);
+      if (truckSetting) truckLimit = parseInt(truckSetting.value);
+    } catch (e) {}
+
     const result = await Promise.all(drivers.map(async (driver: any) => {
       const actualDriverId = driver.employeeId; // Use employeeId as the main ID for consistent string usage
       
@@ -307,7 +348,7 @@ export async function getAllDrivers(): Promise<Driver[]> {
       try {
         const assignments = await db.all(`
           SELECT COUNT(*) as count FROM driver_assignments 
-          WHERE driverId = ? AND status != 'delivered' AND status != 'cancelled'
+          WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
         `, [actualDriverId]);
         assignedOrdersCount = assignments[0]?.count || 0;
       } catch (assignmentError) {
@@ -341,7 +382,12 @@ export async function getAllDrivers(): Promise<Driver[]> {
         updatedAt: driver.updatedAt ? new Date(driver.updatedAt) : new Date(),
         jobCenter: 'Driver',
         departmentName: driver.departmentName,
-        profilePicture: driver.profilePicture
+        profilePicture: driver.profilePicture,
+        activeOrderCount: assignedOrdersCount,
+        maxCapacity: driver.vehicleType === 'motorbike' ? motorbikeLimit : 
+                    driver.vehicleType === 'car' ? carLimit :
+                    driver.vehicleType === 'van' ? vanLimit :
+                    driver.vehicleType === 'truck' ? truckLimit : 1
       };
       
       console.log(`[LIB] Processed driver ${actualDriverId}:`, {
@@ -369,13 +415,19 @@ export async function getAllDrivers(): Promise<Driver[]> {
 
 export async function updateDriver(id: string, updateData: Partial<Omit<Driver, 'id' | 'createdAt' | 'updatedAt' | 'assignedOrders'>>): Promise<boolean> {
   try {
-    console.log('updateDriver called with id:', id, 'and updateData:', JSON.stringify(updateData, null, 2));
+    // console.log('updateDriver called with id:', id, 'and updateData:', JSON.stringify(updateData, null, 2));
     await initializeDriversTables(); // Ensure tables exist
     const db = await getDB();
     
-    // Check if driver exists in drivers table (check both numeric id and employeeId string)
-    const existing = await db.get('SELECT id FROM drivers WHERE id = ? OR employeeId = ?', [id, id]);
-    console.log('Existing driver check result:', existing);
+    // Check if driver exists in drivers table (need to match how getDriverById finds records)
+    // getDriverById looks by d.id = ? OR d.userId = ? OR d.employeeId = ? OR u.username = ?
+    // So we need to find the same record that getDriverById would find
+    const existing = await db.get(`
+      SELECT d.id FROM drivers d
+      LEFT JOIN users u ON d.userId = u.id
+      WHERE d.id = ? OR d.userId = ? OR d.employeeId = ? OR u.username = ?
+    `, [id, id, id, id]);
+    // console.log('Existing driver check result:', existing);
     
     let actualDbId = id;
 
@@ -386,82 +438,79 @@ export async function updateDriver(id: string, updateData: Partial<Omit<Driver, 
         JOIN departments dept ON e.departmentId = dept.id 
         WHERE e.employeeId = ? AND dept.name = 'Drivers'
       `, [id]);
-      console.log('Employee lookup result:', emp);
+      // console.log('Employee lookup result:', emp);
       
       if (emp) {
-        // Create the driver record with a proper ID since the id column is TEXT, not auto-increment
-        actualDbId = `DRV-${Date.now()}`;
-        console.log('Creating new driver record with ID:', actualDbId);
+        // Create the driver record with a proper INTEGER ID
+        const maxIdResult = await db.get('SELECT MAX(id) as maxId FROM drivers');
+        const newId = maxIdResult?.maxId ? maxIdResult.maxId + 1 : Math.floor(Date.now() / 1000);
+        actualDbId = newId.toString();
+        
+        // console.log('Creating new driver record with INTEGER ID:', newId);
         await db.run(`
-          INSERT INTO drivers (id, name, phone, licensePlate, vehicleType, status, employeeId, userId)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO drivers (id, name, phone, contact, licensePlate, vehicleType, status, employeeId, userId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          actualDbId,
-          emp.name, 
-          emp.phone, 
+          Number(newId),           // INTEGER ID
+          String(emp.name), 
+          String(emp.phone), 
+          String(emp.phone),       // Use phone for contact as well
           `AUTO-${Date.now()}`, 
           'car', 
           updateData.status || 'available',
-          emp.employeeId,
-          emp.userId || null
+          String(emp.employeeId),
+          emp.userId ? String(emp.userId) : null
         ]);
-        console.log('New driver record created successfully from employee');
+        // console.log('New driver record created successfully from employee with ID:', newId);
       } else {
         // If no employee found, create a basic driver record using the ID as the username
         // This handles cases where a driver account exists but doesn't have an employee record
-        console.log('No employee found, creating basic driver record with ID:', id);
+        // console.log('No employee found, creating basic driver record with ID:', id);
         
-        // Check if this ID already exists as a driver with a different ID format
-        const altLookup = await db.get('SELECT * FROM drivers WHERE id = ? OR userId = ? OR employeeId = ?', [id, id, id]);
-        if (altLookup) {
-          actualDbId = altLookup.id;
-          console.log('Found existing driver with id, will update that record:', actualDbId);
-        } else {
-          // Generate a proper integer ID for the new driver record
-          // Get the max existing ID and increment, or use timestamp if no records exist
-          const maxIdResult = await db.get('SELECT MAX(id) as maxId FROM drivers');
-          const newId = maxIdResult?.maxId ? maxIdResult.maxId + 1 : Math.floor(Date.now() / 1000);
-          
-          // Ensure all values are properly typed to avoid datatype mismatches
-          const driverName = typeof id === 'string' ? `Driver ${id}` : `Driver ${String(id)}`;
-          const driverPhone = 'N/A';
-          const driverContact = 'N/A'; // Required NOT NULL field
-          const driverLicensePlate = `DRV-${Date.now()}`;
-          const driverVehicleType = 'car';
-          const driverStatus = updateData.status || 'available';
-          const driverUserId = String(id);
-          
-          console.log('Inserting new driver with values:', {
-            id: newId,
-            name: driverName,
-            phone: driverPhone,
-            contact: driverContact,
-            licensePlate: driverLicensePlate,
-            vehicleType: driverVehicleType,
-            status: driverStatus,
-            userId: driverUserId
-          });
-          
-          await db.run(`
-            INSERT INTO drivers (id, name, phone, contact, licensePlate, vehicleType, status, userId)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            Number(newId),        // Ensure integer ID
-            String(driverName),   // Ensure string name
-            String(driverPhone),  // Ensure string phone
-            String(driverContact), // Ensure string contact (NOT NULL)
-            String(driverLicensePlate), // Ensure string licensePlate
-            String(driverVehicleType),  // Ensure string vehicleType
-            String(driverStatus), // Ensure string status
-            String(driverUserId)  // Ensure string userId
-          ]);
-          actualDbId = newId.toString();
-          console.log('Basic driver record created successfully with generated ID:', newId, 'for user:', id);
-        }
+        // Generate a proper integer ID for the new driver record
+        // Get the max existing ID and increment, or use timestamp if no records exist
+        const maxIdResult = await db.get('SELECT MAX(id) as maxId FROM drivers');
+        const newId = maxIdResult?.maxId ? maxIdResult.maxId + 1 : Math.floor(Date.now() / 1000);
+        
+        // Ensure all values are properly typed to avoid datatype mismatches
+        const driverName = typeof id === 'string' ? `Driver ${id}` : `Driver ${String(id)}`;
+        const driverPhone = 'N/A';
+        const driverContact = 'N/A'; // Required NOT NULL field
+        const driverLicensePlate = `DRV-${Date.now()}`;
+        const driverVehicleType = 'car';
+        const driverStatus = updateData.status || 'available';
+        const driverUserId = String(id);
+        
+        // console.log('Inserting new driver with values:', {
+        //   id: newId,
+        //   name: driverName,
+        //   phone: driverPhone,
+        //   contact: driverContact,
+        //   licensePlate: driverLicensePlate,
+        //   vehicleType: driverVehicleType,
+        //   status: driverStatus,
+        //   userId: driverUserId
+        // });
+        
+        await db.run(`
+          INSERT INTO drivers (id, name, phone, contact, licensePlate, vehicleType, status, userId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          Number(newId),        // Ensure integer ID
+          String(driverName),   // Ensure string name
+          String(driverPhone),  // Ensure string phone
+          String(driverContact), // Ensure string contact (NOT NULL)
+          String(driverLicensePlate), // Ensure string licensePlate
+          String(driverVehicleType),  // Ensure string vehicleType
+          String(driverStatus), // Ensure string status
+          String(driverUserId)  // Ensure string userId
+        ]);
+        actualDbId = newId.toString();
+        // console.log('Basic driver record created successfully with generated ID:', newId, 'for user:', id);
       }
     } else {
       actualDbId = existing.id.toString();
-      console.log('Using existing driver ID:', actualDbId);
+      // console.log('Using existing driver ID:', actualDbId);
     }
 
     const fields = [];
@@ -489,37 +538,37 @@ export async function updateDriver(id: string, updateData: Partial<Omit<Driver, 
     }
     if (updateData.currentLocation !== undefined) {
       fields.push('currentLat = ?, currentLng = ?, locationLastUpdated = ?');
-      console.log('Processing currentLocation:', updateData.currentLocation);
+      // console.log('Processing currentLocation:', updateData.currentLocation);
       const lastUpdated = updateData.currentLocation.lastUpdated instanceof Date 
         ? updateData.currentLocation.lastUpdated 
         : new Date(updateData.currentLocation.lastUpdated);
-      console.log('Processed lastUpdated:', lastUpdated);
+      // console.log('Processed lastUpdated:', lastUpdated);
       values.push(
         Number(updateData.currentLocation.lat),
         Number(updateData.currentLocation.lng),
         lastUpdated.toISOString()
       );
-      console.log('Added location values to update:', updateData.currentLocation.lat, updateData.currentLocation.lng, lastUpdated.toISOString());
+      // console.log('Added location values to update:', updateData.currentLocation.lat, updateData.currentLocation.lng, lastUpdated.toISOString());
     }
     
     if (fields.length === 0) {
-      console.log('No fields to update, returning true');
+      // console.log('No fields to update, returning true');
       return true;
     }
     
     values.push(Number(actualDbId)); // Ensure ID is integer for WHERE clause
-    console.log('Final update query:', `UPDATE drivers SET ${fields.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`);
-    console.log('Final values:', values);
-    console.log('Updating driver with ID:', actualDbId, '(converted to number:', Number(actualDbId), ')');
+    // console.log('Final update query:', `UPDATE drivers SET ${fields.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`);
+    // console.log('Final values:', values);
+    // console.log('Updating driver with ID:', actualDbId, '(converted to number:', Number(actualDbId), ')');
     
     await db.run(`
       UPDATE drivers SET ${fields.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?
     `, values);
-    console.log('Update query executed successfully');
+    // console.log('Update query executed successfully');
     
     return true;
   } catch (error) {
-    console.error('Error updating driver:', error);
+    // console.error('Error updating driver:', error);
     return false;
   }
 }
@@ -539,15 +588,20 @@ export async function deleteDriver(id: string): Promise<boolean> {
 
 export async function assignOrderToDriver(driverId: string, orderId: string, assignedBy: string, pickupLocation: { lat: number; lng: number; name: string }, deliveryLocation: { lat: number; lng: number; name: string }): Promise<DriverAssignment> {
   try {
+    console.log('[DRIVER ASSIGN] Called with:', { driverId, orderId, assignedBy });
+    console.log('[DRIVER ASSIGN] Order ID type:', typeof orderId, 'value:', orderId);
+    
     const db = await getDB();
     // Generate a proper integer ID for the assignment
     const maxIdResult = await db.get('SELECT MAX(id) as maxId FROM driver_assignments');
     const id = maxIdResult?.maxId ? maxIdResult.maxId + 1 : Math.floor(Date.now() / 1000);
     
+    console.log('[DRIVER ASSIGN] Generated assignment ID:', id);
+    
     // Check if driver already has active assignments
     const activeAssignments = await db.all(`
       SELECT COUNT(*) as count FROM driver_assignments 
-      WHERE driverId = ? AND status != 'delivered' AND status != 'cancelled'
+      WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
     `, [driverId]);
     
     const activeCount = activeAssignments[0]?.count || 0;
@@ -555,16 +609,36 @@ export async function assignOrderToDriver(driverId: string, orderId: string, ass
     // Get driver info to check vehicle type
     const driver = await getDriverById(driverId);
     
+    // Get dynamic capacity limits from system settings
+    let motorbikeLimit = 3;
+    let carLimit = 5;
+    let vanLimit = 10;
+    let truckLimit = 20;
+
+    try {
+      const motorbikeSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_motorbike']);
+      const carSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_car']);
+      const vanSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_van']);
+      const truckSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_truck']);
+
+      if (motorbikeSetting) motorbikeLimit = parseInt(motorbikeSetting.value);
+      if (carSetting) carLimit = parseInt(carSetting.value);
+      if (vanSetting) vanLimit = parseInt(vanSetting.value);
+      if (truckSetting) truckLimit = parseInt(truckSetting.value);
+    } catch (e) {
+      console.warn('Could not fetch custom capacity settings, using defaults');
+    }
+    
     // Set capacity limits based on vehicle type
     let maxOrders = 1; // Default limit
     if (driver.vehicleType === 'motorbike') {
-      maxOrders = 3; // Motorbikes can handle up to 3 orders
+      maxOrders = motorbikeLimit;
     } else if (driver.vehicleType === 'car') {
-      maxOrders = 5;
+      maxOrders = carLimit;
     } else if (driver.vehicleType === 'van') {
-      maxOrders = 10;
+      maxOrders = vanLimit;
     } else if (driver.vehicleType === 'truck') {
-      maxOrders = 20;
+      maxOrders = truckLimit;
     }
     
     console.log(`[MULTI-ORDER] Driver ${driverId} (${driver.vehicleType}) has ${activeCount} active orders, max allowed: ${maxOrders}`);
@@ -574,9 +648,16 @@ export async function assignOrderToDriver(driverId: string, orderId: string, ass
       throw new Error(`Driver ${driver.name} (${driver.vehicleType}) already has maximum allowed orders (${maxOrders}). Current active orders: ${activeCount}`);
     }
     
+    console.log('[DRIVER ASSIGN] About to insert with values:', {
+      id: id,
+      driver_id: driverId,
+      order_id: orderId,
+      assignedBy: assignedBy
+    });
+    
     await db.run(`
       INSERT INTO driver_assignments (
-        id, driverId, orderId, assignedBy, 
+        id, driver_id, order_id, assignedBy, 
         pickupLat, pickupLng, pickupName,
         deliveryLat, deliveryLng, deliveryName
       )
@@ -586,6 +667,8 @@ export async function assignOrderToDriver(driverId: string, orderId: string, ass
       pickupLocation.lat, pickupLocation.lng, pickupLocation.name,
       deliveryLocation.lat, deliveryLocation.lng, deliveryLocation.name
     ]);
+    
+    console.log('[DRIVER ASSIGN] Insert successful');
     
     // Set driver status based on capacity
     if (activeCount + 1 >= maxOrders) {
@@ -652,7 +735,7 @@ export async function getDriverAssignments(driverId: string): Promise<DriverAssi
     const db = await getDB();
     const assignments = await db.all(`
       SELECT * FROM driver_assignments 
-      WHERE driverId = ? 
+      WHERE driver_id = ? 
       ORDER BY assignedAt DESC
     `, [driverId]);
     
@@ -721,7 +804,7 @@ export async function updateAssignmentStatus(assignmentId: string, status: 'pick
       // Count active assignments (excluding delivered/cancelled ones)
       const activeAssignments = await db.all(`
         SELECT COUNT(*) as count FROM driver_assignments 
-        WHERE driverId = ? AND status != 'delivered' AND status != 'cancelled'
+        WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
       `, [assignment.driverId]);
       
       console.log(`[MULTI-ORDER AVAILABILITY] Active assignments count: ${activeAssignments[0].count}`);

@@ -73,39 +73,30 @@ export default function DriversPage() {
   }, []);
 
   const fetchDrivers = async () => {
-    setIsLoading(true);
     try {
-      const response = await fetch("/api/hr/drivers", {
-        headers: createAuthHeaders()
-      });
+      const response = await fetch('/api/hr/drivers');
       if (response.ok) {
         const data = await response.json();
         setDrivers(data);
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch drivers.",
-          variant: "destructive",
-        });
       }
     } catch (error) {
-      console.error("Error fetching drivers:", error);
-    } finally {
-      setIsLoading(false);
+      // Error fetching drivers
     }
   };
 
   const fetchEmployees = async () => {
     try {
-      const response = await fetch("/api/hr/employees", {
-        headers: createAuthHeaders()
-      });
+      const response = await fetch('/api/hr/employees');
       if (response.ok) {
         const data = await response.json();
-        setEmployees(data);
+        // Filter employees who are not already drivers
+        const nonDrivers = data.filter((emp: any) => 
+          !drivers.some((driver: any) => driver.employeeId === emp.employeeId)
+        );
+        setEmployees(nonDrivers);
       }
     } catch (error) {
-       console.error("Error fetching employees:", error);
+      // Error fetching employees
     }
   };
 
@@ -159,7 +150,7 @@ export default function DriversPage() {
         });
       }
     } catch (error) {
-      console.error("Error saving driver:", error);
+      // Error saving driver
     }
   };
 
@@ -177,7 +168,7 @@ export default function DriversPage() {
           title: "Success",
           description: "Driver deleted successfully.",
         });
-        fetchDrivers();
+        fetchDrivers(); // Refresh the list
       } else {
         toast({
           title: "Error",
@@ -186,7 +177,7 @@ export default function DriversPage() {
         });
       }
     } catch (error) {
-      console.error("Error deleting driver:", error);
+      // Error deleting driver
     }
   };
 

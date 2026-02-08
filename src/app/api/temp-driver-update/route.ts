@@ -6,33 +6,33 @@ export async function POST(request: NextRequest) {
   try {
     console.log('[TEMP UPDATE] Updating driver status...');
     
-    const { username, status } = await request.json();
+    const { name, status } = await request.json();
     
-    if (!username || !status) {
-      return NextResponse.json({ error: 'Username and status required' }, { status: 400 });
+    if (!name || !status) {
+      return NextResponse.json({ error: 'Name and status required' }, { status: 400 });
     }
     
     const db = await getDB();
     
     // Update driver status
     const result = await db.run(
-      "UPDATE drivers SET status = ? WHERE username = ?", 
-      [status, username]
+      "UPDATE drivers SET status = ? WHERE name = ?", 
+      [status, name]
     );
     
     console.log('[TEMP UPDATE] Rows affected:', result.changes);
     
     // Get updated driver
     const updatedDriver = await db.get(
-      "SELECT id, username, status, vehicle_type FROM drivers WHERE username = ?", 
-      [username]
+      "SELECT id, name, status, vehicleType FROM drivers WHERE name = ?", 
+      [name]
     );
     
     console.log('[TEMP UPDATE] Updated driver:', updatedDriver);
     
     return NextResponse.json({ 
       success: true, 
-      message: `Driver ${username} status updated to ${status}`,
+      message: `Driver ${name} status updated to ${status}`,
       driver: updatedDriver
     });
     
@@ -46,16 +46,16 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const username = searchParams.get('username');
+    const name = searchParams.get('name');
     
-    if (!username) {
-      return NextResponse.json({ error: 'Username parameter required' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Name parameter required' }, { status: 400 });
     }
     
     const db = await getDB();
     const driver = await db.get(
-      "SELECT id, username, status, vehicle_type FROM drivers WHERE username = ?", 
-      [username]
+      "SELECT id, name, status, vehicleType FROM drivers WHERE name = ?", 
+      [name]
     );
     
     return NextResponse.json({ driver });

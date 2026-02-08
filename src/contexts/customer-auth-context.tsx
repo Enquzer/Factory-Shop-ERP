@@ -52,7 +52,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
       } catch (e) {
-        console.error('Failed to parse stored customer user', e);
+        // Failed to parse stored customer user
         localStorage.removeItem('customerUser');
       }
     }
@@ -125,7 +125,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
             return { success: true };
           }
         } catch (error) {
-          console.error('Error fetching customer details:', error);
+          // Error fetching customer details
           // Create minimal user object if API fails
           const customerUser: CustomerUser = {
             id: result.user?.id?.toString() || '',
@@ -212,7 +212,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('customerUser', JSON.stringify(customerUser));
       }
     } catch (error) {
-      console.error('Error refreshing user details:', error);
+      // Error refreshing user details
     }
   };
 

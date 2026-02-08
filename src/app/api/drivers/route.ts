@@ -59,7 +59,9 @@ export async function GET(request: NextRequest) {
         phone: d.phone,
         vehicle_type: d.vehicleType,
         status: d.status,
-        current_location: d.currentLocation
+        current_location: d.currentLocation,
+        active_order_count: (d as any).activeOrderCount || 0,
+        max_capacity: (d as any).maxCapacity || 1
       };
       
       console.log(`[API] Formatted driver ${d.id}:`, {

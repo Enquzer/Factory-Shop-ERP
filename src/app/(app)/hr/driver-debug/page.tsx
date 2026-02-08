@@ -22,7 +22,6 @@ export default function DriverLoginDebug() {
     
     try {
       // Test 1: Basic authentication
-      console.log('Testing authentication with:', username);
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -49,7 +48,7 @@ export default function DriverLoginDebug() {
             setUserDetails(userData);
           }
         } catch (error) {
-          console.error('Error fetching user details:', error);
+          // Error fetching user details
         }
       } else {
         toast({
@@ -59,7 +58,6 @@ export default function DriverLoginDebug() {
         });
       }
     } catch (error) {
-      console.error('Login error:', error);
       toast({
         title: "Error",
         description: "An error occurred during login test",
@@ -88,7 +86,6 @@ export default function DriverLoginDebug() {
       });
       
       const data = await response.json();
-      console.log('Auth middleware test result:', data);
       
       toast({
         title: "Auth Middleware Test",
@@ -96,7 +93,7 @@ export default function DriverLoginDebug() {
         className: data.authenticated ? "bg-green-600 text-white" : "bg-red-600 text-white"
       });
     } catch (error) {
-      console.error('Auth middleware test error:', error);
+      // Auth middleware test error
     }
   };
 

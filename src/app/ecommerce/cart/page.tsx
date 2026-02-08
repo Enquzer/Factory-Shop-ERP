@@ -278,13 +278,16 @@ export default function CartPage() {
         });
         
         await clearCart();
-        router.push('/ecommerce'); 
+        // Allow UI to update before redirecting
+        setTimeout(() => {
+          router.push('/ecommerce'); 
+        }, 100);
       } else {
         const data = await response.json();
         throw new Error(data.error || 'Failed to place order');
       }
     } catch (err) {
-      console.error('Checkout error:', err);
+      // Error occurred
       toast({
         title: "Checkout Failed",
         description: err instanceof Error ? err.message : "Error processing order",

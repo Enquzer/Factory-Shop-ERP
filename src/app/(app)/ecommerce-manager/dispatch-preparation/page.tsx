@@ -100,7 +100,7 @@ export default function DispatchPreparation() {
 
   const fetchOrders = async () => {
     try {
-      const response = await fetch('/api/ecommerce-manager/orders?status=confirmed,ready_for_dispatch', {
+      const response = await fetch('/api/ecommerce-manager/orders?status=confirmed,ready_for_dispatch,in_transit', {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       })
       

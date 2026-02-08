@@ -28,20 +28,20 @@ export function EnhancedImageUpload({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const createdUrls = useRef<Set<string>>(new Set());
 
   // Clean up object URLs
   React.useEffect(() => {
     return () => {
-      if (preview && preview.startsWith('blob:')) {
-        // Use a small timeout to allow any pending browser operations to complete
+      if (preview && preview.startsWith('blob:') && createdUrls.current.has(preview)) {
         const urlToRevoke = preview;
-        setTimeout(() => {
-          try {
-            URL.revokeObjectURL(urlToRevoke);
-          } catch (error) {
-            // Error might happen if already revoked or environment is gone
-          }
-        }, 1000);
+        // Revoke immediately since we're unmounting or changing
+        try {
+          URL.revokeObjectURL(urlToRevoke);
+          createdUrls.current.delete(urlToRevoke);
+        } catch (error) {
+          // Ignore errors
+        }
       }
     };
   }, [preview]);
@@ -53,17 +53,19 @@ export function EnhancedImageUpload({
       return;
     }
 
+    // Revoke previous if it was created by us
+    if (preview && preview.startsWith('blob:') && createdUrls.current.has(preview)) {
+      try {
+        URL.revokeObjectURL(preview);
+        createdUrls.current.delete(preview);
+      } catch (error) {
+        console.warn('Failed to revoke previous blob URL:', error);
+      }
+    }
+
     // Create preview
     const newPreviewUrl = URL.createObjectURL(file);
-    if (preview && preview.startsWith('blob:')) {
-      setTimeout(() => {
-        try {
-          URL.revokeObjectURL(preview);
-        } catch (error) {
-          console.warn('Failed to revoke previous blob URL:', error);
-        }
-      }, 1000);
-    }
+    createdUrls.current.add(newPreviewUrl);
     setPreview(newPreviewUrl);
     onImageChange(file);
   }, [onImageChange, preview]);
@@ -81,8 +83,13 @@ export function EnhancedImageUpload({
   };
 
   const handleRemoveImage = () => {
-    if (preview && preview.startsWith('blob:')) {
-      URL.revokeObjectURL(preview);
+    if (preview && preview.startsWith('blob:') && createdUrls.current.has(preview)) {
+      try {
+        URL.revokeObjectURL(preview);
+        createdUrls.current.delete(preview);
+      } catch (error) {
+        // Ignore errors
+      }
     }
     setPreview(null);
     onImageChange(null);
@@ -177,6 +184,7 @@ export function EnhancedImageUpload({
                 style={{ objectFit: "contain" }} 
                 loading="lazy"
                 priority={false}
+                unoptimized={preview?.startsWith('blob:')}
               />
             </div>
             <Button

@@ -119,7 +119,7 @@ export default function EcommercePage() {
           duration: 2000,
         });
       } catch (err) {
-        console.error("Failed to add to cart:", err);
+        // Error occurred
         toast({
           title: "Error",
           description: "Login required to add items to bag.",

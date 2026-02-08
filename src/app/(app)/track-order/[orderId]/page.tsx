@@ -6,9 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Package, Truck, MapPin, Clock, Navigation, Phone, Calendar } from 'lucide-react';
+import { Package, Truck, MapPin, Clock, Navigation, Phone, Calendar, CheckCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+
+const DriverMap = dynamic(() => import('@/components/driver-map'), { 
+  ssr: false,
+  loading: () => <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400">Loading Map...</div>
+});
 
 type TrackingInfo = {
   orderId: string;
@@ -58,6 +64,7 @@ type TrackingInfo = {
 export default function OrderTrackingPage({ params }: { params: { orderId: string } }) {
   const [trackingInfo, setTrackingInfo] = useState<TrackingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isConfirming, setIsConfirming] = useState(false);
   const { token } = useAuth();
   const router = useRouter();
 
@@ -93,6 +100,41 @@ export default function OrderTrackingPage({ params }: { params: { orderId: strin
     }
   };
 
+  const handleConfirmReceipt = async () => {
+    try {
+      setIsConfirming(true);
+      const response = await fetch(`/api/order-tracking/${params.orderId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ action: 'confirm_receipt' })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to confirm receipt');
+      }
+
+      toast({
+        title: "Order Completed",
+        description: "Thank you for confirming receipt of your order!",
+        className: "bg-green-600 text-white"
+      });
+
+      fetchTrackingInfo();
+    } catch (error) {
+      console.error('Error confirming receipt:', error);
+      toast({
+        title: "Error",
+        description: "Failed to confirm receipt",
+        variant: "destructive"
+      });
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'pending': return 'bg-yellow-500';
@@ -101,6 +143,7 @@ export default function OrderTrackingPage({ params }: { params: { orderId: strin
       case 'shipped': return 'bg-purple-500';
       case 'in_transit': return 'bg-orange-500';
       case 'delivered': return 'bg-green-500';
+      case 'completed': return 'bg-emerald-600';
       case 'cancelled': return 'bg-red-500';
       default: return 'bg-gray-500';
     }
@@ -158,10 +201,61 @@ export default function OrderTrackingPage({ params }: { params: { orderId: strin
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Tracking</h1>
-          <p className="text-gray-600">Track your order #{trackingInfo.orderId}</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Tracking</h1>
+            <p className="text-gray-600">Track your order #{trackingInfo.orderId}</p>
+          </div>
+          
+          {/* Confirmation Button for delivered orders */}
+          {(trackingInfo.orderStatus === 'delivered' || trackingInfo.driverAssignment?.status === 'delivered') && trackingInfo.orderStatus !== 'completed' && (
+            <Button 
+              onClick={handleConfirmReceipt} 
+              disabled={isConfirming}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg animate-pulse"
+              size="lg"
+            >
+              <CheckCircle className="h-5 w-5 mr-2" />
+              {isConfirming ? 'Confirming...' : 'Confirm Receipt'}
+            </Button>
+          )}
+
+          {trackingInfo.orderStatus === 'completed' && (
+            <Badge className="bg-emerald-100 text-emerald-800 text-lg px-4 py-1 border-emerald-200">
+              <CheckCircle className="h-5 w-5 mr-2" />
+              Order Completed
+            </Badge>
+          )}
         </div>
+
+        {/* Live Map Tracking */}
+        {trackingInfo.driverAssignment && trackingInfo.driverInfo && trackingInfo.driverAssignment.status !== 'delivered' && trackingInfo.driverAssignment.status !== 'cancelled' && (
+           <Card className="mb-6 bg-white/80 backdrop-blur-sm overflow-hidden border-indigo-200 shadow-md">
+             <CardHeader className="bg-indigo-50/50">
+               <CardTitle className="flex items-center gap-2 text-indigo-900">
+                 <Navigation className="h-5 w-5 text-indigo-600" />
+                 Live Tracking
+               </CardTitle>
+             </CardHeader>
+             <div className="h-80 w-full relative">
+               <DriverMap 
+                 driverLocation={trackingInfo.driverInfo.currentLocation}
+                 pickupLocation={trackingInfo.driverAssignment.pickupLocation}
+                 deliveryLocation={trackingInfo.driverAssignment.deliveryLocation || { lat: 9.033, lng: 38.750, name: trackingInfo.deliveryAddress }}
+               />
+               <div className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur p-3 rounded-lg shadow-lg text-xs md:text-sm border border-indigo-100 z-[400] flex justify-between items-center">
+                  <div>
+                    <span className="font-bold text-indigo-900">Driver Status:</span> <span className="text-gray-700 capitalize">{trackingInfo.driverAssignment.status.replace('_', ' ')}</span>
+                  </div>
+                  {trackingInfo.driverAssignment.estimatedDeliveryTime && (
+                    <div>
+                      <span className="font-bold text-indigo-900">ETA:</span> <span className="text-gray-700">{new Date(trackingInfo.driverAssignment.estimatedDeliveryTime).toLocaleTimeString([],{hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                  )}
+               </div>
+             </div>
+           </Card>
+        )}
 
         {/* Order Summary */}
         <Card className="mb-6 bg-white/80 backdrop-blur-sm">

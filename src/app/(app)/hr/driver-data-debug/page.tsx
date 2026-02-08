@@ -20,15 +20,12 @@ export default function DriverDataDebug() {
     setDebugResults(null);
     
     try {
-      console.log('Checking driver data for:', driverUsername);
-      
       // Test 1: Check if driver exists in drivers table
       const driverResponse = await fetch(`/api/drivers/${driverUsername}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       
       const driverData = await driverResponse.json();
-      console.log('Driver API response:', { status: driverResponse.status, data: driverData });
       
       // Test 2: Check user data
       const userResponse = await fetch('/api/debug-user', {
@@ -36,7 +33,6 @@ export default function DriverDataDebug() {
       });
       
       const userData = await userResponse.json();
-      console.log('User data:', userData);
       
       // Test 3: Check all drivers
       const allDriversResponse = await fetch('/api/drivers', {
@@ -44,7 +40,6 @@ export default function DriverDataDebug() {
       });
       
       const allDriversData = await allDriversResponse.json();
-      console.log('All drivers:', allDriversData);
       
       setDebugResults({
         driverCheck: {
@@ -68,7 +63,6 @@ export default function DriverDataDebug() {
       });
       
     } catch (error) {
-      console.error('Debug error:', error);
       toast({
         title: "Error",
         description: "Failed to run debug checks",
@@ -108,7 +102,6 @@ export default function DriverDataDebug() {
       });
       
       const result = await response.json();
-      console.log('Create driver result:', result);
       
       if (response.ok) {
         toast({
@@ -127,7 +120,6 @@ export default function DriverDataDebug() {
         });
       }
     } catch (error) {
-      console.error('Create driver error:', error);
       toast({
         title: "Error",
         description: "Failed to create driver record",

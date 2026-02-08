@@ -4,6 +4,7 @@
 @tailwind utilities;
 
 @import '../components/loading-bar.css';
+@import 'leaflet/dist/leaflet.css';
 
 @layer base {
   :root {

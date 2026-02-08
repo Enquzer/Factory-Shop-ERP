@@ -35,13 +35,20 @@ export async function GET(
     
     try {
       driver = await getDriverById(id);
-      assignments = await getDriverAssignments(id);
     } catch (error: any) {
-      if (error.message === 'Driver not found') {
+      if (error.message === 'Driver not found' && isSelfAccess) {
+        // Auto-initialize driver record if it doesn't exist but user has the role
+        await updateDriver(id, { status: 'available' });
+        driver = await getDriverById(id);
+      } else if (error.message === 'Driver not found') {
         return NextResponse.json({ driver: null, assignments: [] });
+      } else {
+        throw error;
       }
-      throw error;
     }
+
+    const driverActualId = driver?.id || id;
+    assignments = await getDriverAssignments(driverActualId);
     
     // Fetch order details for each assignment
     const { getDb } = await import('@/lib/db');
@@ -112,7 +119,7 @@ export async function PUT(
     
     const { id } = params;
     const body = await request.json();
-    console.log('PUT /api/drivers/[id] - Request body:', JSON.stringify(body, null, 2));
+    // console.log('PUT /api/drivers/[id] - Request body:', JSON.stringify(body, null, 2));
     
     const updateData: any = {};
     if (body.name) updateData.name = body.name;
@@ -122,10 +129,10 @@ export async function PUT(
     if (body.status) updateData.status = body.status;
     if (body.currentLocation) updateData.currentLocation = body.currentLocation;
     
-    console.log('PUT /api/drivers/[id] - Extracted updateData:', JSON.stringify(updateData, null, 2));
+    // console.log('PUT /api/drivers/[id] - Extracted updateData:', JSON.stringify(updateData, null, 2));
     
     const success = await updateDriver(id, updateData);
-    console.log('PUT /api/drivers/[id] - Update driver result:', success);
+    // console.log('PUT /api/drivers/[id] - Update driver result:', success);
     
     if (success) {
       const updatedDriver = await getDriverById(id);

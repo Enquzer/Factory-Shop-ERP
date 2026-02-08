@@ -33,7 +33,7 @@ export default function IncentivesPage() {
         setData(result);
       }
     } catch (err) {
-      console.error(err);
+      // Error occurred
     } finally {
       setLoading(false);
     }

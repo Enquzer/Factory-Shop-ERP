@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Layout, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap, MessageSquare, GitBranch, Key, Bug, Truck } from 'lucide-react';
+import { Building2, LayoutDashboard, Layout, Package, ShoppingCart, User, ClipboardList, FileText, Bell, Factory, BarChart3, BarChart4, Tag, Users, FlaskConical, GanttChart, Scissors, ClipboardCheck, Palette, Layers, Rocket, HelpCircle, PenTool, Award, Banknote, Settings, ShieldCheck, GraduationCap, MessageSquare, GitBranch, Key, Bug, Truck, Route } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -96,7 +96,7 @@ const ecommerceLinks = [
   { href: '/ecommerce-manager', label: 'eCommerce Dashboard', icon: LayoutDashboard },
   { href: '/ecommerce-manager/orders', label: 'Order Management', icon: ShoppingCart },
   { href: '/ecommerce-manager/dispatch', label: 'Dispatch Center', icon: Rocket },
-  { href: '/ecommerce-manager/dispatch-preparation', label: 'Dispatch Preparation', icon: Package },
+  { href: '/ecommerce-manager/route-optimization', label: 'Route Optimization', icon: Route },
   { href: '/ecommerce-manager/support', label: 'Support Claims', icon: MessageSquare },
   { href: '/ecommerce-manager/analytics', label: 'Analytics & Reports', icon: BarChart3 },
   { href: '/ecommerce-manager/settings', label: 'Website Config', icon: Settings },

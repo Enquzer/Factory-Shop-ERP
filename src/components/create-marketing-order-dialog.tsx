@@ -152,6 +152,15 @@ export function CreateMarketingOrderDialog({
     p.productCode.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Cleanup main image preview on unmount or change
+  useEffect(() => {
+    return () => {
+      if (mainImagePreview && mainImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(mainImagePreview);
+      }
+    };
+  }, [mainImagePreview]);
+
   const handleMainImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;

@@ -3,12 +3,12 @@ import './erp-globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/auth-context';
 
+import { SystemSettingsProvider } from '@/contexts/system-settings-context';
+
 export const metadata: Metadata = {
   title: 'Carement Central',
   description: 'Factory and Shop Management Tool',
 };
-
-import { SystemSettingsProvider } from '@/contexts/system-settings-context';
 
 export default function RootLayout({
   children,

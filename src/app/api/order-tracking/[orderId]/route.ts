@@ -111,6 +111,59 @@ export async function GET(
   }
 }
 
+// POST /api/order-tracking/[orderId] - Update order status (Customer confirmation)
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { orderId: string } }
+) {
+  try {
+    const authResult = await authenticateRequest(request);
+    
+    if (!authResult) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const { orderId } = params;
+    const body = await request.json();
+    const { action } = body;
+    
+    if (action !== 'confirm_receipt') {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+    
+    // Get order details
+    const order = await getEcommerceOrderById(orderId);
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+    
+    // Check if customer owns this order
+    // In a real app, 'id' from auth would be matched against customerId
+    // For now we assume typical check or broad access if role is correct
+    if (authResult.role === 'customer' && order.customerId !== authResult.id.toString()) {
+       // However, sometimes ID types mismatch (string vs number). 
+       // Keeping strict check if possible, or relaxing if IDs are inconsistent in this demo env.
+       // Assuming authResult.id is reliable.
+       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    
+    const db = await getDB();
+    
+    // Update order status to completed
+    await db.run(`
+      UPDATE ecommerce_orders 
+      SET status = 'completed', updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [orderId]);
+    
+    return NextResponse.json({ success: true, status: 'completed' });
+    
+  } catch (error) {
+    console.error('API Order Tracking POST error:', error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
 // Helper function to get DB (since it's not exported from customers-sqlite)
 async function getDB() {
   const { getDB } = await import('@/lib/db');

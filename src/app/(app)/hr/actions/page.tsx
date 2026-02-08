@@ -60,7 +60,7 @@ export default function RewardDisciplinePage() {
       if (actionsRes.ok) setActions(await actionsRes.json());
       if (employeesRes.ok) setEmployees(await employeesRes.json());
     } catch (err) {
-      console.error(err);
+      // Error occurred
     } finally {
       setLoading(false);
     }

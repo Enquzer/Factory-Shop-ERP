@@ -23,11 +23,8 @@ export default function DriverAuthDebug() {
     setApiResults(null);
     
     try {
-      console.log('Testing driver login with:', { driverId, password });
-      
       // Test 1: Login
       const loginResult = await login(driverId, password);
-      console.log('Login result:', loginResult);
       setAuthResults(loginResult);
       
       if (loginResult.success) {
@@ -43,14 +40,12 @@ export default function DriverAuthDebug() {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}
           });
           const userInfo = await userResponse.json();
-          console.log('User info:', userInfo);
           
           // Test 3: Fetch driver data
           const driverResponse = await fetch(`/api/drivers/${driverId}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}
           });
           const driverData = await driverResponse.json();
-          console.log('Driver API response:', driverData);
           
           setApiResults({
             userInfo,
@@ -62,7 +57,7 @@ export default function DriverAuthDebug() {
           });
           
         } catch (error) {
-          console.error('API test error:', error);
+          // API test error
         }
       } else {
         toast({
@@ -72,7 +67,6 @@ export default function DriverAuthDebug() {
         });
       }
     } catch (error) {
-      console.error('Login test error:', error);
       toast({
         title: "Error",
         description: "An error occurred during testing",
@@ -89,7 +83,6 @@ export default function DriverAuthDebug() {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       const userInfo = await userResponse.json();
-      console.log('Current user info:', userInfo);
       
       const driverResponse = await fetch(`/api/drivers/${driverId}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -111,7 +104,7 @@ export default function DriverAuthDebug() {
         className: driverResponse.ok ? "bg-green-600 text-white" : "bg-red-600 text-white"
       });
     } catch (error) {
-      console.error('Auth check error:', error);
+      // Auth check error
     }
   };
 

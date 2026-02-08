@@ -17,7 +17,7 @@ export default function DriverRegistration() {
   const [formData, setFormData] = useState({
     employeeId: '',
     username: '',
-    vehicleType: 'motorcycle',
+    vehicleType: 'motorbike',
     licensePlate: '',
     contactPhone: ''
   })
@@ -31,16 +31,18 @@ export default function DriverRegistration() {
 
   const fetchEmployees = async () => {
     try {
-      const response = await fetch('/api/employees', {
+      const response = await fetch('/api/hr/employees', {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       })
       
       if (response.ok) {
         const data = await response.json()
         // Filter employees not in Drivers department or without driver records
-        const availableEmployees = data.employees.filter((emp: any) => 
-          emp.department !== 'Drivers' || !emp.driver_record
-        )
+        // Also filter out any employees without proper name field
+        const availableEmployees = data.filter((emp: any) => 
+          emp.departmentId !== 'Drivers' || !emp.driver_record
+        ).filter((emp: any) => emp.name && typeof emp.name === 'string' && emp.name.trim() !== '')
+        
         setEmployees(availableEmployees)
       }
     } catch (error) {
@@ -104,7 +106,8 @@ export default function DriverRegistration() {
     setFormData({
       ...formData,
       employeeId: value,
-      username: employee ? `${employee.first_name.toLowerCase()}${employee.last_name.toLowerCase()}`.replace(/\s+/g, '') : '',
+      username: employee && employee.name && typeof employee.name === 'string' ? 
+        `${employee.name.toLowerCase().replace(/\s+/g, '')}` : '',
       contactPhone: employee?.phone || ''
     })
   }
@@ -148,7 +151,7 @@ export default function DriverRegistration() {
                     <SelectContent>
                       {employees.map((employee) => (
                         <SelectItem key={employee.id} value={employee.id.toString()}>
-                          {employee.first_name} {employee.last_name} - {employee.department}
+                          {employee.name} - {employee.jobCenter}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -177,7 +180,7 @@ export default function DriverRegistration() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="motorcycle">Motorcycle</SelectItem>
+                      <SelectItem value="motorbike">Motorbike</SelectItem>
                       <SelectItem value="car">Car</SelectItem>
                       <SelectItem value="van">Van</SelectItem>
                       <SelectItem value="truck">Truck</SelectItem>
@@ -221,7 +224,7 @@ export default function DriverRegistration() {
                   onClick={() => setFormData({
                     employeeId: '',
                     username: '',
-                    vehicleType: 'motorcycle',
+                    vehicleType: 'motorbike',
                     licensePlate: '',
                     contactPhone: ''
                   })}
@@ -248,9 +251,9 @@ export default function DriverRegistration() {
                 employees.map((employee) => (
                   <div key={employee.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <h3 className="font-medium">{employee.first_name} {employee.last_name}</h3>
-                      <p className="text-sm text-gray-600">{employee.department} - {employee.position}</p>
-                      <p className="text-sm text-gray-500">ID: {employee.id}</p>
+                      <h3 className="font-medium">{employee.name}</h3>
+                      <p className="text-sm text-gray-600">{employee.jobCenter} - {employee.status}</p>
+                      <p className="text-sm text-gray-500">ID: {employee.employeeId}</p>
                     </div>
                     <Button 
                       size="sm" 

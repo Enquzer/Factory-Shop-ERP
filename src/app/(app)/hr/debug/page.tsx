@@ -37,7 +37,7 @@ export default function DebugHRPage() {
         setDrivers(driverList);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      // Error fetching data
       toast({
         title: "Error",
         description: "Failed to load employee data",

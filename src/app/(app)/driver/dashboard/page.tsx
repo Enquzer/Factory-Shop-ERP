@@ -3,13 +3,30 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+
+/*
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+*/
 import { Separator } from '@/components/ui/separator';
-import { Truck, MapPin, Clock, Package, Phone, Navigation, User } from 'lucide-react';
+import { Truck, MapPin, Clock, Package, Phone, Navigation, User, CheckCircle2, XCircle, ArrowRight, Route } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import type { AuthenticatedUser } from '@/lib/auth-middleware';
+// import type { AuthenticatedUser } from '@/lib/auth-middleware';
+import dynamic from 'next/dynamic';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+const DriverMap = dynamic(() => import('@/components/driver-map'), { 
+  ssr: false,
+  loading: () => <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400">Loading Map...</div>
+});
 
 type DriverAssignment = {
   id: string;
@@ -63,6 +80,8 @@ type Driver = {
   assignedOrders: string[];
   createdAt: Date;
   updatedAt: Date;
+  maxCapacity?: number;
+  activeOrderCount?: number;
 };
 
 export default function DriverDashboard() {
@@ -76,12 +95,20 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (token) {
       fetchDriverData();
+      
+      // Set up periodic refresh every 30 seconds
+      const interval = setInterval(() => {
+        fetchDriverData();
+      }, 30000);
+      
+      return () => clearInterval(interval);
     }
   }, [token]);
 
   const fetchDriverData = async () => {
     try {
-      setIsLoading(true);
+      // Don't set full loading on refresh to avoid flickering
+      if (!driver) setIsLoading(true);
       
       // Get driver username from auth context
       const driverId = user?.username; // Use username as driver ID
@@ -90,18 +117,13 @@ export default function DriverDashboard() {
         throw new Error('Driver ID not found in auth context');
       }
       
-      console.log('[DRIVER DASHBOARD] Fetching driver data for:', driverId);
-      
       // Fetch driver data using username
       const driverResponse = await fetch(`/api/drivers/${driverId}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       
-      console.log('[DRIVER DASHBOARD] Driver API response status:', driverResponse.status);
-      
       if (driverResponse.status === 404) {
         // Driver record doesn't exist - show setup message
-        console.log('Driver record not found, showing setup options');
         setDriver(null);
         setAssignments([]);
         setIsLoading(false);
@@ -113,10 +135,6 @@ export default function DriverDashboard() {
       }
       
       const { driver: driverData, assignments: driverAssignments } = await driverResponse.json();
-      console.log('[DRIVER DASHBOARD] Driver data loaded:', { 
-        driver: { id: driverData?.id, name: driverData?.name, status: driverData?.status },
-        assignments: driverAssignments?.length || 0 
-      });
       
       setDriver(driverData);
       setAssignments(driverAssignments);
@@ -127,9 +145,11 @@ export default function DriverDashboard() {
         description: "Failed to load driver data",
         variant: "destructive"
       });
-      // Set empty state on error
-      setDriver(null);
-      setAssignments([]);
+      // Keep existing data if refresh fails, only clear if initial load
+      if (!driver) {
+          setDriver(null);
+          setAssignments([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -171,7 +191,51 @@ export default function DriverDashboard() {
     }
   }, [driver]);
 
-  const updateAssignmentStatus = async (assignmentId: string, newStatus: 'accepted' | 'picked_up' | 'in_transit' | 'delivered') => {
+  const updateDriverStatus = async (newStatus: 'available' | 'busy' | 'offline') => {
+    try {
+      if (!user?.username || !token) return;
+      
+      setUpdatingStatus('driver-status');
+      
+      const response = await fetch(`/api/drivers/${user.username}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          status: newStatus
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update driver status');
+      }
+      
+      const { driver: updatedDriver } = await response.json();
+      
+      // Update local state
+      setDriver(updatedDriver);
+      
+      toast({
+        title: "Status Updated",
+        description: `Your status has been updated to ${newStatus}`,
+        className: "bg-green-600 text-white"
+      });
+      
+    } catch (error) {
+      console.error('Error updating driver status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update driver status",
+        variant: "destructive"
+      });
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
+  const updateAssignmentStatus = async (assignmentId: string, newStatus: 'accepted' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled') => {
     try {
       setUpdatingStatus(assignmentId);
       
@@ -195,22 +259,25 @@ export default function DriverDashboard() {
         a.id === assignmentId ? { ...a, ...assignment } : a
       ));
 
-      // Also update order status in ecommerce_orders via a proxy/direct call if needed
-      // Our backend handles most of this in the PATCH assignment route.
-
-      // Refresh driver data to get updated status
-      if (newStatus === 'delivered') {
+      // Refresh driver data to get updated status/assignments list
+      if (newStatus === 'delivered' || newStatus === 'cancelled') {
         setTimeout(() => {
           fetchDriverData();
         }, 1000); // Small delay to allow backend processing
       }
 
+      const statusMessages = {
+          accepted: 'Order Accepted! Navigate to pickup.',
+          picked_up: 'Order Picked Up! Head to delivery location.',
+          in_transit: 'Delivery Started!',
+          delivered: 'Order Delivered! Great job.',
+          cancelled: 'Assignment Rejected/Cancelled.'
+      };
+
       toast({
-        title: "Status Updated",
-        description: newStatus === 'delivered' 
-          ? `Order marked as delivered. You are now available for new assignments!` 
-          : `Order status updated to ${newStatus}`,
-        className: "bg-green-600 text-white"
+        title: newStatus === 'cancelled' ? "Assignment Rejected" : "Status Updated",
+        description: statusMessages[newStatus] || `Order status updated to ${newStatus}`,
+        className: newStatus === 'cancelled' ? "bg-red-600 text-white" : "bg-green-600 text-white"
       });
     } catch (error) {
       console.error('Error updating assignment status:', error);
@@ -238,7 +305,7 @@ export default function DriverDashboard() {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'assigned': return 'New Assignment';
+      case 'assigned': return 'Action Required';
       case 'accepted': return 'Accepted';
       case 'picked_up': return 'Picked Up';
       case 'in_transit': return 'In Transit';
@@ -269,447 +336,352 @@ export default function DriverDashboard() {
     );
   }
 
-  if (!user || (user.role as string) !== 'driver') {
+  // Access check
+  if (!user || user.role !== 'driver') {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="text-center p-8 bg-white rounded-2xl shadow-xl border">
-          <div className="text-6xl mb-4">🚚</div>
-          <h1 className="text-2xl font-bold mb-2">Access Restricted</h1>
-          <p className="text-muted-foreground mb-6">Please log in as a driver to access this portal.</p>
-          <Button onClick={() => router.push('/login')} className="bg-indigo-600 hover:bg-indigo-700">
-            Go to Login
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // If driver data doesn't exist, show setup message
-  if (!driver) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="text-6xl mb-4">🚚</div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome, Driver!</h1>
-            <p className="text-gray-600">Your driver profile needs to be set up by HR</p>
-          </div>
-
-          <Card className="bg-white/80 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Driver Profile Setup Required
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <h3 className="font-medium text-blue-800 mb-2">Account Information</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Username:</span>
-                      <div className="font-medium">{user.username}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Role:</span>
-                      <div className="font-medium capitalize">{user.role}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <h3 className="font-medium text-yellow-800 mb-2">Next Steps</h3>
-                  <ul className="space-y-2 text-sm text-yellow-700">
-                    <li className="flex items-start gap-2">
-                      <span>•</span>
-                      <span>Contact HR to register you as an official driver</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span>•</span>
-                      <span>HR will assign your vehicle type and contact information</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span>•</span>
-                      <span>Once registered, you'll be able to access delivery assignments</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="flex justify-center gap-4 pt-4">
-                  <Button variant="outline" onClick={() => router.push('/profile')}>
-                    View Profile
-                  </Button>
-                  <Button 
-                    onClick={() => window.location.reload()} 
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    Refresh Status
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
+        <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+          <Card className="max-w-md w-full p-6 text-center">
+            <h1 className="text-2xl font-bold mb-4">Driver Portal</h1>
+            <p className="text-gray-500 mb-6">Please log in with a driver account.</p>
+            <Button onClick={() => router.push('/login')}>Go to Login</Button>
           </Card>
         </div>
-      </div>
     );
+  }
+  
+  // Driver setup check
+  if (!driver) {
+      return (
+        <div className="flex items-center justify-center h-screen bg-gray-50">
+            <Card className="max-w-lg w-full">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Truck className="h-6 w-6" /> Driver Account Setup
+                    </CardTitle>
+                    <CardDescription>Your account is not yet linked to a driver profile.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-sm text-gray-500 mb-4">
+                        Please contact the fleet manager or HR to initialize your driver profile. 
+                        Once set up, you will be able to receive and manage delivery assignments here.
+                    </p>
+                    <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 mb-4">
+                        <p className="text-sm font-medium text-yellow-800">Debug Info:</p>
+                        <p className="text-xs text-yellow-700">Username: {user.username}</p>
+                        <p className="text-xs text-yellow-700">Role: {user.role}</p>
+                    </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                    <Button variant="outline" onClick={logout}>Logout</Button>
+                    <Button onClick={() => window.location.reload()}>Refresh</Button>
+                </CardFooter>
+            </Card>
+        </div>
+      );
   }
 
-  if (!driver) {
-    // Driver is authenticated but no driver record exists
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center py-12">
-            <div className="text-6xl mb-6">🚛</div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-4">Driver Setup Required</h1>
-            <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
-              Your account is set up but your driver profile needs to be created. 
-              Please contact HR or your administrator to set up your driver record.
-            </p>
-            
-            <Card className="bg-white/80 backdrop-blur-sm max-w-md mx-auto">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Your Account Info
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-left">
-                  <div>
-                    <p className="text-sm text-gray-500">Username</p>
-                    <p className="font-medium">{user.username}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Role</p>
-                    <p className="font-medium capitalize">{user.role}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">User ID</p>
-                    <p className="font-medium">{user.id}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
-                onClick={logout}
-                variant="outline"
-                className="border-gray-300 hover:bg-gray-100"
-              >
-                Logout
-              </Button>
-              <Button 
-                onClick={() => router.push('/hr/driver-data-debug')}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Debug Driver Data
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Filter assignments
+  const pendingAssignments = assignments.filter(a => a.status === 'assigned');
+  const activeAssignments = assignments.filter(a => ['accepted', 'picked_up', 'in_transit'].includes(a.status));
+  const completedAssignments = assignments.filter(a => a.status === 'delivered');
+
+  // Sort active assignments - assuming inferred sequence by estimatedDeliveryTime or assignedAt
+  const sortedActive = [...activeAssignments].sort((a, b) => {
+      // Sort priority: status (accepted -> picked_up -> in_transit)
+      // Actually, standard sort by estimated delivery time is best for route logic
+      const timeA = a.estimatedDeliveryTime ? new Date(a.estimatedDeliveryTime).getTime() : 0;
+      const timeB = b.estimatedDeliveryTime ? new Date(b.estimatedDeliveryTime).getTime() : 0;
+      return timeA - timeB;
+  });
 
   return (
-    <div className="p-6 space-y-8 max-w-6xl mx-auto">
-      {/* Driver Info Card */}
-      <Card className="bg-white shadow-sm border-none ring-1 ring-slate-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span className="text-2xl">{getVehicleIcon(driver.vehicleType)}</span>
-              Driver Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div>
-                <p className="text-sm text-gray-500">Name</p>
-                <p className="font-semibold">{driver.name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Phone</p>
-                <p className="font-semibold flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  {driver.phone}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">License Plate</p>
-                <p className="font-semibold">{driver.licensePlate}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Vehicle Type</p>
-                <p className="font-semibold">{driver.vehicleType.toUpperCase()}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Status</p>
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${
-                    driver.status === 'available' ? 'bg-green-500' : 
-                    driver.status === 'busy' ? 'bg-yellow-500' : 'bg-gray-500'
-                  }`}></div>
-                  <span className="font-semibold capitalize">
-                    {driver.status === 'available' ? 'Available for Assignments' : 
-                     driver.status === 'busy' ? 'Currently Busy' : 'Offline'}
-                  </span>
-                  {driver.status === 'available' && (
-                    <Badge className="bg-green-100 text-green-800 border-green-200 text-xs ml-2">
-                      Ready for New Orders
-                    </Badge>
-                  )}
-                </div>
-                {/* Capacity Indicator */}
-                <div className="mt-1 text-xs text-gray-500">
-                  {driver.vehicleType === 'motorbike' && (
-                    <span>Can carry up to 3 orders simultaneously</span>
-                  )}
-                  {driver.vehicleType === 'car' && (
-                    <span>Can carry up to 5 orders simultaneously</span>
-                  )}
-                  {driver.vehicleType === 'van' && (
-                    <span>Can carry up to 10 orders simultaneously</span>
-                  )}
-                  {driver.vehicleType === 'truck' && (
-                    <span>Can carry up to 20 orders simultaneously</span>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {driver.currentLocation && (
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-sm text-gray-500 mb-2">Current Location</p>
-                <p className="font-semibold flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-blue-600" />
-                  Lat: {driver.currentLocation.lat.toFixed(6)}, 
-                  Lng: {driver.currentLocation.lng.toFixed(6)}
-                  <span className="text-xs text-gray-500 ml-2">
-                    (Updated: {new Date(driver.currentLocation.lastUpdated).toLocaleTimeString()})
-                  </span>
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Active Assignments */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Active Deliveries</h2>
-          
-          {assignments.filter(a => a.status !== 'delivered' && a.status !== 'cancelled').length === 0 ? (
-            <Card className="bg-white/80 backdrop-blur-sm">
-              <CardContent className="py-12 text-center">
-                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">No Active Deliveries</h3>
-                <p className="text-gray-500">You don't have any assigned deliveries at the moment.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4">
-              {assignments
-                .filter(a => a.status !== 'delivered' && a.status !== 'cancelled')
-                .map((assignment) => (
-                  <Card key={assignment.id} className="bg-white/80 backdrop-blur-sm">
-                    <CardHeader>
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <CardTitle className="flex items-center gap-2">
-                          <Package className="h-5 w-5" />
-                          Order #{assignment.orderId}
-                        </CardTitle>
-                        <Badge className={`${getStatusColor(assignment.status)} text-white`}>
-                          {getStatusText(assignment.status)}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        {assignment.pickupLocation && (
-                          <div>
-                            <p className="text-sm text-gray-500 flex items-center gap-1 mb-1">
-                              <MapPin className="h-4 w-4" />
-                              Pickup Location
-                            </p>
-                            <p className="font-medium">{assignment.pickupLocation.name}</p>
-                            <p className="text-sm text-gray-600">
-                              {assignment.pickupLocation.lat.toFixed(6)}, {assignment.pickupLocation.lng.toFixed(6)}
-                            </p>
-                          </div>
-                        )}
-                        
-                        {assignment.deliveryLocation && (
-                          <div>
-                            <p className="text-sm text-gray-500 flex items-center gap-1 mb-1">
-                              <Navigation className="h-4 w-4" />
-                              Delivery Address
-                            </p>
-                            <p className="font-medium">{assignment.deliveryLocation.name}</p>
-                            <p className="text-sm text-gray-600">
-                              {assignment.deliveryLocation.lat.toFixed(6)}, {assignment.deliveryLocation.lng.toFixed(6)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {assignment.estimatedDeliveryTime && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
-                          <Clock className="h-4 w-4" />
-                          Estimated Delivery: {new Date(assignment.estimatedDeliveryTime).toLocaleString()}
-                        </div>
-                      )}
-                      
-                      {/* Order Details & Map */}
-                      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                          <Truck className="h-4 w-4" />
-                          Delivery Journey
-                        </h4>
-                        
-                        <div className="relative pl-8 space-y-8">
-                          {/* Vertical Line */}
-                          <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-300"></div>
-                          
-                          {/* Pickup Point */}
-                          <div className="relative">
-                            <div className="absolute -left-[27px] top-1 h-4 w-4 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center">
-                              <div className="h-1.5 w-1.5 rounded-full bg-white"></div>
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Start: Pickup Location</p>
-                              <p className="font-medium text-gray-900">{assignment.pickupLocation?.name}</p>
-                              <p className="text-xs text-gray-500">Coordinates: {assignment.pickupLocation?.lat.toFixed(4)}, {assignment.pickupLocation?.lng.toFixed(4)}</p>
-                            </div>
-                          </div>
-                          
-                          {/* Delivery Point */}
-                          <div className="relative">
-                            <div className="absolute -left-[27px] top-1 h-4 w-4 rounded-full bg-orange-600 border-2 border-white flex items-center justify-center">
-                              <div className="h-1.5 w-1.5 rounded-full bg-white"></div>
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-orange-600 uppercase tracking-wider">End: Customer Location</p>
-                              <p className="font-medium text-gray-900">{assignment.deliveryLocation?.name}</p>
-                              <p className="text-xs text-gray-500">Coordinates: {assignment.deliveryLocation?.lat.toFixed(4)}, {assignment.deliveryLocation?.lng.toFixed(4)}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Order Items */}
-                        {assignment.orderDetails && (
-                          <div className="mt-6 pt-6 border-t border-gray-200">
-                            <h5 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <Package className="h-4 w-4" />
-                              Order Details ({assignment.orderDetails.items.length} items)
-                            </h5>
-                            <div className="space-y-2">
-                              {assignment.orderDetails.items.map((item, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-sm p-2 bg-white rounded border border-gray-100">
-                                  <div>
-                                    <span className="font-medium">{item.name}</span>
-                                    <span className="text-gray-500 ml-2">x{item.quantity}</span>
-                                    <span className="text-xs text-gray-400 block">{item.color} | {item.size}</span>
-                                  </div>
-                                  <span className="font-semibold text-gray-900">${(item.price * item.quantity).toFixed(2)}</span>
-                                </div>
-                              ))}
-                              <div className="flex justify-between items-center pt-2 font-bold text-gray-900">
-                                <span>Total Amount</span>
-                                <span>${assignment.orderDetails.totalAmount.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Action Buttons */}
-                      <div className="flex flex-wrap gap-2 mt-6">
-                        {assignment.status === 'assigned' && (
-                          <Button
-                            onClick={() => updateAssignmentStatus(assignment.id, 'accepted')}
-                            disabled={updatingStatus === assignment.id}
-                            className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                          >
-                            {updatingStatus === assignment.id ? 'Accepting...' : 'Accept Order'}
-                          </Button>
-                        )}
-
-                        {assignment.status === 'accepted' && (
-                          <Button
-                            onClick={() => updateAssignmentStatus(assignment.id, 'picked_up')}
-                            disabled={updatingStatus === assignment.id}
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            {updatingStatus === assignment.id ? 'Updating...' : 'Mark as Picked Up'}
-                          </Button>
-                        )}
-                        
-                        {assignment.status === 'picked_up' && (
-                          <Button
-                            onClick={() => updateAssignmentStatus(assignment.id, 'in_transit')}
-                            disabled={updatingStatus === assignment.id}
-                            className="bg-indigo-600 hover:bg-indigo-700"
-                          >
-                            {updatingStatus === assignment.id ? 'Updating...' : 'Start Delivery'}
-                          </Button>
-                        )}
-                        
-                        {assignment.status === 'in_transit' && (
-                          <Button
-                            onClick={() => updateAssignmentStatus(assignment.id, 'delivered')}
-                            disabled={updatingStatus === assignment.id}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            {updatingStatus === assignment.id ? 'Updating...' : 'Mark as Delivered'}
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          )}
-        </div>
-
-        {/* Completed Deliveries */}
+    <div className="p-4 md:p-6 space-y-8 max-w-7xl mx-auto min-h-screen bg-gray-50/50">
+      
+      {/* Header & Status */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Delivery History</h2>
-          
-          {assignments.filter(a => a.status === 'delivered').length === 0 ? (
-            <Card className="bg-white/80 backdrop-blur-sm">
-              <CardContent className="py-12 text-center">
-                <Truck className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">No Delivery History</h3>
-                <p className="text-gray-500">Your completed deliveries will appear here.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4">
-              {assignments
-                .filter(a => a.status === 'delivered')
-                .slice(0, 5) // Show only last 5 completed deliveries
-                .map((assignment) => (
-                  <Card key={assignment.id} className="bg-white/80 backdrop-blur-sm">
-                    <CardContent className="py-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div>
-                          <h3 className="font-semibold">Order #{assignment.orderId}</h3>
-                          <p className="text-sm text-gray-600">
-                            Delivered on {assignment.actualDeliveryTime ? new Date(assignment.actualDeliveryTime).toLocaleDateString() : 'Unknown date'}
-                          </p>
-                        </div>
-                        <Badge className="bg-green-500 text-white">
-                          Delivered
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          )}
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+                {getVehicleIcon(driver.vehicleType)} Hello, {driver.name.split(' ')[0]}
+            </h1>
+            <p className="text-sm text-gray-500 flex items-center gap-2">
+                <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs">{driver.licensePlate}</span>
+                <span>•</span>
+                <span className={driver.status === 'available' ? 'text-green-600 font-medium' : 'text-gray-500'}>
+                    {driver.status.toUpperCase()}
+                </span>
+            </p>
+            {/* Capacity Meter */}
+            {driver.maxCapacity && (
+                <div className="mt-2 w-full max-w-[200px]">
+                    <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-1">
+                        <span>Load Capacity</span>
+                        <span>{driver.activeOrderCount || 0} / {driver.maxCapacity}</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                            className={`h-full transition-all duration-500 ${
+                                (driver.activeOrderCount || 0) >= driver.maxCapacity ? 'bg-red-500' : 
+                                (driver.activeOrderCount || 0) > 0 ? 'bg-indigo-500' : 'bg-gray-300'
+                            }`}
+                            style={{ width: `${Math.min(100, ((driver.activeOrderCount || 0) / driver.maxCapacity) * 100)}%` }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
+        
+        <div className="flex gap-2">
+            <Button 
+                size="sm" 
+                variant={driver.status === 'available' ? 'default' : 'outline'}
+                className={driver.status === 'available' ? 'bg-green-600 hover:bg-green-700' : ''}
+                onClick={() => updateDriverStatus('available')}
+                disabled={updatingStatus === 'driver-status'}
+            >
+                Available
+            </Button>
+            <Button 
+                size="sm" 
+                variant={driver.status === 'busy' ? 'default' : 'outline'}
+                className={driver.status === 'busy' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
+                onClick={() => updateDriverStatus('busy')}
+                disabled={updatingStatus === 'driver-status'}
+            >
+                Busy
+            </Button>
+             <Button 
+                size="sm" 
+                variant={driver.status === 'offline' ? 'default' : 'outline'}
+                className={driver.status === 'offline' ? 'bg-slate-600 hover:bg-slate-700' : ''}
+                onClick={() => updateDriverStatus('offline')}
+                disabled={updatingStatus === 'driver-status'}
+            >
+                Offline
+            </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left Column: New & Active Tasks */}
+        <div className="lg:col-span-2 space-y-6">
+            
+            {/* 1. New Assignments Alert */}
+            {pendingAssignments.length > 0 && (
+                <div className="space-y-4">
+                    <h2 className="text-lg font-bold flex items-center gap-2 text-primary">
+                        <span className="relative flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                        </span>
+                        New Assignments ({pendingAssignments.length})
+                    </h2>
+                    {pendingAssignments.map(assignment => (
+                        <Card key={assignment.id} className="border-l-4 border-l-orange-500 shadow-md animate-in slide-in-from-left duration-300">
+                            <CardHeader className="pb-3">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <CardTitle className="text-lg">Delivery Request</CardTitle>
+                                        <CardDescription>
+                                            Order #{assignment.orderId} • {new Date(assignment.assignedAt).toLocaleTimeString()}
+                                        </CardDescription>
+                                    </div>
+                                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">New</Badge>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="grid md:grid-cols-2 gap-4 text-sm">
+                                <div className="space-y-1">
+                                    <span className="text-xs text-gray-500 font-bold uppercase">Pickup</span>
+                                    <p className="font-medium">{assignment.pickupLocation?.name || 'Warehouse'}</p>
+                                    <p className="text-gray-500 text-xs">
+                                        {assignment.pickupLocation?.lat.toFixed(4)}, {assignment.pickupLocation?.lng.toFixed(4)}
+                                    </p>
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-xs text-gray-500 font-bold uppercase">Dropoff</span>
+                                    <p className="font-medium">{assignment.deliveryLocation?.name || 'Customer'}</p>
+                                    <p className="text-gray-500 text-xs">{assignment.orderDetails?.deliveryAddress}</p>
+                                </div>
+                                {/* Order Summary */}
+                                {assignment.orderDetails && (
+                                    <div className="md:col-span-2 bg-gray-50 p-2 rounded border border-dashed text-xs text-gray-600">
+                                        <p className="font-semibold mb-1">Items: {assignment.orderDetails.items.length}</p>
+                                        <p>{assignment.orderDetails.items.map(i => `${i.quantity}x ${i.name}`).join(', ').substring(0, 100)}...</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                            <CardFooter className="flex gap-3 justify-end bg-gray-50/50 py-3">
+                                <Button 
+                                    variant="destructive" 
+                                    onClick={() => updateAssignmentStatus(assignment.id, 'cancelled')}
+                                    disabled={!!updatingStatus}
+                                >
+                                    <XCircle className="w-4 h-4 mr-2" /> Reject
+                                </Button>
+                                <Button 
+                                    className="bg-green-600 hover:bg-green-700"
+                                    onClick={() => updateAssignmentStatus(assignment.id, 'accepted')}
+                                    disabled={!!updatingStatus}
+                                >
+                                    <CheckCircle2 className="w-4 h-4 mr-2" /> Accept Order
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    ))}
+                </div>
+            )}
+
+            {/* 2. Current Route / Active Tasks */}
+            <div>
+                <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <Route className="h-5 w-5 text-indigo-600" />
+                    Current Route Queue
+                </h2>
+                
+                {sortedActive.length === 0 ? (
+                    <Card className="bg-slate-50 border-dashed">
+                        <CardContent className="py-8 text-center text-gray-500">
+                            <p>No active deliveries.</p>
+                            <p className="text-sm">Wait for new assignments or check Completed history.</p>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="relative pl-6 border-l-2 border-indigo-100 space-y-8 ml-3">
+                            {sortedActive.map((assignment, index) => {
+                                const isNext = index === 0;
+                                return (
+                                    <div key={assignment.id} className="relative">
+                                        {/* Status Dot */}
+                                        <span className={`absolute -left-[31px] top-4 h-6 w-6 rounded-full border-4 border-white shadow-sm flex items-center justify-center
+                                            ${isNext ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                                            <span className="text-[10px] font-bold text-white">{index + 1}</span>
+                                        </span>
+
+                                        <Card className={`${isNext ? 'border-indigo-600 shadow-md ring-1 ring-indigo-100' : 'opacity-90'}`}>
+                                            <CardHeader className="pb-2">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <Badge variant={isNext ? "default" : "secondary"} className="mb-2">
+                                                            {getStatusText(assignment.status)}
+                                                        </Badge>
+                                                        <CardTitle className="text-base">Order #{assignment.orderId}</CardTitle>
+                                                    </div>
+                                                    {isNext && <span className="text-xs font-bold text-indigo-600 animate-pulse">CURRENT STOP</span>}
+                                                </div>
+                                            </CardHeader>
+                                            
+                                            <CardContent className="text-sm space-y-4">
+                                                {/* Pickup & Dropoff Visual Line */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex-1 p-2 bg-blue-50/50 rounded border border-blue-100">
+                                                        <p className="text-[10px] uppercase text-blue-600 font-bold">From</p>
+                                                        <p className="font-medium truncate">{assignment.pickupLocation?.name}</p>
+                                                    </div>
+                                                    <ArrowRight className="text-gray-300 h-4 w-4 shrink-0" />
+                                                    <div className="flex-1 p-2 bg-orange-50/50 rounded border border-orange-100">
+                                                        <p className="text-[10px] uppercase text-orange-600 font-bold">To</p>
+                                                        <p className="font-medium truncate">{assignment.deliveryLocation?.name}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Actions based on status */}
+                                                <div className="pt-2">
+                                                     {assignment.status === 'accepted' && (
+                                                        <Button 
+                                                            className="w-full bg-blue-600 hover:bg-blue-700 h-12 text-lg"
+                                                            onClick={() => updateAssignmentStatus(assignment.id, 'picked_up')}
+                                                            disabled={!!updatingStatus}
+                                                        >
+                                                            <Package className="mr-2" /> Confirm Pickup
+                                                        </Button>
+                                                     )}
+                                                     {assignment.status === 'picked_up' && (
+                                                        <Button 
+                                                            className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg"
+                                                            onClick={() => updateAssignmentStatus(assignment.id, 'in_transit')}
+                                                            disabled={!!updatingStatus}
+                                                        >
+                                                            <Truck className="mr-2" /> Start Journey
+                                                        </Button>
+                                                     )}
+                                                     {assignment.status === 'in_transit' && (
+                                                        <Button 
+                                                            className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg"
+                                                            onClick={() => updateAssignmentStatus(assignment.id, 'delivered')}
+                                                            disabled={!!updatingStatus}
+                                                        >
+                                                            <CheckCircle2 className="mr-2" /> Confirm Delivery
+                                                        </Button>
+                                                     )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+        </div>
+
+        {/* Right Column: Map & History */}
+        <div className="space-y-6">
+            
+            {/* Map Card */}
+            <Card className="overflow-hidden">
+                <CardHeader className="bg-gray-50 border-b pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                         <MapPin className="h-4 w-4" /> Live Map
+                    </CardTitle>
+                </CardHeader>
+                <div className="h-[300px] md:h-[400px]">
+                    <DriverMap 
+                        driverLocation={driver.currentLocation}
+                        // Show next pickup/dropoff on map
+                        pickupLocation={sortedActive[0]?.pickupLocation}
+                        deliveryLocation={sortedActive[0]?.deliveryLocation}
+                    />
+                </div>
+            </Card>
+
+            {/* Recent History */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-sm">Recent Activity</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <ScrollArea className="h-[300px]">
+                        {completedAssignments.length === 0 ? (
+                            <div className="p-4 text-center text-gray-500 text-sm">No completed deliveries yet.</div>
+                        ) : (
+                            <div className="divide-y">
+                                {completedAssignments.map(a => (
+                                    <div key={a.id} className="p-3 hover:bg-gray-50">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="font-bold text-xs">#{a.orderId}</span>
+                                            <span className="text-[10px] text-gray-500">
+                                                {a.actualDeliveryTime ? new Date(a.actualDeliveryTime).toLocaleDateString() : 'Done'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 flex items-center gap-1">
+                                            <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                            Delivered to {a.deliveryLocation?.name}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </ScrollArea>
+                </CardContent>
+            </Card>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }

@@ -71,7 +71,7 @@ export default function HRSettingsPage() {
       if (incRes.ok) setIncentiveSettings(await incRes.json());
 
     } catch (err) {
-      console.error(err);
+      // Error occurred
     } finally {
       setLoading(false);
     }
