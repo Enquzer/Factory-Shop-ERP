@@ -81,37 +81,56 @@ export default function MyOrdersPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        if (!user) return;
-        
-        const token = localStorage.getItem('customerAuthToken');
-        const response = await fetch('/api/ecommerce/orders', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setOrders(data.orders || []);
+  const fetchOrders = async () => {
+    try {
+      if (!user) return;
+      
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch('/api/ecommerce/orders', {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-      } catch (error) {
-        console.error("Error fetching orders:", error);
-      } finally {
-        setIsLoading(false);
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Fetched orders:', data.orders);
+        setOrders(data.orders || []);
+        setLastRefreshed(new Date());
+      } else {
+        console.error('Failed to fetch orders:', response.status);
       }
-    };
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (user) {
       fetchOrders();
+      
+      // Set up polling to refresh orders every 30 seconds
+      const interval = setInterval(() => {
+        console.log('Auto-refreshing orders...');
+        fetchOrders();
+      }, 30000);
+      
+      return () => clearInterval(interval);
     } else {
       setIsLoading(false);
     }
   }, [user]);
+
+  // Add manual refresh function
+  const refreshOrders = () => {
+    console.log('Refreshing orders...');
+    fetchOrders();
+  };
 
   const handleReturnRequest = (order: Order) => {
     setSelectedOrder(order);
@@ -313,10 +332,33 @@ export default function MyOrdersPage() {
             </Link>
           </div>
 
-          <h1 className="text-3xl font-bold text-gray-900 mb-8 flex items-center">
-            <Package className="h-8 w-8 mr-3 text-orange-600" />
-            My Orders
-          </h1>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                <Package className="h-8 w-8 mr-3 text-orange-600" />
+                My Orders
+              </h1>
+              {lastRefreshed && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Last updated: {lastRefreshed.toLocaleTimeString()}
+                </p>
+              )}
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={refreshOrders}
+              className="flex items-center gap-2"
+            >
+              {isLoading ? (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : null}
+              Refresh
+            </Button>
+          </div>
 
           {orders.length === 0 ? (
             <Card className="text-center py-16">

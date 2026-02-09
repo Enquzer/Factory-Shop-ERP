@@ -81,8 +81,9 @@ export async function PATCH(
     
     // Logic for customers confirming delivery
     if (authResult.role === 'customer' && status === 'delivered') {
-      if (order.status !== 'shipped') {
-        return NextResponse.json({ error: 'Order must be shipped before confirming delivery' }, { status: 400 });
+      const allowedStatuses = ['shipped', 'picked_up', 'in_transit'];
+      if (!allowedStatuses.includes(order.status)) {
+        return NextResponse.json({ error: 'Order must be shipped, picked up, or in transit before confirming delivery' }, { status: 400 });
       }
       
       const success = await updateEcommerceOrder(id, { status: 'delivered' });

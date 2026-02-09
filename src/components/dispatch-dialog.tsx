@@ -132,6 +132,7 @@ export function DispatchDialog({ order, open, onOpenChange, onDispatch }: Dispat
         contactPerson,
         dispatchDate,
         driverName,
+        driverId: selectedDriverId, // Added this field
         padNumber,
         receiptNumber,
         comment,

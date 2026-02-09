@@ -160,10 +160,10 @@ export default function DriverAssignmentsPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (token) {
+    if (token && user) {
       fetchAssignments();
     }
-  }, [token]);
+  }, [token, user]);
 
   const fetchAssignments = async () => {
     try {

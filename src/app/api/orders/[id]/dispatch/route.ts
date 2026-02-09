@@ -64,6 +64,35 @@ export const PUT = withRoleAuth(async (request: NextRequest, user: any, { params
     orderId
   ]);
 
+  // NEW: Create Driver Assignment if a driver is selected
+  if (dispatchInfo?.driverId) {
+    try {
+      const { assignOrderToDriver } = await import('@/lib/drivers-sqlite');
+      
+      // Get shop info for pickup/delivery locations
+      const shop = await db.get(`SELECT exactLocation, city FROM shops WHERE id = ?`, [order.shopId]);
+      
+      // Pickup is factory, Delivery is shop
+      const pickupLocation = { lat: 9.0333, lng: 38.7500, name: "Factory Warehouse" }; // Defaults or factory loc
+      const deliveryLocation = { 
+        lat: 9.0300, 
+        lng: 38.7400, 
+        name: shop?.exactLocation || `Shop ${order.shopId}` 
+      };
+      
+      await assignOrderToDriver(
+        dispatchInfo.driverId,
+        orderId,
+        user.username,
+        pickupLocation,
+        deliveryLocation
+      );
+      console.log(`[DISPATCH] Driver assignment created for driver ${dispatchInfo.driverId} and order ${orderId}`);
+    } catch (driverError) {
+      console.error('[DISPATCH] Failed to assign driver:', driverError);
+    }
+  }
+
   // NEW: Update Inventory - Reduce from Factory, Add to Shop
   try {
     console.log(`[DISPATCH] Starting inventory update for order ${orderId}`);

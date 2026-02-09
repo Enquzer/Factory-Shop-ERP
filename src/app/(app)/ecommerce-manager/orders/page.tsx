@@ -125,6 +125,15 @@ export default function OrderManagementPage() {
       });
 
       if (res.ok) {
+        // Handle automatic actions based on status
+        if (newStatus === 'confirmed') {
+          // Trigger automatic driver assignment
+          await triggerDriverAssignment(orderId);
+        } else if (newStatus === 'cancelled') {
+          // Notify customer about cancellation
+          await notifyCustomerCancellation(orderId);
+        }
+        
         toast({
           title: "Status Updated",
           description: `Order ${orderId} is now ${newStatus}`,
@@ -146,13 +155,52 @@ export default function OrderManagementPage() {
     }
   };
 
+  const triggerDriverAssignment = async (orderId: string) => {
+    try {
+      const res = await fetch('/api/dispatch/auto-assign', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ orderId })
+      });
+      
+      if (res.ok) {
+        console.log(`Driver assignment triggered for order ${orderId}`);
+      }
+    } catch (error) {
+      console.error('Failed to trigger driver assignment:', error);
+    }
+  };
+
+  const notifyCustomerCancellation = async (orderId: string) => {
+    try {
+      const res = await fetch('/api/notifications/send', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ 
+          orderId, 
+          type: 'order_cancelled',
+          message: 'Your order has been cancelled by the ecommerce manager.'
+        })
+      });
+      
+      if (res.ok) {
+        console.log(`Cancellation notification sent for order ${orderId}`);
+      }
+    } catch (error) {
+      console.error('Failed to send cancellation notification:', error);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-500 hover:bg-yellow-600';
       case 'confirmed': return 'bg-blue-500 hover:bg-blue-600';
-      case 'processing': return 'bg-purple-500 hover:bg-purple-600';
-      case 'shipped': return 'bg-indigo-500 hover:bg-indigo-600';
-      case 'delivered': return 'bg-green-500 hover:bg-green-600';
       case 'cancelled': return 'bg-red-500 hover:bg-red-600';
       default: return 'bg-gray-500';
     }
@@ -334,7 +382,7 @@ export default function OrderManagementPage() {
                                 <div className="space-y-3 pt-4 border-t">
                                   <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Update Order Status</h4>
                                   <div className="flex flex-wrap gap-2">
-                                    {['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map(s => (
+                                    {['pending', 'confirmed', 'cancelled'].map(s => (
                                       <Button 
                                         key={s} 
                                         variant={selectedOrder.status === s ? "default" : "outline"}

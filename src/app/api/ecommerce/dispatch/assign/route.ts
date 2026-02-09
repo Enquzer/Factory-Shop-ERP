@@ -161,13 +161,26 @@ export async function POST(request: NextRequest) {
     // Create dispatch record
     let dispatchResult;
     let dispatchId;
+    
+    // Ensure tracking number is unique for dispatch
+    let finalTrackingNumber = trackingNumber;
+    try {
+        const existingDispatch = await db.get('SELECT id FROM order_dispatches WHERE tracking_number = ?', [trackingNumber]);
+        if (existingDispatch) {
+            console.log('[DISPATCH API] Tracking number collision, generating new suffix...');
+            finalTrackingNumber = `${trackingNumber}-R${Math.floor(Math.random() * 1000)}`;
+        }
+    } catch (e) {
+        console.warn('Error checking tracking number uniqueness:', e);
+    }
+    
     try {
       dispatchResult = await db.run(`
         INSERT INTO order_dispatches (
           order_id, driver_id, shop_id, tracking_number, estimated_delivery_time, 
           transport_cost, notes, status, created_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?)
-      `, [orderId, numericDriverId, shopId, trackingNumber, estimatedDeliveryTime, transportCost, notes, authResult.username]);
+      `, [orderId, numericDriverId, shopId, finalTrackingNumber, estimatedDeliveryTime, transportCost, notes, authResult.username]);
 
       dispatchId = dispatchResult.lastID;
       console.log('[DISPATCH API] Dispatch record created with ID:', dispatchId);
@@ -183,7 +196,7 @@ export async function POST(request: NextRequest) {
       
       // Update order
       await db.run('UPDATE ecommerce_orders SET status = ?, trackingNumber = ?, shopId = ?, dispatchDate = CURRENT_TIMESTAMP WHERE id = ?',
-        ['in_transit', trackingNumber, shopId, orderId]);
+        ['in_transit', finalTrackingNumber, shopId, orderId]);
         
       // Update driver
       await updateDriver(consistentDriverId, { status: 'busy' });
@@ -215,20 +228,21 @@ export async function POST(request: NextRequest) {
     console.log('[DISPATCH API] Sending driver notification...');
     // Send notification to the driver
     try {
-      if (driver.userId) {
+      if (driver.userId || driver.id) {
         const notificationId = `NOTIF-DRV-${Date.now()}`;
+        // MATCHING SCHEMA: id, userType, shopId, title, description, href, isRead, created_at
         await db.run(`
           INSERT INTO notifications (
-            id, user_id, type, title, message, order_id, is_read, created_at
+            id, userType, shopId, title, description, href, isRead, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         `, [
           notificationId,
-          driver.userId,
-          'new_delivery',
-          'New Delivery Assigned',
-          `You have a new delivery request for order #${orderId} from ${shop.name} to ${existingOrder.customerName}.`,
-          orderId,
-          false
+          'driver', // userType
+          null,     // shopId
+          'New Delivery Assigned', // title
+          `Delivery for ${driver.name}: Order #${orderId} from ${shop.name} to ${existingOrder.customerName}.`, // description
+          `/driver/assignments`, // href
+          0 // isRead
         ]);
         console.log('[DISPATCH API] Driver notification sent successfully');
       }

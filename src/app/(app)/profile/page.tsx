@@ -18,6 +18,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
+import { Truck, Car, Bike, Info, ShieldCheck, User as UserIcon, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 export default function FactoryProfilePage() {
   const { user } = useAuth();
@@ -35,6 +37,9 @@ export default function FactoryProfilePage() {
     contactPhone: "",
     email: ""
   });
+
+  const [driverData, setDriverData] = useState<any>(null);
+  const [isDriverLoading, setIsDriverLoading] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     setIsLoading(true);
@@ -59,7 +64,30 @@ export default function FactoryProfilePage() {
 
   useEffect(() => {
     fetchProfile();
-  }, [fetchProfile]);
+    
+    if (user?.role === 'driver') {
+      fetchDriverDetails();
+    }
+  }, [fetchProfile, user?.role]);
+
+  const fetchDriverDetails = async () => {
+    if (!user?.username) return;
+    setIsDriverLoading(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/drivers/${user.username}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDriverData(data.driver);
+      }
+    } catch (error) {
+      console.error('Error fetching driver details:', error);
+    } finally {
+      setIsDriverLoading(false);
+    }
+  };
 
   const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -176,7 +204,6 @@ export default function FactoryProfilePage() {
           {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
-      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="md:col-span-1 border-none shadow-md bg-gradient-to-br from-white to-gray-50/50">
           <CardHeader>
@@ -215,70 +242,161 @@ export default function FactoryProfilePage() {
           </CardContent>
         </Card>
 
-        <form onSubmit={handleSaveChanges} className="md:col-span-2">
-          <Card className="border-none shadow-md">
-            <CardHeader className="border-b bg-gray-50/30">
-              <CardTitle className="text-lg">Organization Details</CardTitle>
-              <CardDescription>
-                Primary contact information for the factory.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-6 pt-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="grid gap-2">
-                        <Label htmlFor="factory-name" className="text-xs font-bold uppercase text-muted-foreground">Factory Name</Label>
-                        <Input 
-                          id="factory-name" 
-                          value={formData.name} 
-                          readOnly={user?.role !== 'factory' && user?.role !== 'planning'}
-                          className={cn(user?.role !== 'factory' && user?.role !== 'planning' && "bg-gray-50")}
-                          onChange={handleInputChange}
-                        />
+        <div className="md:col-span-2 space-y-6">
+          {/* Organization Details (Conditional) */}
+          {(user?.role === 'factory' || user?.role === 'admin' || user?.role === 'planning' || user?.role === 'ecommerce') && (
+            <Card className="border-none shadow-md h-full">
+              <CardHeader className="border-b bg-gray-50/30">
+                <CardTitle className="text-lg">Organization Details</CardTitle>
+                <CardDescription>
+                  Primary contact information for the factory.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 pt-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div className="grid gap-2">
+                          <Label htmlFor="factory-name" className="text-xs font-bold uppercase text-muted-foreground">Factory Name</Label>
+                          <Input 
+                            id="factory-name" 
+                            value={formData.name} 
+                            className="bg-white"
+                            onChange={handleInputChange}
+                          />
+                      </div>
+                      <div className="grid gap-2">
+                          <Label htmlFor="contact-person" className="text-xs font-bold uppercase text-muted-foreground">Primary Contact</Label>
+                          <Input 
+                            id="contact-person" 
+                            value={formData.contactPerson} 
+                            className="bg-white"
+                            onChange={handleInputChange}
+                          />
+                      </div>
+                      <div className="grid gap-2">
+                          <Label htmlFor="contact-phone" className="text-xs font-bold uppercase text-muted-foreground">Phone Number</Label>
+                          <Input 
+                            id="contact-phone" 
+                            value={formData.contactPhone} 
+                            className="bg-white"
+                            onChange={handleInputChange}
+                          />
+                      </div>
+                      <div className="grid gap-2">
+                          <Label htmlFor="email" className="text-xs font-bold uppercase text-muted-foreground">Email Address</Label>
+                          <Input 
+                            id="email" 
+                            value={formData.email} 
+                            className="bg-white"
+                            onChange={handleInputChange}
+                          />
+                      </div>
+                      <div className="grid gap-2 sm:col-span-2">
+                          <Label htmlFor="address" className="text-xs font-bold uppercase text-muted-foreground">Location / Address</Label>
+                          <Textarea 
+                            id="address" 
+                            value={formData.address} 
+                            className="bg-white"
+                            onChange={handleInputChange}
+                          />
+                      </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Driver Profile Information (Conditional) */}
+          {user?.role === 'driver' && (
+            <Card className="border-none shadow-lg overflow-hidden border-l-4 border-l-indigo-600 h-full">
+              <CardHeader className="bg-indigo-50/50">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                      <Truck className="h-6 w-6" />
                     </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="contact-person" className="text-xs font-bold uppercase text-muted-foreground">Primary Contact</Label>
-                        <Input 
-                          id="contact-person" 
-                          value={formData.contactPerson} 
-                          readOnly={user?.role !== 'factory' && user?.role !== 'planning'}
-                          className={cn(user?.role !== 'factory' && user?.role !== 'planning' && "bg-gray-50")}
-                          onChange={handleInputChange}
-                        />
+                    <div>
+                      <CardTitle className="text-xl">Driver Profile Information</CardTitle>
+                      <CardDescription>Official dispatch and vehicle registration details</CardDescription>
                     </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="contact-phone" className="text-xs font-bold uppercase text-muted-foreground">Phone Number</Label>
-                        <Input 
-                          id="contact-phone" 
-                          value={formData.contactPhone} 
-                          readOnly={user?.role !== 'factory' && user?.role !== 'planning'}
-                          className={cn(user?.role !== 'factory' && user?.role !== 'planning' && "bg-gray-50")}
-                          onChange={handleInputChange}
-                        />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-end mb-4">
+                  <Link href="/driver/dashboard">
+                    <Button variant="outline" size="sm" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                      Go to Activity Dashboard <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+
+                {isDriverLoading ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground italic">
+                    Loading driver credentials...
+                  </div>
+                ) : driverData ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5 p-4 rounded-xl bg-gray-50/50 border border-gray-100">
+                        <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                          <ShieldCheck className="h-3 w-3" /> Employee ID
+                        </div>
+                        <p className="font-mono text-lg font-bold text-indigo-900">{driverData.employeeId || 'NOT LINKED'}</p>
+                      </div>
+
+                      <div className="space-y-1.5 p-4 rounded-xl bg-gray-50/50 border border-gray-100">
+                        <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                          <Truck className="h-3 w-3" /> Vehicle Type
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="capitalize bg-white shadow-sm py-1 px-3 border-indigo-100 text-indigo-700">
+                            {driverData.vehicleType === 'car' && <Car className="h-3.5 w-3.5 mr-1" />}
+                            {driverData.vehicleType === 'motorbike' && <Bike className="h-3.5 w-3.5 mr-1" />}
+                            {driverData.vehicleType === 'van' && <Truck className="h-3.5 w-3.5 mr-1" />}
+                            {driverData.vehicleType === 'truck' && <Truck className="h-3.5 w-3.5 mr-1" />}
+                            {driverData.vehicleType}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 p-4 rounded-xl bg-gray-50/50 border border-gray-100">
+                        <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                          License Plate
+                        </div>
+                        <p className="text-lg font-black tracking-widest">{driverData.licensePlate}</p>
+                      </div>
+
+                      <div className="space-y-1.5 p-4 rounded-xl bg-gray-50/50 border border-gray-100">
+                        <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                          <Info className="h-3 w-3" /> Current Status
+                        </div>
+                        <Badge className={cn(
+                          "capitalize py-1 px-4 text-white font-bold",
+                          driverData.status === 'available' ? 'bg-green-600' : 
+                          driverData.status === 'busy' ? 'bg-orange-500' : 'bg-gray-500'
+                        )}>
+                          {driverData.status}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="email" className="text-xs font-bold uppercase text-muted-foreground">Email Address</Label>
-                        <Input 
-                          id="email" 
-                          value={formData.email} 
-                          readOnly={user?.role !== 'factory' && user?.role !== 'planning'}
-                          className={cn(user?.role !== 'factory' && user?.role !== 'planning' && "bg-gray-50")}
-                          onChange={handleInputChange}
-                        />
+
+                    <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100 flex items-start gap-3">
+                      <Info className="h-5 w-5 text-blue-500 mt-0.5" />
+                      <div className="text-sm text-blue-800">
+                        <p className="font-semibold">Driver Capability Note:</p>
+                        <p>Currently authorized for <strong>{driverData.maxCapacity || 1}</strong> active deliveries based on {driverData.vehicleType} capacity settings.</p>
+                      </div>
                     </div>
-                    <div className="grid gap-2 sm:col-span-2">
-                        <Label htmlFor="address" className="text-xs font-bold uppercase text-muted-foreground">Location / Address</Label>
-                        <Textarea 
-                          id="address" 
-                          value={formData.address} 
-                          readOnly={user?.role !== 'factory' && user?.role !== 'planning'}
-                          className={cn(user?.role !== 'factory' && user?.role !== 'planning' && "bg-gray-50")}
-                          onChange={handleInputChange}
-                        />
-                    </div>
-              </div>
-            </CardContent>
-          </Card>
-        </form>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center bg-yellow-50 rounded-xl border border-yellow-100 text-yellow-800">
+                    <p className="font-bold mb-1 italic">Driver Record Not Found</p>
+                    <p className="text-sm">Your account is registered as a driver but lacks an official vehicle assignment record in the dispatch system.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   )

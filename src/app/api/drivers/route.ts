@@ -9,6 +9,7 @@ import {
   getAvailableDrivers
 } from '@/lib/drivers-sqlite';
 import { authenticateRequest } from '@/lib/auth-middleware';
+import { getDB } from '@/lib/db';
 
 // Initialize tables on first load
 let tablesInitialized = false;
@@ -32,27 +33,37 @@ export async function GET(request: NextRequest) {
     
     // TEMPORARY: Allow access for debugging - REMOVE IN PRODUCTION
     console.log('[TEMP DEBUG] Auth result:', authResult);
-    console.log('[TEMP DEBUG] Request headers:', Object.fromEntries(request.headers));
     
     // if (!authResult || (authResult.role !== 'ecommerce' && authResult.role !== 'admin')) {
     //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // }
-    
-    
-    console.log('[API] About to call getAllDrivers()...');
+    const db = await getDB();
     const drivers = await getAllDrivers();
-    console.log(`[API] getAllDrivers() returned ${drivers.length} drivers`);
-    console.log('[API] Raw drivers from lib:', JSON.stringify(drivers, null, 2));
     
     // Reformatted drivers for frontend compatibility
-    const formattedDrivers = drivers.map(d => {
+    const formattedDrivers = await Promise.all(drivers.map(async (d: any) => {
       const driverName = d.name || 'Unknown Driver';
       const names = driverName.split(' ');
       const firstName = names[0] || 'Driver';
       const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
       
+      const driverOrders = (d as any).assignedOrders || [];
+      let detailedOrders = [];
+      
+      if (driverOrders.length > 0) {
+        try {
+          detailedOrders = await db.all(`
+            SELECT id, latitude, longitude, customerName, status, totalAmount
+            FROM ecommerce_orders 
+            WHERE id IN (${driverOrders.map(() => '?').join(',')})
+          `, driverOrders);
+        } catch (err) {
+          console.error(`Error fetching detailed orders for driver ${d.id}:`, err);
+        }
+      }
+
       const formatted = {
-        id: d.id, // Now a string from lib
+        id: d.id,
         username: d.username || '',
         first_name: firstName,
         last_name: lastName,
@@ -60,26 +71,14 @@ export async function GET(request: NextRequest) {
         vehicle_type: d.vehicleType,
         status: d.status,
         current_location: d.currentLocation,
-        active_order_count: (d as any).activeOrderCount || 0,
+        active_order_count: driverOrders.length,
+        assigned_orders: detailedOrders,
         max_capacity: (d as any).maxCapacity || 1
       };
       
-      console.log(`[API] Formatted driver ${d.id}:`, {
-        id: formatted.id,
-        first_name: formatted.first_name,
-        last_name: formatted.last_name,
-        status: formatted.status,
-        vehicle_type: formatted.vehicle_type
-      });
-      
       return formatted;
-    });
+    }));
 
-    console.log(`[API] Formatted ${formattedDrivers.length} drivers`);
-    const availableDrivers = formattedDrivers.filter(d => d.status === 'available');
-    console.log(`[API] Returning ${availableDrivers.length} available drivers out of ${formattedDrivers.length} total`);
-    console.log('[API] Available drivers:', availableDrivers.map(d => ({id: d.id, name: `${d.first_name} ${d.last_name}`, status: d.status})));
-    console.log('[API] Final response:', JSON.stringify({ drivers: formattedDrivers }, null, 2));
     return NextResponse.json({ drivers: formattedDrivers });
   } catch (error) {
     console.error('API Drivers GET error:', error);

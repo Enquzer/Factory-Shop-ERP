@@ -204,11 +204,15 @@ export default function DispatchMasterCenter() {
 
   const handlePrepareDispatch = (order: Order) => {
     setSelectedOrder(order);
+    
+    // Check if it's a reassignment or fresh dispatch
+    const isInTransit = ['shipped', 'in_transit'].includes(order.status.toLowerCase());
+    
     setDispatchForm({
       shopId: order.shopId || (shops.length > 0 ? shops[0].id : ""),
-      driverId: "",
+      driverId: order.driverId || "",
       transportationCost: calculateCost(order),
-      trackingNumber: generateTrackingNumber(),
+      trackingNumber: order.trackingNumber || generateTrackingNumber(),
       estimatedDeliveryTime: "",
       notes: ""
     });
@@ -289,7 +293,7 @@ export default function DispatchMasterCenter() {
     ready: orders.filter(o => ['confirmed', 'processing', 'ready_for_dispatch', 'ready'].includes(o.status.toLowerCase())).length,
     transit: orders.filter(o => ['shipped', 'in_transit'].includes(o.status.toLowerCase())).length,
     delivered: orders.filter(o => o.status.toLowerCase() === 'delivered').length,
-    drivers: drivers.filter(d => d.status === 'available').length
+    drivers: drivers.filter(d => d.status !== 'offline').length
   }), [orders, drivers]);
 
   return (
@@ -460,27 +464,32 @@ export default function DispatchMasterCenter() {
                               <Send className="h-4 w-4 mr-2" />
                               Dispatch
                             </Button>
+                          ) : ['shipped', 'in_transit'].includes(order.status.toLowerCase()) ? (
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                onClick={() => handlePrepareDispatch(order)}
+                                variant="outline"
+                                className="px-5 rounded-xl h-10 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                              >
+                                <RefreshCcw className="h-4 w-4 mr-2" />
+                                Reassign
+                              </Button>
+                              <Button 
+                                disabled
+                                className="bg-blue-50 text-blue-600 border-blue-100 px-3 rounded-xl h-10"
+                                variant="outline"
+                              >
+                                <Navigation className="h-4 w-4" />
+                              </Button>
+                            </div>
                           ) : (
                             <Button 
                               disabled
-                              className={`px-5 rounded-xl h-10 shadow-sm border ${
-                                order.status.toLowerCase() === 'delivered' || order.status.toLowerCase() === 'completed'
-                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                  : 'bg-blue-50 text-blue-600 border-blue-100'
-                              }`}
+                              className="px-5 rounded-xl h-10 shadow-sm border bg-emerald-50 text-emerald-600 border-emerald-100"
                               variant="outline"
                             >
-                              {order.status.toLowerCase() === 'delivered' || order.status.toLowerCase() === 'completed' ? (
-                                <>
-                                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                                  Delivered
-                                </>
-                              ) : (
-                                <>
-                                  <Navigation className="h-4 w-4 mr-2" />
-                                  Dispatched
-                                </>
-                              )}
+                              <CheckCircle2 className="h-4 w-4 mr-2" />
+                              Delivered
                             </Button>
                           )}
                         </div>
@@ -497,14 +506,18 @@ export default function DispatchMasterCenter() {
       {/* Advanced Dispatch Detail Popout */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent className="sm:max-w-2xl border-none shadow-2xl overflow-y-auto bg-slate-50/50 p-0">
-          <div className="bg-indigo-600 h-40 flex items-end p-8">
+          <div className={`${['shipped', 'in_transit'].includes(selectedOrder?.status?.toLowerCase() || '') ? 'bg-amber-600' : 'bg-indigo-600'} h-40 flex items-end p-8 transition-colors`}>
             <div className="flex items-center gap-4 text-white">
               <div className="p-4 bg-white/20 backdrop-blur rounded-3xl">
                 <Truck className="h-8 w-8" />
               </div>
               <div>
-                <SheetTitle className="text-white text-3xl font-black">Shipment Console</SheetTitle>
-                <SheetDescription className="text-indigo-100 font-medium">Finalizing order {selectedOrder?.id}</SheetDescription>
+                <SheetTitle className="text-white text-3xl font-black">
+                  {['shipped', 'in_transit'].includes(selectedOrder?.status?.toLowerCase() || '') ? 'Reassign Shipment' : 'Shipment Console'}
+                </SheetTitle>
+                <SheetDescription className="text-indigo-100 font-medium font-mono tracking-tighter uppercase">
+                  Logistics override: {selectedOrder?.id}
+                </SheetDescription>
               </div>
             </div>
           </div>
@@ -601,17 +614,25 @@ export default function DispatchMasterCenter() {
                       ) : (
                         drivers.map((driver) => {
                           const isFull = (driver.active_order_count || 0) >= (driver.max_capacity || 1);
+                          const isOffline = driver.status === 'offline';
+                          
                           return (
                             <SelectItem 
                               key={driver.id} 
                               value={driver.id.toString()} 
-                              disabled={isFull}
-                              className={`rounded-xl py-3 font-bold ${isFull ? 'opacity-50' : ''}`}
+                              disabled={isFull || isOffline}
+                              className={`rounded-xl py-3 font-bold ${isFull || isOffline ? 'opacity-50' : ''}`}
                             >
                               <div className="flex justify-between items-center w-full min-w-[200px]">
                                 <div className="flex flex-col">
                                   <span>{driver.first_name} {driver.last_name}</span>
-                                  <span className="text-[10px] text-indigo-500 font-black uppercase tracking-widest">{driver.vehicle_type}</span>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] text-indigo-500 font-black uppercase tracking-widest">{driver.vehicle_type}</span>
+                                    <span className="text-[10px] text-slate-300">•</span>
+                                    <span className={`text-[10px] font-bold uppercase ${isOffline ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                      {driver.status}
+                                    </span>
+                                  </div>
                                 </div>
                                 <Badge variant="outline" className={`ml-4 ${isFull ? 'bg-red-50 text-red-600 border-red-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
                                   {driver.active_order_count || 0} / {driver.max_capacity || 1} Load

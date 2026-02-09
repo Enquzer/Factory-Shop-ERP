@@ -600,8 +600,8 @@ export default function RouteOptimizationDashboard() {
                             <div className="space-y-4 relative">
                               <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-indigo-100 border-dashed border-l" />
                               <div className="flex items-center gap-3 relative z-10">
-                                <div className="w-6 h-6 rounded-full bg-white border-2 border-indigo-600 flex items-center justify-center text-[10px] font-bold text-indigo-600 shadow-sm">
-                                  S
+                                <div className="w-6 h-6 rounded-full bg-white border-2 border-indigo-600 flex items-center justify-center overflow-hidden shadow-sm">
+                                  <img src="/logo.png" alt="Shop" className="w-full h-full object-contain p-0.5" />
                                 </div>
                                 <span className="text-xs font-bold text-gray-500">Shop Location (Start)</span>
                               </div>
@@ -617,8 +617,8 @@ export default function RouteOptimizationDashboard() {
                                 </div>
                               ))}
                               <div className="flex items-center gap-3 relative z-10">
-                                <div className="w-6 h-6 rounded-full bg-white border-2 border-indigo-600 flex items-center justify-center text-[10px] font-bold text-indigo-600 shadow-sm">
-                                  E
+                                <div className="w-6 h-6 rounded-full bg-white border-2 border-indigo-600 flex items-center justify-center overflow-hidden shadow-sm">
+                                  <img src="/logo.png" alt="Shop" className="w-full h-full object-contain p-0.5" />
                                 </div>
                                 <span className="text-xs font-bold text-gray-500">Shop Location (End)</span>
                               </div>

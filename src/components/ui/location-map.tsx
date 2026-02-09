@@ -252,10 +252,20 @@ export default function LocationMap({
     }
 
     if (points.length >= 2) {
+      // Add shadow for better visibility
+      L.polyline(points, { 
+        color: routingStatus === 'road' ? '#1e40af' : '#6b7280',
+        weight: 14,
+        opacity: 0.2,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+      
+      // Main route line
       polylineRef.current = L.polyline(points, { 
         color: routingStatus === 'road' ? '#2563eb' : '#94a3b8',
-        weight: 10,
-        opacity: 0.9,
+        weight: 8,
+        opacity: 0.95,
         lineCap: 'round',
         lineJoin: 'round',
         dashArray: routingStatus === 'road' ? '' : '10, 10'

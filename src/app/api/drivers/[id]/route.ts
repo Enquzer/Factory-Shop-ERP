@@ -55,7 +55,8 @@ export async function GET(
     const db = await getDb();
     
     const assignmentsWithDetails = await Promise.all(assignments.map(async (a) => {
-      const order = await db.get(`
+      // Try to find in ecommerce_orders first
+      let order = await db.get(`
         SELECT customerName, customerPhone, totalAmount, deliveryAddress, trackingNumber, status as orderStatus
         FROM ecommerce_orders 
         WHERE id = ?
@@ -68,11 +69,68 @@ export async function GET(
           WHERE orderId = ?
         `, [a.orderId]);
         
-        return { ...a, orderDetails: { ...order, items } };
+        return { 
+            ...a, 
+            orderDetails: { ...order, items },
+            // Ensure delivery location falls back to order address if not set in assignment
+            deliveryLocation: a.deliveryLocation || {
+                name: order.deliveryAddress,
+                lat: 0, 
+                lng: 0
+            }
+        };
       }
+
+      // If not found in ecommerce_orders, try internal orders table
+      order = await db.get(`
+        SELECT shopName as customerName, id as trackingNumber, amount as totalAmount, status as orderStatus, shopId, items
+        FROM orders 
+        WHERE id = ?
+      `, [a.orderId]);
+
+      if (order) {
+        // Prepare items for internal order
+        let items: any[] = [];
+        try {
+          const rawItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+          if (Array.isArray(rawItems)) {
+            items = rawItems.map((item: any) => ({
+                name: item.name || item.productName || 'Unknown Item',
+                quantity: item.quantity,
+                price: item.price,
+                color: item.variant?.color || item.color || 'N/A',
+                size: item.variant?.size || item.size || 'N/A'
+            }));
+          }
+        } catch (e) {
+          console.error("Failed to parse internal order items:", e);
+        }
+
+        // Get shop address for delivery
+        const shop = await db.get(`SELECT exactLocation, city FROM shops WHERE id = ?`, [order.shopId]);
+        const deliveryAddress = shop ? `${shop.exactLocation}, ${shop.city}` : 'To Shop';
+        
+        return { 
+          ...a, 
+          orderDetails: { 
+            ...order, 
+            customerPhone: 'Shop Order',
+            deliveryAddress,
+            items 
+          },
+          deliveryLocation: a.deliveryLocation || {
+             name: deliveryAddress,
+             lat: 0,
+             lng: 0
+          }
+        };
+      }
+
+      // If order not found in either table, return assignment as is
       return a;
     }));
     
+    console.log(`[API /api/drivers/${id}] Found ${assignments.length} raw assignments, ${assignmentsWithDetails.length} with details`);
     return NextResponse.json({ driver, assignments: assignmentsWithDetails });
   } catch (error: any) {
     console.error('API Driver GET error:', error);

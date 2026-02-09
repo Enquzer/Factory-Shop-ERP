@@ -200,17 +200,21 @@ export async function getDriverById(id: string): Promise<Driver> {
     
     // If not found in drivers table, try to find in employees table
     if (!driver) {
+      // Find employee by employeeId OR name OR userId (linking to users table)
       const emp = await db.get(`
-        SELECT e.*, dept.name as departmentName
+        SELECT e.*, dept.name as departmentName, u.username
         FROM employees e
-        JOIN departments dept ON e.departmentId = dept.id
-        WHERE e.employeeId = ? AND dept.name = 'Drivers'
-      `, [id]);
+        INNER JOIN departments dept ON e.departmentId = dept.id
+        LEFT JOIN users u ON e.userId = u.id
+        WHERE (e.employeeId = ? OR u.username = ? OR e.name = ?) 
+        AND (dept.name = 'Drivers' OR dept.id = 11)
+      `, [id, id, id]);
       
       if (emp) {
         driver = {
           id: emp.employeeId,
           employeeId: emp.employeeId,
+          userId: emp.userId,
           name: emp.name,
           phone: emp.phone,
           status: 'available',
@@ -218,7 +222,8 @@ export async function getDriverById(id: string): Promise<Driver> {
           updatedAt: new Date(),
           departmentName: emp.departmentName,
           profilePicture: emp.profilePicture,
-          jobCenter: 'Driver'
+          jobCenter: 'Driver',
+          username: emp.username
         };
       }
     }
@@ -228,12 +233,21 @@ export async function getDriverById(id: string): Promise<Driver> {
     }
     
     // Get assigned orders
-    const assignments = await db.all(`
-      SELECT order_id FROM driver_assignments 
-      WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
-    `, [driver.id || driver.employeeId]);
+    // Smarter assignment lookup: check for driver.id (numeric), driver.userId, AND driver.employeeId
+    const searchIds = [driver.id, id];
+    if (driver.employeeId) searchIds.push(driver.employeeId);
+    if (driver.userId) searchIds.push(driver.userId);
     
-    const assignedOrders = assignments.map((a: any) => a.order_id);
+    // Construct placeholders for IN clause
+    const placeholders = searchIds.map(() => '?').join(',');
+    
+    const assignments = await db.all(`
+      SELECT orderId FROM driver_assignments 
+      WHERE (driverId IN (${placeholders}) OR driver_id IN (${placeholders})) 
+      AND status != 'delivered' AND status != 'cancelled'
+    `, [...searchIds, ...searchIds]);
+    
+    const assignedOrders = assignments.map((a: any) => a.orderId || a.order_id);
     
     // Format current location
     let currentLocation = undefined;
@@ -343,17 +357,34 @@ export async function getAllDrivers(): Promise<Driver[]> {
     const result = await Promise.all(drivers.map(async (driver: any) => {
       const actualDriverId = driver.employeeId; // Use employeeId as the main ID for consistent string usage
       
-      // Get assigned orders count - wrap in try-catch in case table doesn't exist
+      // Get assigned orders count
+      // We need to check against BOTH the driver table ID and the employee ID
+      // because assignments might be linked via either
+      const dbId = driver.driverId; // This comes from the main query 'd.id as driverId'
+      const empId = driver.employeeId;
+      
+      let assignedOrders: string[] = [];
       let assignedOrdersCount = 0;
       try {
-        const assignments = await db.all(`
-          SELECT COUNT(*) as count FROM driver_assignments 
-          WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
-        `, [actualDriverId]);
-        assignedOrdersCount = assignments[0]?.count || 0;
+        const searchIds = [];
+        if (dbId) searchIds.push(dbId);
+        if (empId) searchIds.push(empId);
+        
+        if (searchIds.length > 0) {
+            const placeholders = searchIds.map(() => '?').join(',');
+            const allPlaceholders = [...searchIds, ...searchIds];
+            
+            const assignments = await db.all(`
+              SELECT orderId FROM driver_assignments 
+              WHERE (driverId IN (${placeholders}) OR driver_id IN (${placeholders})) 
+              AND status NOT IN ('delivered', 'cancelled')
+            `, allPlaceholders);
+            
+            assignedOrders = assignments.map((a: any) => String(a.orderId));
+            assignedOrdersCount = assignedOrders.length;
+        }
       } catch (assignmentError) {
-        console.warn(`[LIB] Could not fetch assignments for driver ${actualDriverId}:`, assignmentError);
-        // Continue with 0 assignments
+        console.warn(`[LIB] Could not fetch assignments for driver ${empId}/${dbId}:`, assignmentError);
       }
       
       // Format current location
@@ -377,7 +408,7 @@ export async function getAllDrivers(): Promise<Driver[]> {
         vehicleType: (driver.vehicleType as any) || 'car',
         status: (driver.status as any) || 'available',
         currentLocation,
-        assignedOrders: Array(assignedOrdersCount).fill(''),
+        assignedOrders,
         createdAt: driver.createdAt ? new Date(driver.createdAt) : new Date(),
         updatedAt: driver.updatedAt ? new Date(driver.updatedAt) : new Date(),
         jobCenter: 'Driver',
@@ -432,12 +463,14 @@ export async function updateDriver(id: string, updateData: Partial<Omit<Driver, 
     let actualDbId = id;
 
     if (!existing) {
-      // If not in drivers, it must be an employeeId from HR Drivers dept
+      // If not in drivers, try to find employee by employeeId, name, or userId
       const emp = await db.get(`
         SELECT e.* FROM employees e 
         JOIN departments dept ON e.departmentId = dept.id 
-        WHERE e.employeeId = ? AND dept.name = 'Drivers'
-      `, [id]);
+        LEFT JOIN users u ON e.userId = u.id
+        WHERE (e.employeeId = ? OR u.username = ? OR e.name = ?) 
+        AND (dept.name = 'Drivers' OR dept.id = 11)
+      `, [id, id, id]);
       // console.log('Employee lookup result:', emp);
       
       if (emp) {
@@ -598,11 +631,51 @@ export async function assignOrderToDriver(driverId: string, orderId: string, ass
     
     console.log('[DRIVER ASSIGN] Generated assignment ID:', id);
     
+    // REASSIGNMENT LOGIC: Cancel any existing active assignments for this order
+    console.log('[DRIVER ASSIGN] Checking for existing active assignments for order:', orderId);
+    const existingActiveAssignments = await db.all(`
+      SELECT id, driverId, driver_id FROM driver_assignments 
+      WHERE orderId = ? OR order_id = ? 
+      AND status NOT IN ('delivered', 'cancelled')
+    `, [orderId, orderId]);
+    
+    if (existingActiveAssignments.length > 0) {
+      console.log(`[DRIVER ASSIGN] Found ${existingActiveAssignments.length} existing active assignments. Cancelling them...`);
+      for (const old of existingActiveAssignments) {
+        await db.run(`
+          UPDATE driver_assignments SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `, [old.id]);
+        
+        // Also potentially free up the old driver status if they have no other orders
+        const oldDriverId = old.driverId || old.driver_id;
+        if (oldDriverId) {
+          const otherOrders = await db.get(`
+            SELECT COUNT(*) as count FROM driver_assignments 
+            WHERE (driverId = ? OR driver_id = ?) 
+            AND status NOT IN ('delivered', 'cancelled')
+          `, [oldDriverId, oldDriverId]);
+          
+          if (!otherOrders || otherOrders.count === 0) {
+            await db.run('UPDATE drivers SET status = ? WHERE id = ? OR employeeId = ?', ['available', oldDriverId, oldDriverId]);
+          }
+        }
+      }
+    }
+    
     // Check if driver already has active assignments
+    // Use expanded check for driver IDs
+    const currentDriver = await getDriverById(driverId);
+    const searchIds = [driverId];
+    if (currentDriver.employeeId) searchIds.push(currentDriver.employeeId);
+    if (currentDriver.id) searchIds.push(currentDriver.id.toString());
+    
+    const placeholders = searchIds.map(() => '?').join(',');
     const activeAssignments = await db.all(`
       SELECT COUNT(*) as count FROM driver_assignments 
-      WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
-    `, [driverId]);
+      WHERE (driverId IN (${placeholders}) OR driver_id IN (${placeholders})) 
+      AND status != 'delivered' AND status != 'cancelled'
+    `, [...searchIds, ...searchIds]);
     
     const activeCount = activeAssignments[0]?.count || 0;
     
@@ -657,13 +730,18 @@ export async function assignOrderToDriver(driverId: string, orderId: string, ass
     
     await db.run(`
       INSERT INTO driver_assignments (
-        id, driver_id, order_id, assignedBy, 
+        id, 
+        driverId, orderId, assignedBy, 
+        driver_id, order_id, assigned_by,
         pickupLat, pickupLng, pickupName,
-        deliveryLat, deliveryLng, deliveryName
+        deliveryLat, deliveryLng, deliveryName,
+        status, createdAt, updatedAt
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `, [
-      id, driverId, orderId, assignedBy,
+      id, 
+      driverId, orderId, assignedBy,
+      driverId, orderId, assignedBy,
       pickupLocation.lat, pickupLocation.lng, pickupLocation.name,
       deliveryLocation.lat, deliveryLocation.lng, deliveryLocation.name
     ]);
@@ -705,24 +783,24 @@ export async function getDriverAssignmentById(id: string): Promise<DriverAssignm
     
     return {
       id: assignment.id.toString(),
-      driverId: assignment.driverId,
-      orderId: assignment.orderId,
-      assignedBy: assignment.assignedBy,
-      assignedAt: new Date(assignment.assignedAt),
-      status: assignment.status as 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled',
-      pickupLocation: assignment.pickupLat && assignment.pickupLng ? {
-        lat: assignment.pickupLat,
-        lng: assignment.pickupLng,
-        name: assignment.pickupName
+      driverId: (assignment.driverId || assignment.driver_id)?.toString(),
+      orderId: assignment.orderId || assignment.order_id,
+      assignedBy: assignment.assignedBy || assignment.assigned_by,
+      assignedAt: new Date(assignment.assignedAt || assignment.assigned_at || Date.now()),
+      status: (assignment.status?.toLowerCase() === 'active' ? 'accepted' : assignment.status?.toLowerCase()) as 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled',
+      pickupLocation: (assignment.pickupLat || assignment.pickup_lat) && (assignment.pickupLng || assignment.pickup_lng) ? {
+        lat: assignment.pickupLat || assignment.pickup_lat,
+        lng: assignment.pickupLng || assignment.pickup_lng,
+        name: assignment.pickupName || assignment.pickup_location_name || assignment.pickup_name
       } : undefined,
-      deliveryLocation: assignment.deliveryLat && assignment.deliveryLng ? {
-        lat: assignment.deliveryLat,
-        lng: assignment.deliveryLng,
-        name: assignment.deliveryName
+      deliveryLocation: (assignment.deliveryLat || assignment.delivery_lat) && (assignment.deliveryLng || assignment.delivery_lng) ? {
+        lat: assignment.deliveryLat || assignment.delivery_lat,
+        lng: assignment.deliveryLng || assignment.delivery_lng,
+        name: assignment.deliveryName || assignment.delivery_location_name || assignment.delivery_name
       } : undefined,
-      estimatedDeliveryTime: assignment.estimatedDeliveryTime ? new Date(assignment.estimatedDeliveryTime) : undefined,
-      actualPickupTime: assignment.actualPickupTime ? new Date(assignment.actualPickupTime) : undefined,
-      actualDeliveryTime: assignment.actualDeliveryTime ? new Date(assignment.actualDeliveryTime) : undefined
+      estimatedDeliveryTime: (assignment.estimatedDeliveryTime || assignment.estimated_delivery_time) ? new Date(assignment.estimatedDeliveryTime || assignment.estimated_delivery_time) : undefined,
+      actualPickupTime: (assignment.actualPickupTime || assignment.actual_pickup_time) ? new Date(assignment.actualPickupTime || assignment.actual_pickup_time) : undefined,
+      actualDeliveryTime: (assignment.actualDeliveryTime || assignment.actual_delivery_time) ? new Date(assignment.actualDeliveryTime || assignment.actual_delivery_time) : undefined
     };
   } catch (error) {
     console.error('Error fetching driver assignment:', error);
@@ -733,32 +811,41 @@ export async function getDriverAssignmentById(id: string): Promise<DriverAssignm
 export async function getDriverAssignments(driverId: string): Promise<DriverAssignment[]> {
   try {
     const db = await getDB();
+    
+    // Get full driver info to resolve all possible IDs
+    const driver = await getDriverById(driverId);
+    const searchIds = [driverId];
+    if (driver.employeeId) searchIds.push(driver.employeeId);
+    if (driver.id) searchIds.push(driver.id.toString());
+    
+    const placeholders = searchIds.map(() => '?').join(',');
+    
     const assignments = await db.all(`
       SELECT * FROM driver_assignments 
-      WHERE driver_id = ? 
+      WHERE (driverId IN (${placeholders}) OR driver_id IN (${placeholders})) 
       ORDER BY assignedAt DESC
-    `, [driverId]);
+    `, [...searchIds, ...searchIds]);
     
     return assignments.map((assignment: any) => ({
-      id: assignment.id,
-      driverId: assignment.driverId,
-      orderId: assignment.orderId,
-      assignedBy: assignment.assignedBy,
-      assignedAt: new Date(assignment.assignedAt),
-      status: assignment.status as 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled',
-      pickupLocation: assignment.pickupLat && assignment.pickupLng ? {
-        lat: assignment.pickupLat,
-        lng: assignment.pickupLng,
-        name: assignment.pickupName
+      id: assignment.id.toString(),
+      driverId: (assignment.driverId || assignment.driver_id)?.toString(),
+      orderId: assignment.orderId || assignment.order_id,
+      assignedBy: assignment.assignedBy || assignment.assigned_by,
+      assignedAt: new Date(assignment.assignedAt || assignment.assigned_at || Date.now()),
+      status: (assignment.status?.toLowerCase() === 'active' ? 'accepted' : assignment.status?.toLowerCase()) as 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled',
+      pickupLocation: (assignment.pickupLat || assignment.pickup_lat) && (assignment.pickupLng || assignment.pickup_lng) ? {
+        lat: assignment.pickupLat || assignment.pickup_lat,
+        lng: assignment.pickupLng || assignment.pickup_lng,
+        name: assignment.pickupName || assignment.pickup_location_name || assignment.pickup_name
       } : undefined,
-      deliveryLocation: assignment.deliveryLat && assignment.deliveryLng ? {
-        lat: assignment.deliveryLat,
-        lng: assignment.deliveryLng,
-        name: assignment.deliveryName
+      deliveryLocation: (assignment.deliveryLat || assignment.delivery_lat) && (assignment.deliveryLng || assignment.delivery_lng) ? {
+        lat: assignment.deliveryLat || assignment.delivery_lat,
+        lng: assignment.deliveryLng || assignment.delivery_lng,
+        name: assignment.deliveryName || assignment.delivery_location_name || assignment.delivery_name
       } : undefined,
-      estimatedDeliveryTime: assignment.estimatedDeliveryTime ? new Date(assignment.estimatedDeliveryTime) : undefined,
-      actualPickupTime: assignment.actualPickupTime ? new Date(assignment.actualPickupTime) : undefined,
-      actualDeliveryTime: assignment.actualDeliveryTime ? new Date(assignment.actualDeliveryTime) : undefined
+      estimatedDeliveryTime: (assignment.estimatedDeliveryTime || assignment.estimated_delivery_time) ? new Date(assignment.estimatedDeliveryTime || assignment.estimated_delivery_time) : undefined,
+      actualPickupTime: (assignment.actualPickupTime || assignment.actual_pickup_time) ? new Date(assignment.actualPickupTime || assignment.actual_pickup_time) : undefined,
+      actualDeliveryTime: (assignment.actualDeliveryTime || assignment.actual_delivery_time) ? new Date(assignment.actualDeliveryTime || assignment.actual_delivery_time) : undefined
     }));
   } catch (error) {
     console.error('Error fetching driver assignments:', error);
@@ -804,24 +891,41 @@ export async function updateAssignmentStatus(assignmentId: string, status: 'pick
       // Count active assignments (excluding delivered/cancelled ones)
       const activeAssignments = await db.all(`
         SELECT COUNT(*) as count FROM driver_assignments 
-        WHERE driver_id = ? AND status != 'delivered' AND status != 'cancelled'
-      `, [assignment.driverId]);
+        WHERE (driverId = ? OR driver_id = ?) AND status != 'delivered' AND status != 'cancelled'
+      `, [assignment.driverId, assignment.driverId]);
       
       console.log(`[MULTI-ORDER AVAILABILITY] Active assignments count: ${activeAssignments[0].count}`);
       
       // Get driver info to check vehicle type and capacity
       const driver = await getDriverById(assignment.driverId);
       
+      // Get dynamic capacity limits
+      let motorbikeLimit = 3;
+      let carLimit = 5;
+      let vanLimit = 10;
+      let truckLimit = 20;
+
+      try {
+        const motorbikeSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_motorbike']);
+        const carSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_car']);
+        const vanSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_van']);
+        const truckSetting = await db.get('SELECT value FROM system_settings WHERE key = ?', ['capacity_limit_truck']);
+        if (motorbikeSetting) motorbikeLimit = parseInt(motorbikeSetting.value);
+        if (carSetting) carLimit = parseInt(carSetting.value);
+        if (vanSetting) vanLimit = parseInt(vanSetting.value);
+        if (truckSetting) truckLimit = parseInt(truckSetting.value);
+      } catch (e) {}
+
       // Set capacity limits based on vehicle type
       let maxOrders = 1; // Default limit
       if (driver.vehicleType === 'motorbike') {
-        maxOrders = 3;
+        maxOrders = motorbikeLimit;
       } else if (driver.vehicleType === 'car') {
-        maxOrders = 5;
+        maxOrders = carLimit;
       } else if (driver.vehicleType === 'van') {
-        maxOrders = 10;
+        maxOrders = vanLimit;
       } else if (driver.vehicleType === 'truck') {
-        maxOrders = 20;
+        maxOrders = truckLimit;
       }
       
       // Make driver available if they're below capacity

@@ -25,7 +25,10 @@ import {
   Loader2,
   MessageSquare,
   Send,
-  MessageCircle
+  MessageCircle,
+  Navigation,
+  ChevronRight,
+  Map as MapIcon
 } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -58,7 +61,7 @@ type Order = {
   id: string;
   createdAt: string;
   totalAmount: number;
-  status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'in_transit' | 'picked_up';
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
   paymentMethod?: string;
   deliveryAddress: string;
@@ -95,6 +98,7 @@ export default function OrderDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSupportSubmitting, setIsSupportSubmitting] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSupportDialogOpen, setIsSupportDialogOpen] = useState(false);
   
@@ -262,12 +266,57 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleConfirmDelivery = async () => {
+    if (!order) return;
+    
+    setIsConfirming(true);
+    try {
+      const token = localStorage.getItem('customerAuthToken');
+      const response = await fetch(`/api/ecommerce/orders/${order.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: 'delivered' })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Order Delivered",
+          description: "Thank you for confirming! Your order is now marked as delivered.",
+          className: "bg-green-600 text-white"
+        });
+        // Wait a bit then redirect
+        setTimeout(() => {
+          router.push('/ecommerce/orders');
+        }, 1500);
+      } else {
+        const err = await response.json();
+        toast({
+          title: "Confirmation Failed",
+          description: err.error || "Could not confirm delivery.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
       case 'pending': return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 uppercase text-[10px]">Pending</Badge>;
       case 'confirmed': return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 uppercase text-[10px]">Confirmed</Badge>;
-      case 'processing': return <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 uppercase text-[10px]">Processing</Badge>;
       case 'shipped': return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 uppercase text-[10px]">Shipped</Badge>;
+      case 'picked_up': return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-200 uppercase text-[10px]">Driver Picked Up</Badge>;
+      case 'in_transit': return <Badge variant="outline" className="bg-blue-600 text-white border-none animate-pulse uppercase text-[10px]">In Transit</Badge>;
       case 'delivered': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase text-[10px]">Delivered</Badge>;
       case 'cancelled': return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 uppercase text-[10px]">Cancelled</Badge>;
       default: return <Badge variant="outline" className="uppercase text-[10px]">{status}</Badge>;
@@ -277,29 +326,33 @@ export default function OrderDetailPage() {
   const getStepStatus = (step: string) => {
     if (!order) return 'upcoming';
     
-    const statusMap: Record<Order['status'], number> = {
-      'pending': 0,
-      'confirmed': 1,
-      'processing': 2,
-      'shipped': 3,
-      'delivered': 4,
-      'cancelled': -1
+    // Define the proper sequence of tracking steps (without Processing)
+    const trackingSteps = ['Placed', 'Confirmed', 'Shipped', 'Delivered'];
+    const stepIndex = trackingSteps.indexOf(step);
+    
+    // Map order statuses to their corresponding tracking step positions
+    const statusToStepMap: Record<Order['status'], number> = {
+      'pending': 0,           // Placed
+      'confirmed': 1,         // Confirmed
+      'processing': 1,        // Map to Confirmed (not used in workflow)
+      'shipped': 2,           // Shipped
+      'picked_up': 2,         // Still in Shipped stage (driver has picked up)
+      'in_transit': 2,        // Still in Shipped stage (driver in transit)
+      'delivered': 3,         // Delivered
+      'cancelled': -1         // Cancelled
     };
 
-    const currentStepIndex = statusMap[order.status];
-    const stepIndices: Record<string, number> = {
-      'Placed': 0,
-      'Confirmed': 1,
-      'Processing': 2,
-      'Shipped': 3,
-      'Delivered': 4
-    };
-
-    const targetIndex = stepIndices[step];
+    const currentStepPosition = statusToStepMap[order.status];
     
     if (order.status === 'cancelled') return 'cancelled';
-    if (currentStepIndex >= targetIndex) return 'completed';
-    if (currentStepIndex === targetIndex - 1) return 'active';
+    
+    // Mark steps as completed if we've passed them
+    if (currentStepPosition > stepIndex) return 'completed';
+    
+    // Mark current step as active
+    if (currentStepPosition === stepIndex) return 'active';
+    
+    // Future steps are upcoming
     return 'upcoming';
   };
 
@@ -403,13 +456,32 @@ export default function OrderDetailPage() {
               </div>
               <p className="text-gray-500 text-sm">Placed on {format(new Date(order.createdAt), 'MMMM d, yyyy • h:mm a')}</p>
             </div>
-            <div className="flex gap-2">
-               <Link href={`/track-order/${order.id}`}>
-                  <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                      <MapPin className="h-4 w-4 mr-2" />
-                      Track My Order
-                  </Button>
-               </Link>
+            <div className="flex flex-wrap gap-2">
+               {(['pending', 'confirmed', 'processing', 'shipped', 'picked_up', 'in_transit'].includes(order.status)) && (
+                 <Link href={`/track-order/${order.id}`}>
+                    <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 border-none px-8 rounded-2xl transition-all hover:scale-105 active:scale-95 group h-12">
+                        <MapIcon className="h-5 w-5 mr-3 group-hover:animate-bounce transition-all" />
+                        <span className="font-black underline-offset-4 decoration-2">LIVE: TRACK MY ORDER</span>
+                        <ChevronRight className="h-5 w-5 ml-2 opacity-50 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                 </Link>
+               )}
+               {(['shipped', 'picked_up', 'in_transit'].includes(order.status)) && (
+                 <Button 
+                   onClick={handleConfirmDelivery} 
+                   disabled={isConfirming}
+                   className="bg-green-600 hover:bg-green-700 text-white shadow-xl shadow-green-100 border-none px-6 rounded-2xl transition-all hover:scale-105 active:scale-95 group h-12"
+                 >
+                   {isConfirming ? (
+                     <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Confirming...</>
+                   ) : (
+                     <>
+                       <CheckCircle2 className="h-5 w-5 mr-2" />
+                       <span className="font-extrabold uppercase">Confirm I Received Order</span>
+                     </>
+                   )}
+                 </Button>
+               )}
                <Dialog open={isSupportDialogOpen} onOpenChange={setIsSupportDialogOpen}>
                  <DialogTrigger asChild>
                     <Button variant="outline" className="border-green-700 text-green-800 hover:bg-green-50">
@@ -471,7 +543,7 @@ export default function OrderDetailPage() {
                     <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 -translate-y-1/2 z-0"></div>
                     
                     <div className="flex justify-between items-center relative z-10 px-4 md:px-12">
-                        {['Placed', 'Confirmed', 'Processing', 'Shipped', 'Delivered'].map((step, idx) => {
+                        {['Placed', 'Confirmed', 'Shipped', 'Delivered'].map((step, idx) => {
                             const status = getStepStatus(step);
                             return (
                                 <div key={step} className="flex flex-col items-center">
@@ -593,7 +665,9 @@ export default function OrderDetailPage() {
                                             <div className="h-2 w-2 rounded-full bg-orange-600"></div>
                                             <span className="text-xs text-gray-600">
                                                 {order.status === 'delivered' ? 'Delivered to your doorstep' : 
-                                                 order.status === 'shipped' ? 'On its way to you' : 
+                                                 order.status === 'in_transit' ? 'Driver is on the way to your location' : 
+                                                 order.status === 'picked_up' ? 'Driver has picked up your order' : 
+                                                 order.status === 'shipped' ? 'Order is ready for pickup by driver' : 
                                                  order.status === 'processing' ? 'Order is being prepared' :
                                                  order.status === 'confirmed' ? 'Order confirmed, awaiting preparation' :
                                                  order.status === 'cancelled' ? 'Order cancelled' :

@@ -22,8 +22,17 @@ export async function GET(
     
     // Check if user can access this assignment
     if (authResult.role !== 'ecommerce' && authResult.role !== 'admin') {
-      // Regular users can only access assignments for their own driver ID
-      if (assignment.driverId !== authResult.username) {
+      // Regular drivers can only access assignments for their own driver record
+      const { getDriverById } = await import('@/lib/drivers-sqlite');
+      try {
+        const currentUserDriver = await getDriverById(authResult.username);
+        const driverIds = [currentUserDriver.id.toString(), currentUserDriver.employeeId].filter(Boolean);
+        
+        if (!driverIds.includes(assignment.driverId.toString())) {
+          console.warn(`[API] Forbidden: Driver ${authResult.username} (IDs: ${driverIds.join(',')}) attempted to access assignment ${assignment.id} belonging to driver ${assignment.driverId}`);
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      } catch (e) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
@@ -69,8 +78,17 @@ export async function PATCH(
     
     // Check permissions
     if (authResult.role !== 'ecommerce' && authResult.role !== 'admin') {
-      // Drivers can only update their own assignments
-      if (assignment.driverId !== authResult.username) {
+      // Regular drivers can only access assignments for their own driver record
+      const { getDriverById } = await import('@/lib/drivers-sqlite');
+      try {
+        const currentUserDriver = await getDriverById(authResult.username);
+        const driverIds = [currentUserDriver.id.toString(), currentUserDriver.employeeId].filter(Boolean);
+        
+        if (!driverIds.includes(assignment.driverId.toString())) {
+          console.warn(`[API] Forbidden: Driver ${authResult.username} (IDs: ${driverIds.join(',')}) attempted to update assignment ${assignment.id} belonging to driver ${assignment.driverId}`);
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      } catch (e) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
       

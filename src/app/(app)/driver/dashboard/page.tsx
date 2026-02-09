@@ -156,10 +156,10 @@ export default function DriverDashboard() {
   };
 
   const updateDriverLocation = async (lat: number, lng: number) => {
-    if (!user?.username || !token) return;
+    if (!user?.username || !token || driver?.status === 'offline') return;
     
     try {
-      await fetch(`/api/drivers/${user.username}`, {
+      const response = await fetch(`/api/drivers/${user.username}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -173,6 +173,19 @@ export default function DriverDashboard() {
           }
         })
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.driver) {
+          setDriver((prev) => {
+            if (!prev) return data.driver;
+            return {
+              ...prev,
+              currentLocation: data.driver.currentLocation
+            };
+          });
+        }
+      }
     } catch (error) {
       console.error('Failed to update location:', error);
     }
@@ -189,7 +202,7 @@ export default function DriverDashboard() {
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
-  }, [driver]);
+  }, [driver?.id]);
 
   const updateDriverStatus = async (newStatus: 'available' | 'busy' | 'offline') => {
     try {
@@ -218,11 +231,12 @@ export default function DriverDashboard() {
       setDriver(updatedDriver);
       
       toast({
-        title: "Status Updated",
-        description: `Your status has been updated to ${newStatus}`,
-        className: "bg-green-600 text-white"
+        title: newStatus === 'offline' ? "You are now Offline" : "Status Updated",
+        description: newStatus === 'offline' 
+          ? "Location tracking paused. You won't receive new assignments." 
+          : `Your status has been updated to ${newStatus}`,
+        className: newStatus === 'offline' ? "bg-slate-800 text-white" : "bg-green-600 text-white"
       });
-      
     } catch (error) {
       console.error('Error updating driver status:', error);
       toast({
@@ -393,6 +407,30 @@ export default function DriverDashboard() {
       const timeB = b.estimatedDeliveryTime ? new Date(b.estimatedDeliveryTime).getTime() : 0;
       return timeA - timeB;
   });
+
+  const triggerAutoPin = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          updateDriverLocation(position.coords.latitude, position.coords.longitude);
+          toast({
+            title: "Location Synced",
+            description: "Your current coordinates have been precision-pinned.",
+            className: "bg-indigo-600 text-white"
+          });
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          toast({
+            title: "GPS Error",
+            description: "Could not acquire precise location. Please check permissions.",
+            variant: "destructive"
+          });
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-8 max-w-7xl mx-auto min-h-screen bg-gray-50/50">
@@ -631,18 +669,31 @@ export default function DriverDashboard() {
         <div className="space-y-6">
             
             {/* Map Card */}
-            <Card className="overflow-hidden">
-                <CardHeader className="bg-gray-50 border-b pb-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                         <MapPin className="h-4 w-4" /> Live Map
-                    </CardTitle>
+            <Card className="overflow-hidden border-none shadow-xl rounded-3xl">
+                <CardHeader className="bg-white border-b pb-3 flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="text-sm font-black flex items-center gap-2 italic text-indigo-700">
+                             <Navigation className="h-4 w-4" /> LOCAL DISPATCH HUB
+                        </CardTitle>
+                        <CardDescription className="text-[10px] uppercase font-bold tracking-widest opacity-60">Real-time assets tracking</CardDescription>
+                    </div>
+                    <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-8 px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-bold text-[10px]"
+                        onClick={triggerAutoPin}
+                    >
+                        <MapPin className="h-3 w-3 mr-1" /> AUTO-PIN ME
+                    </Button>
                 </CardHeader>
-                <div className="h-[300px] md:h-[400px]">
+                <div className="h-[400px] md:h-[500px] p-2 bg-slate-100">
                     <DriverMap 
                         driverLocation={driver.currentLocation}
+                        vehicleType={driver.vehicleType}
                         // Show next pickup/dropoff on map
                         pickupLocation={sortedActive[0]?.pickupLocation}
                         deliveryLocation={sortedActive[0]?.deliveryLocation}
+                        secondaryDeliveryLocation={sortedActive[1]?.deliveryLocation}
                     />
                 </div>
             </Card>
@@ -659,17 +710,22 @@ export default function DriverDashboard() {
                         ) : (
                             <div className="divide-y">
                                 {completedAssignments.map(a => (
-                                    <div key={a.id} className="p-3 hover:bg-gray-50">
+                                    <div key={a.id} className="p-3 hover:bg-gray-50 border-l-2 border-l-green-500">
                                         <div className="flex justify-between items-center mb-1">
                                             <span className="font-bold text-xs">#{a.orderId}</span>
-                                            <span className="text-[10px] text-gray-500">
-                                                {a.actualDeliveryTime ? new Date(a.actualDeliveryTime).toLocaleDateString() : 'Done'}
-                                            </span>
+                                            <Badge variant="secondary" className="bg-green-100 text-green-800 text-[10px]">
+                                                DELIVERED
+                                            </Badge>
                                         </div>
-                                        <p className="text-xs text-gray-600 flex items-center gap-1">
+                                        <p className="text-xs text-gray-600 flex items-center gap-1 mb-1">
                                             <CheckCircle2 className="h-3 w-3 text-green-500" />
                                             Delivered to {a.deliveryLocation?.name}
                                         </p>
+                                        {a.actualDeliveryTime && (
+                                            <p className="text-[10px] text-gray-500">
+                                                Completed: {new Date(a.actualDeliveryTime).toLocaleString()}
+                                            </p>
+                                        )}
                                     </div>
                                 ))}
                             </div>

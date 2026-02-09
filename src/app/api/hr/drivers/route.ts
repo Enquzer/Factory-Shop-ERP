@@ -4,8 +4,8 @@ import { withRoleAuth } from '@/lib/auth-middleware';
 
 export const GET = withRoleAuth(async (request: NextRequest) => {
   try {
-    const db = await getDb();
-    const drivers = await db.all('SELECT * FROM drivers ORDER BY name ASC');
+    const { getAllDrivers } = await import('@/lib/drivers-sqlite');
+    const drivers = await getAllDrivers();
     return NextResponse.json(drivers);
   } catch (error) {
     console.error('Failed to fetch drivers:', error);

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const clusteringRadius = parseFloat(searchParams.get('radius') || '3');
     
     // Validate and sanitize status filter
-    const validStatuses = ['confirmed', 'processing', 'ready_for_dispatch', 'paid', 'pending', 'payment_received'];
+    const validStatuses = ['confirmed', 'processing', 'ready_for_dispatch', 'paid', 'pending', 'payment_received', 'ready'];
     const statuses = statusFilter.split(',')
       .map(s => s.trim())
       .filter(s => validStatuses.includes(s));
