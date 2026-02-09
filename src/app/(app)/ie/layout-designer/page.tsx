@@ -23,7 +23,9 @@ import {
   ArrowRightLeft,
   UserPlus,
   FileText,
-  Download
+  Download,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import {
   Select,
@@ -34,6 +36,21 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
+  ReferenceArea
+} from 'recharts';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Machine {
   id: number;
@@ -57,6 +74,201 @@ export default function LayoutDesignerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const layoutId = searchParams.get('id');
+
+const PitchDiagram = ({ taktTime, batchSize, orderQuantity }: { taktTime: number, batchSize: number, orderQuantity: number }) => {
+  const pitch = taktTime * batchSize;
+  const data = [];
+  const totalPitches = Math.min(20, Math.ceil(orderQuantity / (batchSize || 1)));
+  
+  for (let i = 0; i <= totalPitches; i++) {
+    data.push({
+      pitch: `P${i}`,
+      time: (i * pitch).toFixed(1),
+      goal: i * batchSize,
+    });
+  }
+
+  return (
+    <div className="h-[250px] w-full mt-4">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="pitch" label={{ value: 'Pitch (Batch Intervals)', position: 'insideBottom', offset: -5 }} />
+          <YAxis label={{ value: 'Units', angle: -90, position: 'insideLeft' }} />
+          <Tooltip content={({ active, payload }) => {
+            if (active && payload && payload.length) {
+              return (
+                <div className="bg-background border p-2 shadow-sm rounded-md text-xs">
+                  <p className="font-bold">{payload[0].payload.pitch}</p>
+                  <p>Time: {payload[0].payload.time} min</p>
+                  <p>Goal: {payload[0].value} units</p>
+                </div>
+              );
+            }
+            return null;
+          }} />
+          <Legend />
+          <Line 
+            type="monotone" 
+            dataKey="goal" 
+            stroke="#2563eb" 
+            strokeWidth={3} 
+            dot={{ r: 4, fill: '#2563eb' }}
+            activeDot={{ r: 6 }}
+            name="Production Goal Line" 
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const M2MChart = ({ machine, allMachines, currentIndex }: { machine: any; allMachines?: any[]; currentIndex?: number }) => {
+  const m2m = machine.m2m || { loadingTime: 0.2, machineRunTime: 0.5, unloadingTime: 0.1, walkingTime: 0.1 };
+  
+  // Single machine totals
+  const totalCycle = m2m.loadingTime + m2m.machineRunTime + m2m.unloadingTime + m2m.walkingTime;
+  const humanTime = m2m.loadingTime + m2m.unloadingTime + m2m.walkingTime;
+  const machineTime = m2m.machineRunTime;
+  
+  // Multi-machine logic
+  // Find other machines assigned to the same operator
+  const operatorId = machine.operatorId;
+  const siblingMachines = operatorId && allMachines 
+    ? allMachines.filter((m, idx) => m.operatorId === operatorId && idx !== currentIndex)
+    : [];
+  
+  // Calculate total manual work operator does away from this machine
+  const manualWorkElsewhere = siblingMachines.reduce((sum, m) => {
+    const mm = m.m2m || { loadingTime: 0, unloadingTime: 0, walkingTime: 0 };
+    return sum + (mm.loadingTime || 0) + (mm.unloadingTime || 0) + (mm.walkingTime || 0);
+  }, 0);
+
+  // Interference happens if operator is away longer than machine run time
+  const interference = Math.max(0, manualWorkElsewhere - machine.m2m?.machineRunTime);
+  const adjustedCycle = totalCycle + interference;
+
+  const segments = [
+    { name: 'Loading', val: m2m.loadingTime, opBusy: true, macBusy: true, color: '#3b82f6' },
+    { name: 'Run Time', val: m2m.machineRunTime, opBusy: false, macBusy: true, color: '#ef4444' },
+    { name: 'Unload', val: m2m.unloadingTime, opBusy: true, macBusy: true, color: '#10b981' },
+    { name: 'Walking', val: m2m.walkingTime, opBusy: true, macBusy: false, color: '#f59e0b' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {siblingMachines.length > 0 && (
+        <div className="bg-blue-50 border border-blue-100 p-2 rounded-lg flex items-center gap-2 mb-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-[10px] font-black text-blue-700 uppercase tracking-tighter">
+            Multitasking: Operator also handling {siblingMachines.length} other station(s)
+          </span>
+        </div>
+      )}
+
+      {/* Operator Lane */}
+      <div className="space-y-1">
+        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter opacity-50">
+          <span>Operator Track</span>
+          <span>{(humanTime + manualWorkElsewhere).toFixed(2)}m Total Activity</span>
+        </div>
+        <div className="h-10 w-full bg-slate-100 rounded-md overflow-hidden flex relative border shadow-inner">
+          {segments.map((seg, i) => (
+            <div 
+              key={`op-${i}`}
+              style={{ 
+                width: `${(seg.val / adjustedCycle) * 100}%`, 
+                backgroundColor: seg.opBusy ? seg.color : '#f1f5f9',
+                opacity: seg.opBusy ? 1 : 0.2
+              }}
+              className="h-full flex items-center justify-center text-[8px] text-white font-black overflow-hidden"
+            >
+              {seg.opBusy && seg.val > 0.05 ? seg.name[0] : ''}
+            </div>
+          ))}
+          {manualWorkElsewhere > 0 && (
+            <div 
+              style={{ width: `${(manualWorkElsewhere / adjustedCycle) * 100}%`, backgroundColor: '#475569' }}
+              className="h-full flex items-center justify-center text-[8px] text-white font-black overflow-hidden"
+              title="Work on other machines"
+            >
+              OTHERS
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Machine Lane */}
+      <div className="space-y-1">
+        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter opacity-50">
+          <span>Machine Track</span>
+          <span>{machineTime.toFixed(2)}m Processing</span>
+        </div>
+        <div className="h-10 w-full bg-slate-100 rounded-md overflow-hidden flex relative border shadow-inner">
+          {segments.map((seg, i) => (
+            <div 
+              key={`mac-${i}`}
+              style={{ 
+                width: `${(seg.val / adjustedCycle) * 100}%`, 
+                backgroundColor: seg.macBusy ? (seg.name === 'Run Time' ? '#ef4444' : '#94a3b8') : '#f1f5f9',
+                opacity: seg.macBusy ? 1 : 0.2
+              }}
+              className="h-full flex items-center justify-center text-[8px] text-white font-black overflow-hidden"
+            >
+              {seg.macBusy && seg.val > 0.05 ? (seg.name === 'Run Time' ? 'RUN' : 'W') : ''}
+            </div>
+          ))}
+          {interference > 0 && (
+            <div 
+              style={{ width: `${(interference / adjustedCycle) * 100}%`, backgroundColor: '#fcd34d' }}
+              className="h-full flex items-center justify-center text-[8px] text-amber-900 font-black overflow-hidden"
+              title="Machine idle waiting for operator"
+            >
+              IDLE (Conflict)
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+        <div className="space-y-1">
+          <div className="flex justify-between text-[10px] font-bold opacity-50 uppercase">
+            <span>Man/Machine Balance</span>
+            <span>{((humanTime / machineTime) * 100).toFixed(0)}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
+            <div className="h-full bg-blue-500" style={{ width: `${(humanTime / totalCycle) * 100}%` }} />
+            <div className="h-full bg-red-500" style={{ width: `${(machineTime / totalCycle) * 100}%` }} />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <div className="flex justify-between text-[10px] font-bold opacity-50 uppercase">
+             <span>NVA Ratio</span>
+             <span>{((m2m.walkingTime / totalCycle) * 100).toFixed(0)}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-full bg-amber-500" style={{ width: `${(m2m.walkingTime / totalCycle) * 100}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 text-center relative overflow-hidden">
+        {interference > 0 && (
+          <div className="absolute top-0 left-0 w-full h-1 bg-amber-400 animate-pulse" />
+        )}
+        <div className="text-[10px] font-black text-primary uppercase tracking-widest leading-none mb-1">Total System Cycle Time</div>
+        <div className="text-3xl font-black text-primary leading-none">
+          {adjustedCycle.toFixed(2)} <span className="text-sm">min</span>
+        </div>
+        {interference > 0 && (
+          <div className="text-[9px] font-bold text-amber-700 mt-2 uppercase flex items-center justify-center gap-1">
+             <AlertTriangle className="h-3 w-3" /> Includes {interference.toFixed(2)}m Interference Loss
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,6 +299,19 @@ export default function LayoutDesignerPage() {
       operationName: string;
       smv: number;
     } | null;
+    matchingOperations?: Array<{
+      sequence: number;
+      opCode: string;
+      operationName: string;
+      smv: number;
+    }>;
+    // M2M fields
+    m2m?: {
+      loadingTime: number; // minutes
+      machineRunTime: number; // minutes
+      unloadingTime: number; // minutes
+      walkingTime: number; // minutes
+    };
   }>>([]);
   
   const [operators, setOperators] = useState<any[]>([]);
@@ -103,8 +328,10 @@ export default function LayoutDesignerPage() {
   const [deliveryDays, setDeliveryDays] = useState<number>(0);
   const [ieAllowance, setIeAllowance] = useState<number>(10); // percentage
   const [productionAnalysis, setProductionAnalysis] = useState<any>(null);
-  const [bottlenecks, setBottlenecks] = useState<number[]>([]);
+  const [bottlenecks, setBottlenecks] = useState<number[]>([]); // Critical Bottlenecks
+  const [flowLimiters, setFlowLimiters] = useState<number[]>([]);
   const [lineBalance, setLineBalance] = useState<any>(null);
+  const [batchSize, setBatchSize] = useState<number>(10); // bundle size
   
   // Operation breakdown state
   const [operationBreakdown, setOperationBreakdown] = useState<any[]>([]);
@@ -282,7 +509,13 @@ export default function LayoutDesignerPage() {
       const machineResult = await machineResponse.json();
       const availableMachines = machineResult.data || [];
       
-      // Create machine positions based on operations
+      // Create machine positions based on operations with row-wrapping logic
+      const canvasWidth = layoutAreaRef?.clientWidth || 800;
+      const spacingX = 140;
+      const spacingY = 150;
+      const padding = 50;
+      const machinesPerRow = Math.max(1, Math.floor((canvasWidth - padding * 2) / spacingX));
+
       const newPositions = operations.map((op, index) => {
         // Find matching machine for this operation
         let matchingMachine = availableMachines.find((machine: any) => 
@@ -296,10 +529,13 @@ export default function LayoutDesignerPage() {
         }
         
         if (matchingMachine) {
+          const row = Math.floor(index / machinesPerRow);
+          const col = index % machinesPerRow;
+
           return {
             machine: matchingMachine,
-            x: index * 120, // Horizontal spacing
-            y: 100, // Fixed vertical position
+            x: padding + (col * spacingX),
+            y: padding + (row * spacingY),
             rotation: 0,
             sequence: index + 1,
             operatorId: undefined,
@@ -327,57 +563,184 @@ export default function LayoutDesignerPage() {
     }
   };
 
-  // Calculate line balance metrics
+  // Calculate line balance metrics using user's formulas
   const calculateLineBalance = () => {
-    if (machinePositions.length === 0 || operationBreakdown.length === 0) return;
+    if (machinePositions.length === 0 || (operationBreakdown.length === 0 && !machinePositions.some(p => p.matchingOperations?.length))) return;
     
     const workingHoursPerDay = 8;
-    const totalWorkingHours = deliveryDays * workingHoursPerDay;
-    const requiredOutputPerHour = orderQuantity / totalWorkingHours;
-    const adjustedRequiredOutput = requiredOutputPerHour * (1 + ieAllowance / 100);
+    const availableWorkingTimeMinutes = 60 * workingHoursPerDay;
+    const demandPerDay = orderQuantity / (deliveryDays || 1);
     
-    // Calculate cycle time and takt time
-    const taktTime = (workingHoursPerDay * 60 * 60) / requiredOutputPerHour; // seconds per unit
+    // A. Takt Time (Tt) = Available Working Time / Customer Demand
+    const taktTime = availableWorkingTimeMinutes / (demandPerDay || 1);
     
-    // Analyze each workstation
+    // Sum SMV (Total Work Content)
+    let sumSMV = operationBreakdown.reduce((sum, op) => sum + (op.smv || op.standardSMV || 0), 0);
+    if (sumSMV === 0) {
+      // Fallback: sum from assigned operations
+      machinePositions.forEach(pos => {
+        if (pos.matchingOperations) {
+          pos.matchingOperations.forEach(op => sumSMV += (op.smv || 0));
+        } else if (pos.matchingOperation) {
+          sumSMV += (pos.matchingOperation.smv || 0);
+        }
+      });
+    }
+
+    // B. Theoretical Minimum Number of Stations (N) = Sum SMV / Tt
+    const theoreticalMinStations = Math.ceil(sumSMV / (taktTime || 1));
+    
+    // Cycle Time of Bottleneck (highest total SMV in a station)
     const workstations = machinePositions.map((pos, index) => {
-      const operation = pos.matchingOperation;
-      const smv = operation?.smv || 0;
-      const cycleTime = smv * 60; // Convert SMV to seconds
+      let load = 0;
+      if (pos.matchingOperations) {
+        load = pos.matchingOperations.reduce((s, op) => s + (op.smv || 0), 0);
+      } else if (pos.matchingOperation) {
+        load = pos.matchingOperation.smv || 0;
+      }
       
       return {
         workstationId: index + 1,
         machineName: pos.machine.machineName,
-        operationName: operation?.operationName || 'Unknown',
-        smv,
-        cycleTime,
-        taktTime,
-        idleTime: Math.max(0, taktTime - cycleTime),
-        efficiency: cycleTime > 0 ? (taktTime / cycleTime) * 100 : 0,
-        isBottleneck: cycleTime > taktTime
+        load,
+        idleTime: 0, // calculated below
+        efficiency: 0, // calculated below
+        isBottleneck: false // calculated below
       };
     });
     
-    // Calculate overall line metrics
-    const totalCycleTime = workstations.reduce((sum, ws) => sum + ws.cycleTime, 0);
-    const lineEfficiency = (taktTime / (totalCycleTime / workstations.length)) * 100;
-    const bottleneckWorkstation = workstations.find(ws => ws.isBottleneck);
+    const bottleneckCycleTime = Math.max(...workstations.map(ws => ws.load), 0.001);
+    
+    // C. Line Efficiency (E) = (Sum SMV / (Actual Stations * Cycle Time of Bottleneck)) * 100
+    const actualStations = machinePositions.length;
+    const lineEfficiency = (sumSMV / (actualStations * bottleneckCycleTime)) * 100;
+    
+    // D. Balance Loss = 100% - Line Efficiency
+    const balanceLoss = 100 - lineEfficiency;
+    
+    // Update workstation details with idle time and bottleneck status
+    const updatedWorkstations = workstations.map(ws => ({
+      ...ws,
+      idleTime: bottleneckCycleTime - ws.load,
+      efficiency: (ws.load / bottleneckCycleTime) * 100,
+      isBottleneck: ws.load === bottleneckCycleTime
+    }));
     
     const balanceData = {
       taktTime,
-      totalCycleTime,
+      totalCycleTime: sumSMV,
       lineEfficiency,
-      workstations,
-      bottleneckWorkstation,
-      numberOfWorkstations: workstations.length
+      theoreticalMinStations,
+      balanceLoss,
+      workstations: updatedWorkstations,
+      bottleneckWorkstation: updatedWorkstations.find(ws => ws.isBottleneck),
+      numberOfWorkstations: actualStations
     };
     
     setLineBalance(balanceData);
     
     toast({
       title: "Line Balance Analysis Complete",
-      description: `Line efficiency: ${lineEfficiency.toFixed(1)}% | Bottleneck: ${bottleneckWorkstation ? bottleneckWorkstation.operationName : 'None'}`
+      description: `Efficiency: ${lineEfficiency.toFixed(1)}% | Bottleneck: ${balanceData.bottleneckWorkstation?.machineName || 'None'}`
     });
+  };
+
+  // Step 3: Workstation Assignment (Heuristic Logic)
+  const autoBalanceWorkstations = async () => {
+    if (!orderQuantity || !deliveryDays || operationBreakdown.length === 0) {
+      toast({
+        title: "Missing Data",
+        description: "Please select an order and set quantity/delivery timeline",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const workingHoursPerDay = 8;
+      const availableTime = workingHoursPerDay * 60; // minutes
+      const efficiencyAllowance = 100 / (100 + ieAllowance);
+      const demand = orderQuantity / deliveryDays;
+      
+      // Step 2: Calculate Target Cycle Time (Ct)
+      const ct = (availableTime * efficiencyAllowance) / demand;
+
+      // Group operations into workstations
+      const stations: any[] = [];
+      let currentOps: any[] = [];
+      let currentLoad = 0;
+
+      const sortedOps = [...operationBreakdown].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+
+      sortedOps.forEach(op => {
+        const opSMV = op.smv || op.standardSMV || 0;
+        if (currentLoad + opSMV <= ct && currentOps.length > 0) {
+          currentOps.push(op);
+          currentLoad += opSMV;
+        } else {
+          if (currentOps.length > 0) {
+            stations.push({ ops: currentOps, load: currentLoad });
+          }
+          currentOps = [op];
+          currentLoad = opSMV;
+        }
+      });
+      if (currentOps.length > 0) {
+        stations.push({ ops: currentOps, load: currentLoad });
+      }
+
+      // Fetch machines for placement
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const machineResponse = await fetch('/api/ie/machines', { headers });
+      const machineResult = await machineResponse.json();
+      const availableMachines = machineResult.data || [];
+
+      const canvasWidth = layoutAreaRef?.clientWidth || 800;
+      const spacingX = 140;
+      const spacingY = 150;
+      const padding = 50;
+      const machinesPerRow = Math.max(1, Math.floor((canvasWidth - padding * 2) / spacingX));
+
+      const newPositions = stations.map((station, index) => {
+        // Find best machine based on most frequent type in ops or just first available
+        const mainOp = station.ops[0];
+        let matchingMachine = availableMachines.find((m: any) => 
+          m.machineType.toLowerCase().includes(mainOp.machineType?.toLowerCase() || '')
+        );
+        if (!matchingMachine) matchingMachine = availableMachines[0];
+
+        const row = Math.floor(index / machinesPerRow);
+        const col = index % machinesPerRow;
+
+        return {
+          machine: matchingMachine,
+          x: padding + (col * spacingX),
+          y: padding + (row * spacingY),
+          rotation: 0,
+          sequence: index + 1,
+          matchingOperations: station.ops.map((op: any) => ({
+            sequence: op.sequence,
+            opCode: op.opCode || op.operationName,
+            operationName: op.operationName,
+            smv: op.smv || op.standardSMV || 0
+          }))
+        };
+      });
+
+      setMachinePositions(newPositions);
+      toast({
+        title: "Balanced Assignment Complete",
+        description: `Grouped ${operationBreakdown.length} operations into ${newPositions.length} workstations (Target CT: ${ct.toFixed(2)} min)`
+      });
+      
+    } catch (error) {
+      console.error('Error auto-balancing:', error);
+      toast({ title: "Error", description: "Failed to perform balanced assignment", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -483,39 +846,53 @@ export default function LayoutDesignerPage() {
   };
   
   const alignMachinesHorizontally = (positions: typeof machinePositions) => {
-    // Sort by x position first
-    const sorted = [...positions].sort((a, b) => a.x - b.x);
+    if (!layoutAreaRef) return positions;
     
-    // Align machines horizontally with fixed spacing
-    return sorted.map((pos, index) => ({
-      ...pos,
-      x: index * ALIGN_SPACING,
-      y: 100 // Fixed Y position for alignment
-    }));
+    // Sort by sequence or current x
+    const sorted = [...positions].sort((a, b) => a.sequence - b.sequence);
+    
+    const canvasWidth = layoutAreaRef.clientWidth || 800;
+    const spacingX = 140; // Horizontal gap
+    const spacingY = 150; // Vertical gap
+    const padding = 50;
+    const machineWidth = 96;
+    
+    // Calculate how many machines fit in one row
+    const machinesPerRow = Math.max(1, Math.floor((canvasWidth - padding * 2) / spacingX));
+    
+    return sorted.map((pos, index) => {
+      const row = Math.floor(index / machinesPerRow);
+      const col = index % machinesPerRow;
+      
+      return {
+        ...pos,
+        x: padding + (col * spacingX),
+        y: padding + (row * spacingY),
+      };
+    });
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!layoutAreaRef) return;
     
-    // If we're neither dragging a new machine nor moving an old one, exit
-    if (!draggedMachine && movingMachineIndex === null) return;
-    
     const rect = layoutAreaRef.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     
-    // Snap to grid
-    x = snapToGrid(x);
-    y = snapToGrid(y);
+    const machineSize = 96;
     
-    // Ensure machine stays within canvas bounds
-    const machineSize = 96; // 24 * 4 (w-24 h-24 in pixels)
-    x = Math.max(0, Math.min(x, rect.width - machineSize));
-    y = Math.max(0, Math.min(y, rect.height - machineSize));
+    // Calculate top-left based on click center (subtracting 48)
+    // and immediately clamp to area boundaries
+    const finalX = Math.max(0, Math.min(x - 48, rect.width - machineSize));
+    const finalY = Math.max(0, Math.min(y - 48, rect.height - machineSize));
     
-    // Check for overlap
-    if (checkOverlap(x - 48, y - 48, movingMachineIndex ?? undefined)) {
+    // Snap to grid AFTER clamping
+    const snappedX = snapToGrid(finalX);
+    const snappedY = snapToGrid(finalY);
+
+    // Check for overlap using the snapped coordinates
+    if (checkOverlap(snappedX, snappedY, movingMachineIndex ?? undefined)) {
       toast({
         title: "Overlap Detected",
         description: "Cannot place machine here - would overlap with existing machine",
@@ -526,48 +903,46 @@ export default function LayoutDesignerPage() {
       return;
     }
     
-    if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
-      if (movingMachineIndex !== null) {
-        // Handle moving an existing machine
-        setMachinePositions(prev => {
-          const updated = [...prev];
-          updated[movingMachineIndex] = {
-            ...updated[movingMachineIndex],
-            x: x - 48,
-            y: y - 48
-          };
-          
-          // Auto-align if Ctrl key is pressed
-          if (e.ctrlKey) {
-            return alignMachinesHorizontally(updated);
-          }
-          
-          return updated;
-        });
-        setMovingMachineIndex(null);
-      } else if (draggedMachine) {
-        // Handle adding a new machine
-        const newSequence = machinePositions.length + 1;
-        const newPosition = {
-          machine: draggedMachine,
-          x: x - 48,
-          y: y - 48,
-          rotation: 0,
-          sequence: newSequence
+    if (movingMachineIndex !== null) {
+      // Handle moving an existing machine
+      setMachinePositions(prev => {
+        const updated = [...prev];
+        updated[movingMachineIndex] = {
+          ...updated[movingMachineIndex],
+          x: snappedX,
+          y: snappedY
         };
         
-        setMachinePositions(prev => {
-          const updated = [...prev, newPosition];
-          
-          // Auto-align if Shift key is pressed
-          if (e.shiftKey) {
-            return alignMachinesHorizontally(updated);
-          }
-          
-          return updated;
-        });
-        setDraggedMachine(null);
-      }
+        // Auto-align if Ctrl key is pressed
+        if (e.ctrlKey) {
+          return alignMachinesHorizontally(updated);
+        }
+        
+        return updated;
+      });
+      setMovingMachineIndex(null);
+    } else if (draggedMachine) {
+      // Handle adding a new machine
+      const newSequence = machinePositions.length + 1;
+      const newPosition = {
+        machine: draggedMachine,
+        x: snappedX,
+        y: snappedY,
+        rotation: 0,
+        sequence: newSequence
+      };
+      
+      setMachinePositions(prev => {
+        const updated = [...prev, newPosition];
+        
+        // Auto-align if Shift key is pressed
+        if (e.shiftKey) {
+          return alignMachinesHorizontally(updated);
+        }
+        
+        return updated;
+      });
+      setDraggedMachine(null);
     }
     
     setDraggedMachine(null);
@@ -613,6 +988,7 @@ export default function LayoutDesignerPage() {
         orderId: orderId || '',
         productCode: productCode || '',
         section: selectedSection,
+        batchSize,
         machinePositions: machinePositions.map(pos => ({
           machineId: pos.machine.id,
           x: pos.x,
@@ -620,7 +996,8 @@ export default function LayoutDesignerPage() {
           rotation: pos.rotation,
           sequence: pos.sequence,
           operatorId: pos.operatorId,
-          operatorName: pos.operatorName
+          operatorName: pos.operatorName,
+          m2m: pos.m2m
         }))
       };
 
@@ -657,36 +1034,50 @@ export default function LayoutDesignerPage() {
 
   const handleExportPDF = async () => {
     const { generateMachineLayoutPDF } = await import('@/lib/pdf-generator');
+    
     const layoutData = {
       layoutName,
       orderId,
       productCode,
+      productImage,
       section: selectedSection,
       machinePositions: machinePositions.map((pos, idx) => ({
         ...pos,
         machineId: pos.machine.id,
-        sequence: idx + 1
-      }))
-    };
-    
-    const branding = {
-      companyName: settings.companyName,
-      logo: settings.logo || undefined,
-      primaryColor: settings.primaryColor,
-      secondaryColor: settings.secondaryColor
-    };
-
-    const url = await generateMachineLayoutPDF(layoutData, branding);
-    window.open(url, '_blank');
-    
-    // Clean up the blob URL after a delay to allow the browser to open it
-    setTimeout(() => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        // URL might already be revoked or invalid, ignore the error
+        sequence: pos.sequence || idx + 1
+      })),
+      operationBreakdown,
+      lineBalance,
+      productionAnalysis,
+      orderQuantity,
+      deliveryDays,
+      batchSize,
+      branding: {
+        companyName: settings.companyName,
+        logo: settings.logo || undefined,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor
       }
-    }, 1000);
+    };
+    
+    try {
+      const url = await generateMachineLayoutPDF(layoutData, layoutData.branding);
+      window.open(url, '_blank');
+      
+      // Clean up the blob URL after a delay
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (error) {}
+      }, 1000);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      toast({
+        title: "Export Failed",
+        description: "There was an error generating the PDF report.",
+        variant: "destructive"
+      });
+    }
   };
 
   // Calculate production requirements and identify bottlenecks
@@ -740,25 +1131,22 @@ export default function LayoutDesignerPage() {
           effectiveCapacity *= skillFactor;
         }
         
-        // Find matching operation for this machine (if operation breakdown exists)
-        let matchingOperation = null;
-        if (operationBreakdown.length > 0) {
-          // Try to match by machine type or component
-          matchingOperation = operationBreakdown.find((op: any) => {
-            const machineTypeMatch = op.machineType && 
-              machine.machineType.toLowerCase().includes(op.machineType.toLowerCase());
-            const componentMatch = op.componentName && 
-              machine.category.toLowerCase().includes(op.componentName.toLowerCase());
-            return machineTypeMatch || componentMatch;
-          });
-        }
+        // Use already assigned operations if available
+        let ops = pos.matchingOperations || (pos.matchingOperation ? [pos.matchingOperation] : []);
+        const opSMV = ops.reduce((sum, o) => sum + (o.smv || 0), 0);
         
-        // Calculate utilization
-        const requiredOutput = matchingOperation 
-          ? (adjustedRequiredOutput * (matchingOperation.smv || matchingOperation.standardSMV || 0)) / (totalSMV || 1)
-          : adjustedRequiredOutput;
-          
-        const utilization = (requiredOutput / effectiveCapacity) * 100;
+        // Target is what the whole line needs to produce
+        const targetOutput = adjustedRequiredOutput;
+        
+        // Capacity is limited by both machine speed and process time (SMV)
+        // If SMV is 0, we only use machine capacity.
+        // If SMV > 0, process capacity = 60 / SMV
+        const processCapacity = opSMV > 0 ? (60 / opSMV) : effectiveCapacity;
+        
+        // Workstation capacity is the bottleneck of machine vs process
+        const workstationCapacity = Math.min(effectiveCapacity, processCapacity);
+        
+        const utilization = (targetOutput / workstationCapacity) * 100;
         
         return {
           index,
@@ -767,47 +1155,59 @@ export default function LayoutDesignerPage() {
           machineCode: machine.machineCode,
           baseCapacity: machine.capacity,
           effectiveCapacity,
-          requiredOutput,
+          requiredOutput: targetOutput,
           utilization,
           operatorAssigned: !!pos.operatorId,
           operatorName: pos.operatorName,
           operatorSkill: operator?.skillLevel || 'unassigned',
-          isBottleneck: utilization > 100, // Over 100% utilization = bottleneck
-          matchingOperation: matchingOperation ? {
-            sequence: matchingOperation.sequence,
-            opCode: matchingOperation.opCode,
-            operationName: matchingOperation.operationName,
-            smv: matchingOperation.smv || matchingOperation.standardSMV
-          } : null
+          isBottleneck: utilization > 100,
+          matchingOperations: ops,
+          workstationCapacity
         };
       });
       
+      // Map results for analysis report and canvas
+      const analysisWithStatus = analysis.map((item: any) => {
+        const isCritical = item.utilization > 100;
+        const isMin = item.workstationCapacity === Math.min(...analysis.map((a: any) => a.workstationCapacity));
+        
+        return {
+          ...item,
+          status: isCritical ? 'CRITICAL BOTTLENECK' : (isMin ? 'FLOW LIMITER' : 'CLEAR')
+        };
+      });
+
       setProductionAnalysis({
         requiredOutputPerHour: adjustedRequiredOutput,
         totalWorkingHours,
         totalSMV,
-        analysis
+        analysis: analysisWithStatus
       });
       
       // Update machine positions with matching operations
       setMachinePositions(prev => prev.map((pos, index) => {
-        const analysisItem = analysis.find((a: any) => a.index === index);
+        const analysisItem = analysisWithStatus.find((a: any) => a.index === index);
         return {
           ...pos,
-          matchingOperation: analysisItem?.matchingOperation || null
+          matchingOperations: analysisItem?.matchingOperations || []
         };
       }));
       
-      // Identify bottlenecks (machines with >100% utilization)
-      const bottleneckIndices = analysis
-        .map((item, index) => item.isBottleneck ? index : -1)
-        .filter(index => index !== -1);
+      // Identify Critical Bottlenecks and Flow Limiters
+      const criticalIndices = analysisWithStatus
+        .map((item: any, index: number) => item.status === 'CRITICAL BOTTLENECK' ? index : -1)
+        .filter((index: number) => index !== -1);
       
-      setBottlenecks(bottleneckIndices);
+      const limiterIndices = analysisWithStatus
+        .map((item: any, index: number) => item.status === 'FLOW LIMITER' ? index : -1)
+        .filter((index: number) => index !== -1);
+      
+      setBottlenecks(criticalIndices);
+      setFlowLimiters(limiterIndices);
       
       toast({
         title: "Analysis Complete",
-        description: `Identified ${bottleneckIndices.length} bottleneck(s) in the production flow`
+        description: `Identified ${criticalIndices.length} critical bottleneck(s) and ${limiterIndices.length} flow limiter(s)`
       });
       
     } catch (error) {
@@ -1055,16 +1455,25 @@ export default function LayoutDesignerPage() {
                       </div>
                     </div>
                     
-                    <div>
-                      <Label htmlFor="ieAllowance" className="text-sm">IE Allowance (%)</Label>
-                      <Input
-                        id="ieAllowance"
-                        type="number"
-                        value={ieAllowance}
-                        onChange={(e) => setIeAllowance(parseInt(e.target.value) || 0)}
-                        placeholder="Buffer %"
-                        className="h-10 text-base"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-sm">Batch Size (Bundle)</Label>
+                        <Input
+                          type="number"
+                          value={batchSize}
+                          onChange={(e) => setBatchSize(parseInt(e.target.value) || 1)}
+                          className="h-10 text-base"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm">IE Allowance (%)</Label>
+                        <Input
+                          type="number"
+                          value={ieAllowance}
+                          onChange={(e) => setIeAllowance(parseInt(e.target.value) || 0)}
+                          className="h-10 text-base"
+                        />
+                      </div>
                     </div>
                     
                     <div className="flex flex-col gap-2">
@@ -1089,61 +1498,126 @@ export default function LayoutDesignerPage() {
                       )}
                       
                       {machinePositions.length > 0 && operationBreakdown.length > 0 && (
-                        <Button 
-                          onClick={calculateLineBalance}
-                          className="w-full h-10 text-base"
-                          variant="outline"
-                        >
-                          <BarChart3 className="mr-1 h-4 w-4" />
-                          Line Balance Analysis
-                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button 
+                            onClick={calculateLineBalance}
+                            className="h-10 text-base"
+                            variant="outline"
+                          >
+                            <BarChart3 className="mr-1 h-4 w-4" />
+                            Line Balance
+                          </Button>
+                          <Button 
+                            onClick={autoBalanceWorkstations}
+                            className="h-10 text-base bg-blue-600 hover:bg-blue-700"
+                          >
+                            <Layout className="mr-1 h-4 w-4" />
+                            Auto-Balance
+                          </Button>
+                        </div>
                       )}
                     </div>
                     
-                    {productionAnalysis && (
-                      <div className="pt-2 border-t border-yellow-200">
-                        <div className="text-base uppercase font-bold text-yellow-700 mb-1">
-                          Required Output: {productionAnalysis.requiredOutputPerHour.toFixed(1)} units/hour
-                        </div>
-                        <div className="text-base text-yellow-600">
-                          Total Working Hours: {productionAnalysis.totalWorkingHours}
-                        </div>
-                        {productionAnalysis.totalSMV > 0 && (
-                          <div className="text-base text-yellow-600">
-                            Total SMV: {productionAnalysis.totalSMV.toFixed(2)}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Line Balance Results */}
                     {lineBalance && (
-                      <div className="pt-3 border-t border-green-200">
-                        <div className="text-base uppercase font-bold text-green-700 mb-2">
-                          Line Balance Metrics
-                        </div>
-                        <div className="space-y-1 text-base">
-                          <div className="flex justify-between">
-                            <span>Line Efficiency:</span>
-                            <span className={`font-bold ${lineBalance.lineEfficiency >= 80 ? 'text-green-600' : lineBalance.lineEfficiency >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
-                              {lineBalance.lineEfficiency.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Takt Time:</span>
-                            <span className="text-green-600">{lineBalance.taktTime.toFixed(1)}s</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Workstations:</span>
-                            <span className="text-green-600">{lineBalance.numberOfWorkstations}</span>
-                          </div>
-                          {lineBalance.bottleneckWorkstation && (
-                            <div className="flex justify-between text-red-600">
-                              <span>Bottleneck:</span>
-                              <span className="font-medium">{lineBalance.bottleneckWorkstation.operationName}</span>
+                      <div className="mt-4">
+                        <Tabs defaultValue="balance" className="w-full">
+                          <TabsList className="grid w-full grid-cols-3 h-11 bg-slate-100 p-1 rounded-xl">
+                            <TabsTrigger value="balance" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs font-bold uppercase tracking-tighter">Balance</TabsTrigger>
+                            <TabsTrigger value="pitch" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs font-bold uppercase tracking-tighter">Pitch</TabsTrigger>
+                            <TabsTrigger value="m2m" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs font-bold uppercase tracking-tighter">M2M</TabsTrigger>
+                          </TabsList>
+                          
+                          <TabsContent value="balance" className="pt-4 animate-in fade-in duration-500">
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-3 bg-white p-4 rounded-xl border-2 border-slate-100 shadow-sm transition-all hover:border-blue-100">
+                              <div className="flex justify-between text-sm">
+                                <span className="opacity-60 font-bold">Takt Time:</span>
+                                <span className="text-green-600 font-black">{lineBalance.taktTime.toFixed(3)}m</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="opacity-60 font-bold">Efficiency:</span>
+                                <span className={`font-black ${lineBalance.lineEfficiency >= 80 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {lineBalance.lineEfficiency.toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-sm border-t pt-2">
+                                <span className="opacity-60 font-bold">Min Workers:</span>
+                                <span className="text-blue-600 font-black">{lineBalance.theoreticalMinStations}</span>
+                              </div>
+                              <div className="flex justify-between text-sm border-t pt-2">
+                                <span className="opacity-60 font-bold">Loss %:</span>
+                                <span className="text-red-600 font-black">{lineBalance.balanceLoss.toFixed(1)}%</span>
+                              </div>
                             </div>
-                          )}
-                        </div>
+                            
+                            <div className="mt-4 max-h-[250px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                              {lineBalance.workstations.map((ws: any) => (
+                                <div key={ws.workstationId} className={`p-4 rounded-xl border-2 flex flex-col gap-2 transition-all hover:scale-[1.02] ${ws.isBottleneck ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-black text-[10px] uppercase tracking-wider truncate max-w-[150px]">Ws #{ws.workstationId}: {ws.machineName}</span>
+                                    {ws.isBottleneck && <Badge variant="destructive" className="h-4 text-[8px] animate-pulse rounded-full font-black">BOTTLENECK</Badge>}
+                                  </div>
+                                  <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
+                                    <div 
+                                      className={`h-full transition-all duration-1000 ${ws.isBottleneck ? 'bg-red-500' : 'bg-blue-600'}`} 
+                                      style={{ width: `${Math.min(100, ws.efficiency)}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-[10px] font-black opacity-40 uppercase tracking-tighter">
+                                    <span>Process: {ws.load.toFixed(2)}m</span>
+                                    <span>Idle: {ws.idleTime.toFixed(2)}m</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="pitch" className="pt-4 space-y-4 animate-in fade-in duration-500">
+                            <div className="bg-white p-4 rounded-xl border-2 border-slate-100 shadow-sm overflow-hidden">
+                              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 text-center border-b pb-2">Production Goal Pitch Diagram</h4>
+                              <div className="text-xl font-black text-primary mb-1 text-center">
+                                {(lineBalance.taktTime * batchSize).toFixed(2)} MIN / BUNDLE
+                              </div>
+                              <p className="text-[10px] text-muted-foreground leading-tight font-medium text-center italic">Planned production pace for a bundle size of {batchSize} pieces.</p>
+                              
+                              <PitchDiagram 
+                                taktTime={lineBalance.taktTime} 
+                                batchSize={batchSize} 
+                                orderQuantity={orderQuantity} 
+                              />
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="m2m" className="pt-4 space-y-4 animate-in fade-in duration-500">
+                            <div className="bg-white p-4 rounded-xl border-2 border-slate-100 shadow-sm transition-all hover:border-orange-100">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 text-center border-b pb-2">Worker-Machine (M2M) Interaction</h4>
+                                
+                                {selectedMachinePosition !== null ? (
+                                  <div className="animate-in slide-in-from-bottom duration-300">
+                                    <div className="flex items-center gap-4 mb-5 border-b pb-4">
+                                      <div className="w-12 h-12 rounded-2xl bg-primary shadow-2xl flex items-center justify-center font-black text-white text-xl">
+                                        {machinePositions[selectedMachinePosition].sequence}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="font-black text-sm truncate uppercase leading-tight">{machinePositions[selectedMachinePosition].machine.machineName}</div>
+                                        <div className="text-[10px] opacity-40 uppercase font-black tracking-widest">{machinePositions[selectedMachinePosition].machine.machineCode}</div>
+                                      </div>
+                                    </div>
+                                    
+                                    <M2MChart 
+                                      machine={machinePositions[selectedMachinePosition]} 
+                                      allMachines={machinePositions}
+                                      currentIndex={selectedMachinePosition}
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-16 text-muted-foreground flex flex-col items-center gap-3">
+                                    <Search className="h-12 w-12 opacity-10" />
+                                    <span className="text-[11px] font-black uppercase tracking-widest opacity-40">Select machine on canvas</span>
+                                  </div>
+                                )}
+                            </div>
+                          </TabsContent>
+                        </Tabs>
                       </div>
                     )}
                   </CardContent>
@@ -1300,6 +1774,7 @@ export default function LayoutDesignerPage() {
                 {/* Machines on canvas */}
                 {machinePositions.map((pos, index) => {
                   const isBottleneck = bottlenecks.includes(index);
+                  const isFlowLimiter = flowLimiters.includes(index);
                   const utilization = productionAnalysis?.analysis?.find((a: any) => a.index === index)?.utilization || 0;
                   
                   return (
@@ -1310,7 +1785,9 @@ export default function LayoutDesignerPage() {
                           ? 'border-blue-500 bg-blue-100 text-blue-900 z-50 ring-4 ring-blue-500/20' 
                           : isBottleneck
                             ? 'border-red-500 bg-red-100 text-red-900 animate-pulse ring-4 ring-red-500/30'
-                            : 'border-white bg-primary text-primary-foreground'
+                            : isFlowLimiter
+                              ? 'border-yellow-600 bg-yellow-50 text-yellow-900 ring-4 ring-yellow-500/20'
+                              : 'border-white bg-primary text-primary-foreground'
                       }`}
                       style={{
                         left: `${pos.x}px`,
@@ -1328,13 +1805,19 @@ export default function LayoutDesignerPage() {
                         <div className="text-xs uppercase opacity-60 font-black mb-1 leading-none">
                           {pos.machine.machineName}
                         </div>
-                        {pos.matchingOperation && (
-                          <div className={`text-xs px-1 py-0.5 rounded mb-1 ${
+                        {((pos.matchingOperations && pos.matchingOperations.length > 0) || pos.matchingOperation) && (
+                          <div className={`text-[10px] px-2 py-1 rounded mb-1 max-w-full overflow-hidden ${
                             isBottleneck 
                               ? 'bg-red-200 text-red-800' 
-                              : 'bg-blue-100 text-blue-800'
+                              : isFlowLimiter
+                                ? 'bg-yellow-200 text-yellow-800'
+                                : 'bg-blue-100 text-blue-800'
                           }`}>
-                            Op {pos.matchingOperation.sequence}: {pos.matchingOperation.operationName}
+                            {pos.matchingOperations && pos.matchingOperations.length > 0 ? (
+                                <span>{pos.matchingOperations.length} Ops ({pos.matchingOperations.reduce((s,o)=>s+o.smv,0).toFixed(2)}m)</span>
+                            ) : (
+                                <span>Op {pos.matchingOperation?.sequence}: {pos.matchingOperation?.operationName}</span>
+                            )}
                           </div>
                         )}
                         {pos.operatorName ? (
@@ -1352,15 +1835,17 @@ export default function LayoutDesignerPage() {
                           </div>
                         )}
                         
-                        {/* Utilization badge for bottlenecks */}
-                        {isBottleneck && utilization > 0 && (
-                          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-red-500 text-white text-xs px-1 py-0.5 rounded-full whitespace-nowrap">
-                            {utilization.toFixed(0)}%
+                        {/* Status/Utilization badge */}
+                        {(isBottleneck || isFlowLimiter) && utilization > 0 && (
+                          <div className={`absolute -bottom-2 left-1/2 transform -translate-x-1/2 text-white text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap font-black shadow-sm ${
+                            isBottleneck ? 'bg-red-500' : 'bg-yellow-600'
+                          }`}>
+                            {isBottleneck ? `BOTTLENECK ${utilization.toFixed(0)}%` : 'FLOW LIMITER'}
                           </div>
                         )}
                       </div>
                       <div className={`absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center text-xs shadow-md border-2 border-background font-black ${
-                        isBottleneck ? 'bg-red-500 text-white' : 'bg-accent text-accent-foreground'
+                        isBottleneck ? 'bg-red-500 text-white' : isFlowLimiter ? 'bg-yellow-600 text-white' : 'bg-accent text-accent-foreground'
                       }`}>
                         {pos.sequence}
                       </div>
@@ -1381,104 +1866,215 @@ export default function LayoutDesignerPage() {
 
               {/* Float Toolbar for selected machine - positioned near the machine */}
               {selectedMachinePosition !== null && machinePositions[selectedMachinePosition] && layoutAreaRef && (
-                <div 
-                  className="absolute bg-background/90 backdrop-blur-md border shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-right duration-300 z-50"
-                  style={{
-                    left: `${Math.min(machinePositions[selectedMachinePosition].x + 120, (layoutAreaRef?.clientWidth || 800) - 280)}px`,
-                    top: `${Math.min(machinePositions[selectedMachinePosition].y, (layoutAreaRef?.clientHeight || 600) - 200)}px`,
-                    maxWidth: '256px'
-                  }}
-                >
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-bold text-base">Machine Properties</h4>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedMachinePosition(null)}>
-                      <Plus className="rotate-45 h-5 w-5" />
-                    </Button>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <Label className="text-xs uppercase opacity-60">Sequence</Label>
-                        <Input
-                          type="number"
-                          size={1}
-                          className="h-10 text-base"
-                          value={machinePositions[selectedMachinePosition].sequence}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setMachinePositions(prev => {
-                              const updated = [...prev];
-                              updated[selectedMachinePosition].sequence = val;
-                              return updated;
-                            });
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs uppercase opacity-60">Rotation</Label>
-                        <Input
-                          type="number"
-                          className="h-10 text-base"
-                          value={machinePositions[selectedMachinePosition].rotation}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setMachinePositions(prev => {
-                              const updated = [...prev];
-                              updated[selectedMachinePosition].rotation = val;
-                              return updated;
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase opacity-60">Assign Operator</Label>
-                      <Select 
-                        value={machinePositions[selectedMachinePosition].operatorId || "unassigned"}
-                        onValueChange={(val) => {
-                          const op = operators.find(o => o.employeeId === val);
-                          setMachinePositions(prev => {
-                            const updated = [...prev];
-                            updated[selectedMachinePosition].operatorId = val === "unassigned" ? undefined : val;
-                            updated[selectedMachinePosition].operatorName = val === "unassigned" ? undefined : op?.name;
-                            return updated;
-                          });
-                        }}
-                      >
-                        <SelectTrigger className="h-10 text-base">
-                          <SelectValue placeholder="Select Operator" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned" className="text-base">Unassigned</SelectItem>
-                          {operators.map(op => (
-                            <SelectItem key={op.employeeId} value={op.employeeId} className="text-base">
-                              {op.name} ({op.employeeId})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                        <Label className="text-xs uppercase opacity-60">Coordinates</Label>
-                        <div className="text-sm font-mono mt-1 opacity-80">
-                          X: {Math.round(machinePositions[selectedMachinePosition].x)} | 
-                          Y: {Math.round(machinePositions[selectedMachinePosition].y)}
-                        </div>
-                    </div>
-                    <Button 
-                      variant="destructive" 
-                      className="w-full h-10 text-base"
-                      onClick={() => {
-                        setMachinePositions(machinePositions.filter((_, i) => i !== selectedMachinePosition));
-                        setSelectedMachinePosition(null);
+                (() => {
+                  const idx = selectedMachinePosition;
+                  const pos = machinePositions[idx];
+                  
+                  return (
+                    <div 
+                      className="absolute bg-background/90 backdrop-blur-md border shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-right duration-300 z-50 transition-all hover:bg-background"
+                      style={{
+                        left: `${Math.min(pos.x + 120, (layoutAreaRef?.clientWidth || 800) - 280)}px`,
+                        top: `${Math.min(pos.y, (layoutAreaRef?.clientHeight || 600) - 200)}px`,
+                        maxWidth: '256px'
                       }}
                     >
-                      Remove from Canvas
-                    </Button>
-                  </div>
-                </div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-black text-xs uppercase tracking-widest opacity-40">Machine Properties</h4>
+                        <div className="flex gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-full" 
+                            onClick={() => {
+                              setMachinePositions(machinePositions.filter((_, i) => i !== idx));
+                              setSelectedMachinePosition(null);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setSelectedMachinePosition(null)}>
+                            <Plus className="rotate-45 h-5 w-5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold opacity-60">Sequence</Label>
+                            <Input
+                              type="number"
+                              size={1}
+                              className="h-9 text-sm font-black bg-slate-50 border-slate-200"
+                              value={pos.sequence}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setMachinePositions(prev => {
+                                  const updated = [...prev];
+                                  updated[idx].sequence = val;
+                                  return updated;
+                                });
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold opacity-60">Rotation</Label>
+                            <Input
+                              type="number"
+                              className="h-9 text-sm font-black bg-slate-50 border-slate-200"
+                              value={pos.rotation}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setMachinePositions(prev => {
+                                  const updated = [...prev];
+                                  updated[idx].rotation = val;
+                                  return updated;
+                                });
+                              }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase font-bold opacity-60">Operator</Label>
+                          <Select 
+                            value={pos.operatorId || "unassigned"}
+                            onValueChange={(val) => {
+                              const op = operators.find(o => o.employeeId === val);
+                              setMachinePositions(prev => {
+                                const updated = [...prev];
+                                updated[idx].operatorId = val === "unassigned" ? undefined : val;
+                                updated[idx].operatorName = val === "unassigned" ? undefined : op?.name;
+                                return updated;
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-9 text-xs bg-slate-50 border-slate-200 font-bold">
+                              <SelectValue placeholder="Unassigned" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned" className="text-xs">Unassigned</SelectItem>
+                              {operators.map(op => (
+                                <SelectItem key={op.employeeId} value={op.employeeId} className="text-xs">
+                                  {op.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+    
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase font-bold opacity-60">Base Capacity</Label>
+                          <Input
+                            type="number"
+                            className="h-9 text-sm font-black bg-slate-50 border-slate-200"
+                            value={pos.machine.capacity}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              setMachinePositions(prev => {
+                                const updated = [...prev];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  machine: {
+                                    ...updated[idx].machine,
+                                    capacity: val
+                                  }
+                                };
+                                return updated;
+                              });
+                            }}
+                          />
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 flex flex-col gap-3">
+                          <h5 className="text-[10px] uppercase font-black opacity-30 tracking-widest">M2M Timing (min)</h5>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[9px] font-bold opacity-50 uppercase">Loading</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="h-8 text-xs font-black font-mono bg-blue-50/50 border-blue-100"
+                                value={pos.m2m?.loadingTime || 0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setMachinePositions(prev => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      m2m: { ...(updated[idx].m2m || { machineRunTime: 0, unloadingTime: 0, walkingTime: 0 }), loadingTime: val }
+                                    };
+                                    return updated;
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[9px] font-bold opacity-50 uppercase">Run Time</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="h-8 text-xs font-black font-mono bg-red-50/50 border-red-100"
+                                value={pos.m2m?.machineRunTime || 0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setMachinePositions(prev => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      m2m: { ...(updated[idx].m2m || { loadingTime: 0, unloadingTime: 0, walkingTime: 0 }), machineRunTime: val }
+                                    };
+                                    return updated;
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[9px] font-bold opacity-50 uppercase">Unload</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="h-8 text-xs font-black font-mono bg-green-50/50 border-green-100"
+                                value={pos.m2m?.unloadingTime || 0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setMachinePositions(prev => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      m2m: { ...(updated[idx].m2m || { loadingTime: 0, machineRunTime: 0, walkingTime: 0 }), unloadingTime: val }
+                                    };
+                                    return updated;
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[9px] font-bold opacity-50 uppercase">Walking</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="h-8 text-xs font-black font-mono bg-orange-50/50 border-orange-100"
+                                value={pos.m2m?.walkingTime || 0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setMachinePositions(prev => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      m2m: { ...(updated[idx].m2m || { loadingTime: 0, machineRunTime: 0, unloadingTime: 0 }), walkingTime: val }
+                                    };
+                                    return updated;
+                                  });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </CardContent>
           </Card>

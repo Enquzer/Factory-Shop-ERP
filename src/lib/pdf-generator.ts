@@ -2311,126 +2311,317 @@ export async function generateOwnerKPIReport(kpis: any, filters: any, branding?:
 /**
  * Generates a professional PDF for a machine layout configuration
  */
+/**
+ * Generates a comprehensive professional PDF report for a machine layout configuration
+ * includes: canvans, OB, Line Balance, M2M, and Production Flow Analysis
+ */
 export async function generateMachineLayoutPDF(layout: any, branding?: BrandingConfig): Promise<string> {
   const { jsPDF } = await import('jspdf');
+  const { default: autoTable } = await import('jspdf-autotable');
+  
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
     format: 'a4'
   });
 
-  const title = `Production Layout: ${layout.layoutName}`;
+  const title = `Technical Layout Report: ${layout.layoutName}`;
   await (addHeaderAndLogo as any)(doc, title, branding);
 
+  // --- Page 1: OVERVIEW & PRODUCTION REQUIREMENTS ---
   let currentY = 55;
+  
+  // Header Box
+  doc.setFillColor(248, 250, 252);
+  doc.rect(15, currentY, 267, 45, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(15, currentY, 267, 45, 'D');
 
-  // Add Project Info Section
-  doc.setFontSize(12);
+  // Product Image (if available)
+  if (layout.productImage) {
+    try {
+      const imgB64 = await imageUrlToBase64(layout.productImage);
+      doc.addImage(imgB64, 'PNG', 20, currentY + 5, 35, 35);
+    } catch (e) {
+      doc.setDrawColor(200);
+      doc.rect(20, currentY + 5, 35, 35, 'D');
+      doc.setFontSize(8);
+      doc.text('No Image', 37.5, currentY + 22, { align: 'center' });
+    }
+  }
+
+  // Info Grid
   doc.setFont('helvetica', 'bold');
-  doc.text('Layout Information', 20, currentY);
-  currentY += 10;
-
+  doc.setFontSize(11);
+  doc.setTextColor(51, 65, 85);
+  const infoX = layout.productImage ? 65 : 25;
+  
+  doc.text('Production Profile', infoX, currentY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text(`Order ID: ${layout.orderId || 'N/A'}`, 25, currentY);
-  doc.text(`Section: ${layout.section}`, 100, currentY);
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 175, currentY);
-  currentY += 6;
-  doc.text(`Product Code: ${layout.productCode || 'N/A'}`, 25, currentY);
-  doc.text(`Total Machines: ${layout.machinePositions?.length || 0}`, 100, currentY);
-  doc.text(`Time: ${new Date().toLocaleTimeString()}`, 175, currentY);
-  currentY += 15;
+  doc.text(`Order Number: ${layout.orderId || 'N/A'}`, infoX + 5, currentY + 18);
+  doc.text(`Product Code: ${layout.productCode || 'N/A'}`, infoX + 5, currentY + 24);
+  doc.text(`Target Section: ${layout.section}`, infoX + 5, currentY + 30);
+  doc.text(`Batch Size: ${layout.batchSize || 1} units`, infoX + 5, currentY + 36);
 
-  // Layout Visualization Area
-  doc.setFontSize(12);
+  const statsX = infoX + 80;
   doc.setFont('helvetica', 'bold');
-  doc.text('Floor Layout Visualization', 20, currentY);
+  doc.text('Requirements', statsX, currentY + 10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Order Quantity: ${layout.orderQuantity || 0} pcs`, statsX + 5, currentY + 18);
+  doc.text(`Delivery Timeline: ${layout.deliveryDays || 0} Days`, statsX + 5, currentY + 24);
+  
+  if (layout.productionAnalysis) {
+    doc.text(`Target Output: ${layout.productionAnalysis.requiredOutputPerHour?.toFixed(1) || 0} pcs/hr`, statsX + 5, currentY + 30);
+    doc.text(`Total SMV Content: ${layout.productionAnalysis.totalSMV?.toFixed(2) || 0} min`, statsX + 5, currentY + 36);
+  }
+
+  const dateX = statsX + 80;
+  doc.text(`Report Date: ${new Date().toLocaleDateString()}`, dateX, currentY + 10);
+  doc.text(`Status: DRAFT / FINAL`, dateX, currentY + 18);
+
+  // --- Page 1 Table: FLOW STATUS SUMMARY ---
+  currentY += 55;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('Bottleneck & Flow Analysis', 15, currentY);
   currentY += 5;
 
-  // Draw bounding box for layout area
-  const layoutX = 20;
-  const layoutY = currentY;
-  const layoutW = 250;
-  const layoutH = 80;
-  doc.setDrawColor(200);
-  doc.rect(layoutX, layoutY, layoutW, layoutH);
+  if (layout.productionAnalysis?.analysis) {
+    const analysisData = layout.productionAnalysis.analysis.map((a: any) => [
+      a.index + 1,
+      a.machineName,
+      `${a.utilization.toFixed(1)}%`,
+      a.status,
+      a.operatorName || 'Unassigned'
+    ]);
 
-  // Scale machine positions to fit in the box
-  const scaleX = layoutW / 1200;
-  const scaleY = layoutH / 600;
-
-  if (layout.machinePositions && layout.machinePositions.length > 0) {
-    // Draw connecting lines (flow) first so they are behind machines
-    if (layout.machinePositions.length > 1) {
-      const sortedPositions = [...layout.machinePositions].sort((a, b) => a.sequence - b.sequence);
-      doc.setDrawColor(59, 130, 246); 
-      doc.setLineWidth(0.3);
-      doc.setLineDashPattern([2, 1], 0);
-
-      for (let i = 0; i < sortedPositions.length - 1; i++) {
-        const pos1 = sortedPositions[i];
-        const pos2 = sortedPositions[i + 1];
-
-        const x1 = layoutX + ((pos1.x + 48) * scaleX);
-        const y1 = layoutY + ((pos1.y + 48) * scaleY);
-        const x2 = layoutX + ((pos2.x + 48) * scaleX);
-        const y2 = layoutY + ((pos2.y + 48) * scaleY);
-
-        doc.line(x1, y1, x2, y2);
+    (autoTable as any)(doc, {
+      startY: currentY,
+      head: [['Pos', 'Operation / Machine', 'Utilization', 'System Status', 'Operator']],
+      body: analysisData,
+      theme: 'striped',
+      headStyles: { fillColor: [51, 65, 85], fontSize: 9 },
+      bodyStyles: { fontSize: 8 },
+      didParseCell: (data: any) => {
+        if (data.column.index === 3 && data.cell.section === 'body') {
+          if (data.cell.raw === 'CRITICAL BOTTLENECK') data.cell.styles.textColor = [220, 38, 38];
+          if (data.cell.raw === 'FLOW LIMITER') data.cell.styles.textColor = [217, 119, 6];
+        }
       }
-      doc.setLineDashPattern([], 0); // Reset dash
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // --- Page 2: FLOOR LAYOUT VISUALIZATION ---
+  doc.addPage();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('Floor Layout Visualization', 15, 20);
+  
+  // Main Legend
+  doc.setFontSize(8);
+  doc.setFillColor(59, 130, 246); doc.rect(200, 15, 3, 3, 'F'); doc.text('Flow Path', 205, 17.5);
+  doc.setFillColor(235, 245, 251); doc.setDrawColor(41, 128, 185); doc.rect(225, 15, 3, 3, 'FD'); doc.text('Machine Cell', 230, 17.5);
+  
+  const canvasX = 15;
+  const canvasY = 25;
+  const canvasW = 267;
+  const canvasH = 140;
+  doc.setDrawColor(200);
+  doc.setLineWidth(0.5);
+  doc.rect(canvasX, canvasY, canvasW, canvasH);
+  
+  // Scale factor (canvas is roughly 1100x600 in browser)
+  const sX = canvasW / 1200;
+  const sY = canvasH / 600;
+
+  if (layout.machinePositions?.length > 0) {
+    // 1. Draw Flow lines
+    const sorted = [...layout.machinePositions].sort((a,b) => a.sequence - b.sequence);
+    doc.setDrawColor(59, 130, 246);
+    doc.setLineWidth(0.4);
+    for (let i = 0; i < sorted.length - 1; i++) {
+        const p1 = sorted[i]; const p2 = sorted[i+1];
+        doc.line(canvasX + (p1.x + 48) * sX, canvasY + (p1.y + 48) * sY, canvasX + (p2.x + 48) * sX, canvasY + (p2.y + 48) * sY);
     }
 
-    // Draw machine boxes
+    // 2. Draw Machines
     layout.machinePositions.forEach((pos: any) => {
-      const mx = layoutX + (pos.x * scaleX);
-      const my = layoutY + (pos.y * scaleY);
-      const mw = 12; 
-      const mh = 8; 
+        const mx = canvasX + (pos.x * sX);
+        const my = canvasY + (pos.y * sY);
+        const mw = 96 * sX;
+        const mh = 96 * sY;
 
-      // Draw machine box
-      doc.setDrawColor(41, 128, 185);
-      doc.setFillColor(235, 245, 251);
-      doc.rect(mx, my, mw, mh, 'FD');
+        doc.setDrawColor(41, 128, 185);
+        doc.setFillColor(235, 245, 251);
+        doc.rect(mx, my, mw, mh, 'FD');
 
-      // Add seq number
-      doc.setFontSize(7);
-      doc.setTextColor(41, 128, 185);
-      doc.text(pos.sequence.toString(), mx + 1, my + 3.5);
-
-      // Add machine code/short name
-      doc.setFontSize(5);
-      doc.setTextColor(0);
-      const label = pos.machine?.machineCode || pos.machineId?.toString() || 'M';
-      doc.text(label, mx + 1, my + 6.5);
+        doc.setFontSize(7);
+        doc.setTextColor(41, 128, 185);
+        doc.text(pos.sequence.toString(), mx + 2, my + 5);
+        
+        doc.setFontSize(5);
+        doc.setTextColor(0);
+        const code = pos.machine?.machineCode || 'N/A';
+        const name = pos.machine?.machineShortName || pos.machine?.machineName?.substring(0, 10);
+        doc.text(code, mx + 2, my + 10);
+        doc.text(name || '', mx + 2, my + 14);
     });
   }
 
-  currentY = layoutY + layoutH + 15;
+  // --- Page 3: OPERATION BREAKDOWN (OB) ---
+  doc.addPage();
+  doc.setFontSize(14);
+  doc.text('Operation Breakdown (Service Plan)', 15, 20);
 
-  // Add Machines List Table
-  if (layout.machinePositions && layout.machinePositions.length > 0) {
-    const tableData = layout.machinePositions.map((pos: any) => [
-      pos.sequence,
-      pos.machine?.machineCode || 'N/A',
-      pos.machine?.machineName || 'Machine ' + pos.machineId,
-      pos.machine?.category || 'N/A',
-      pos.operatorName || 'Unassigned'
-    ]).sort((a: any, b: any) => a[0] - b[0]);
+  if (layout.operationBreakdown?.length > 0) {
+    const obHeader = [['Seq', 'Operation Name', 'Machine Type', 'SMV', 'Workload %']];
+    const obBody = layout.operationBreakdown.map((op: any) => [
+      op.sequence,
+      op.operationName || op.opCode,
+      op.machineType || 'Manual',
+      (op.smv || op.standardSMV || 0).toFixed(2),
+      '--'
+    ]);
 
-    const { default: autoTable } = await import('jspdf-autotable');
     (autoTable as any)(doc, {
-      startY: currentY,
-      head: [['Seq', 'Code', 'Machine Name', 'Category', 'Operator Assigned']],
-      body: tableData,
+      startY: 25,
+      head: obHeader,
+      body: obBody,
       theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+      headStyles: { fillColor: [41, 128, 185] },
       styles: { fontSize: 8 }
     });
   }
 
-  addFooter(doc, (doc as any).lastAutoTable?.finalY || currentY + 20);
+  // --- Page 4: LINE BALANCING & PITCH DIAGRAM ---
+  doc.addPage();
+  doc.setFontSize(14);
+  doc.text('Line Balancing Analysis', 15, 20);
+
+  if (layout.lineBalance) {
+    const lb = layout.lineBalance;
+    
+    // Metrics Cards
+    currentY = 30;
+    const cardW = 60;
+    const labels = [
+      { t: 'Takt Time', v: `${lb.taktTime?.toFixed(3)}m` },
+      { t: 'Efficiency', v: `${lb.lineEfficiency?.toFixed(1)}%` },
+      { t: 'Theoretical Min Workers', v: lb.theoreticalMinStations },
+      { t: 'Balance Loss', v: `${lb.balanceLoss?.toFixed(1)}%` }
+    ];
+
+    labels.forEach((l, i) => {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(15 + (i * (cardW + 5)), currentY, cardW, 20, 'F');
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(l.t, 15 + (i * (cardW + 5)) + 5, currentY + 7);
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.text(l.v.toString(), 15 + (i * (cardW + 5)) + 5, currentY + 15);
+    });
+
+    // Pitch Diagram Simulation
+    currentY += 35;
+    doc.setFontSize(11);
+    doc.text('Workstation Load vs Takt Time (Pitch Diagram)', 15, currentY);
+    
+    const pitchX = 20;
+    const pitchY = currentY + 10;
+    const pitchW = 250;
+    const pitchH = 80;
+    
+    // Draw Axis
+    doc.line(pitchX, pitchY, pitchX, pitchY + pitchH); // Y
+    doc.line(pitchX, pitchY + pitchH, pitchX + pitchW, pitchY + pitchH); // X
+
+    const stations = lb.workstations || [];
+    const maxLoad = Math.max(...stations.map((s: any) => s.load), lb.taktTime, 0.1) * 1.2;
+    const barW = Math.min(15, (pitchW - 20) / (stations.length || 1));
+
+    // Takt Time Reference Line
+    const taktY = pitchY + pitchH - (lb.taktTime / maxLoad * pitchH);
+    doc.setDrawColor(34, 197, 94); // Green
+    doc.setLineWidth(0.5);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.line(pitchX, taktY, pitchX + pitchW, taktY);
+    doc.setFontSize(7);
+    doc.text(`Takt Line: ${lb.taktTime.toFixed(2)}`, pitchX + pitchW - 30, taktY - 2);
+
+    // Draw Bars
+    doc.setLineDashPattern([], 0);
+    stations.forEach((ws: any, idx: number) => {
+        const bh = (ws.load / maxLoad) * pitchH;
+        if (ws.isBottleneck) {
+          doc.setFillColor(220, 38, 38);
+        } else {
+          doc.setFillColor(59, 130, 246);
+        }
+        doc.rect(pitchX + 5 + (idx * (barW + 2)), pitchY + pitchH - bh, barW, bh, 'F');
+        
+        doc.setFontSize(6);
+        doc.text(`Ws${ws.workstationId}`, pitchX + 5 + (idx * (barW + 2)), pitchY + pitchH + 5);
+    });
+  }
+
+  // --- Page 5: M2M INTERACTION ---
+  doc.addPage();
+  doc.setFontSize(14);
+  doc.text('Man-To-Machine (M2M) Interaction Study', 15, 20);
+  doc.setFontSize(9);
+  doc.text('Visualization of operator vs machine tracks to identify synchronization losses.', 15, 26);
+
+  // We show the first 3 machines as samples
+  let m2mY = 40;
+  layout.machinePositions?.slice(0, 3).forEach((pos: any, idx: number) => {
+    const m2m = pos.m2m || { loadingTime: 0.2, machineRunTime: 0.5, unloadingTime: 0.1, walkingTime: 0.1 };
+    const total = m2m.loadingTime + m2m.machineRunTime + m2m.unloadingTime + m2m.walkingTime;
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Workstation ${pos.sequence}: ${pos.machine?.machineName || 'Station'}`, 15, m2mY);
+    m2mY += 5;
+
+    // Operator Track
+    doc.setFontSize(7);
+    doc.text('OP', 15, m2mY + 4);
+    doc.setFillColor(59, 130, 246); // Loading
+    const lW = (m2m.loadingTime / total) * 200;
+    doc.rect(25, m2mY, lW, 6, 'F');
+    
+    doc.setFillColor(241, 245, 249); // Running (Operator Idle)
+    const rW = (m2m.machineRunTime / total) * 200;
+    doc.rect(25 + lW, m2mY, rW, 6, 'F');
+    
+    doc.setFillColor(16, 185, 129); // Unload
+    const uW = (m2m.unloadingTime / total) * 200;
+    doc.rect(25 + lW + rW, m2mY, uW, 6, 'F');
+    
+    doc.setFillColor(245, 158, 11); // Walking
+    const wW = (m2m.walkingTime / total) * 200;
+    doc.rect(25 + lW + rW + uW, m2mY, wW, 6, 'F');
+
+    m2mY += 8;
+    // Machine Track
+    doc.text('MC', 15, m2mY + 4);
+    doc.setFillColor(51, 65, 85); // Wait (Load)
+    doc.rect(25, m2mY, lW, 6, 'F');
+    
+    doc.setFillColor(239, 68, 68); // Run
+    doc.rect(25 + lW, m2mY, rW, 6, 'F');
+    
+    doc.setFillColor(51, 65, 85); // Wait (Unload)
+    doc.rect(25 + lW + rW, m2mY, uW, 6, 'F');
+
+    m2mY += 15;
+  });
+
+  addFooter(doc, 190);
   
   const blob = doc.output('blob');
   return URL.createObjectURL(blob);
 }
+
